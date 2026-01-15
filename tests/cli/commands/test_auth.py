@@ -12,7 +12,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
-from eero.exceptions import EeroAuthenticationException
 
 from eero_cli.main import cli
 

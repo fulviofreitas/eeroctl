@@ -191,7 +191,6 @@ def network_show(ctx: click.Context) -> None:
     including settings, DHCP, and recent speed test results.
     """
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
 
     async def run_cmd() -> None:
         async def get_network(client: EeroClient) -> None:
