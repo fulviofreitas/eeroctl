@@ -1,0 +1,132 @@
+name: 🔄 CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+  UV_CACHE_DIR: /tmp/.uv-cache
+
+jobs:
+  lint:
+    name: 🧹 Lint & Format
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: 🐍 Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: 🔧 Install linting tools
+        run: uv tool install ruff && uv tool install black && uv tool install isort
+
+      - name: 🖤 Check formatting with Black
+        run: uvx black --check --diff src/ tests/
+
+      - name: 📑 Check import sorting with isort
+        run: uvx isort --check-only --diff src/ tests/
+
+      - name: ⚡ Lint with Ruff
+        run: uvx ruff check src/ tests/
+
+  type-check:
+    name: 🔍 Type Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    # Type checking is informational only until existing type issues are resolved
+    continue-on-error: true
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: 🐍 Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: 📚 Install dependencies
+        run: uv sync --extra dev
+
+      - name: 🔬 Type check with mypy
+        run: uv run mypy src/ --ignore-missing-imports || echo "::warning::Type checking found issues (non-blocking)"
+
+  test:
+    name: 🧪 Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python-version: ["3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python-version: "3.12"
+
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+
+      - name: 📦 Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: 🐍 Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: 📚 Install dependencies
+        run: uv sync --extra dev
+
+      - name: 🖥️ Run CLI tests
+        run: uv run pytest tests/cli/ -v --tb=short
+
+      - name: 📈 Run all tests with coverage
+        run: uv run pytest tests/ --cov=src/eero_cli --cov-report=xml --cov-report=term-missing
+
+      - name: 📊 Upload coverage reports
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  all-tests-pass:
+    name: ✅ All Tests Pass
+    needs: [lint, type-check, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: always()
+    steps:
+      - name: 🎯 Check job status
+        uses: re-actors/alls-green@release/v1
+        with:
+          allowed-failures: type-check
+          jobs: ${{ toJSON(needs) }}
