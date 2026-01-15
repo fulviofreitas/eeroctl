@@ -147,9 +147,9 @@ class TestCommandGroupRegistration:
         assert result.exit_code == 0
         assert "Manage Eero mesh nodes" in result.output
 
-    def test_client_group_registered(self, runner):
-        """Test client command group is registered."""
-        result = runner.invoke(cli, ["client", "--help"])
+    def test_device_group_registered(self, runner):
+        """Test device command group is registered."""
+        result = runner.invoke(cli, ["device", "--help"])
 
         assert result.exit_code == 0
         assert "Manage connected devices" in result.output
