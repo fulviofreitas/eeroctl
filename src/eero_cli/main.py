@@ -85,17 +85,7 @@ def cli(
     """Eero network management CLI.
 
     Manage your Eero mesh Wi-Fi network from the command line.
-
     Use --help with any command for more information.
-
-    \b
-    Examples:
-        eero auth login             # Authenticate
-        eero network list           # List networks
-        eero network show           # Show current network
-        eero eero list              # List Eero nodes
-        eero device list            # List connected devices
-        eero profile list           # List profiles
     """
     # Setup logging
     if debug:
