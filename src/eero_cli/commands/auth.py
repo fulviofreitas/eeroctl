@@ -80,9 +80,7 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
                     return
                 except EeroAuthenticationException:
                     # Session expired, continue with login flow
-                    console.print(
-                        "[yellow]Session expired. Starting new login...[/yellow]"
-                    )
+                    console.print("[yellow]Session expired. Starting new login...[/yellow]")
 
             await _interactive_login(client, force, console, cli_ctx)
 
@@ -286,6 +284,7 @@ def _check_keyring_available() -> bool:
     """Check if keyring is available and has eero credentials."""
     try:
         import keyring
+
         token = keyring.get_password("eero", "user_token")
         return token is not None
     except Exception:
@@ -313,7 +312,9 @@ def auth_status(ctx: click.Context) -> None:
 
             # Determine session validity based on expiry date, not API call
             # (API call may fail due to network issues, not expired session)
-            session_valid = is_auth and session_info["has_token"] and not session_info["session_expired"]
+            session_valid = (
+                is_auth and session_info["has_token"] and not session_info["session_expired"]
+            )
 
             # Try to get account info if we have a valid session
             if session_valid:
@@ -324,7 +325,9 @@ def auth_status(ctx: click.Context) -> None:
                         "id": account.id,
                         "name": account.name,
                         "premium_status": account.premium_status,
-                        "premium_expiry": str(account.premium_expiry) if account.premium_expiry else None,
+                        "premium_expiry": (
+                            str(account.premium_expiry) if account.premium_expiry else None
+                        ),
                         "created_at": str(account.created_at) if account.created_at else None,
                         "users": [
                             {
@@ -362,7 +365,9 @@ def auth_status(ctx: click.Context) -> None:
 
             elif cli_ctx.output_format == OutputFormat.LIST:
                 # List format - parseable key-value rows
-                status = "valid" if session_valid else ("expired" if is_auth else "not_authenticated")
+                status = (
+                    "valid" if session_valid else ("expired" if is_auth else "not_authenticated")
+                )
                 print(f"status              {status}")
                 print(f"auth_method         {auth_method}")
                 print(f"cookie_file         {session_info['cookie_file']}")
@@ -394,7 +399,10 @@ def auth_status(ctx: click.Context) -> None:
                 session_table.add_row("Auth Method", f"[blue]{auth_method}[/blue]")
                 session_table.add_row("Cookie File", session_info["cookie_file"])
                 session_table.add_row("Session Expiry", session_info["session_expiry"] or "N/A")
-                session_table.add_row("Keyring Available", "[green]Yes[/green]" if keyring_available else "[dim]No[/dim]")
+                session_table.add_row(
+                    "Keyring Available",
+                    "[green]Yes[/green]" if keyring_available else "[dim]No[/dim]",
+                )
 
                 console.print(session_table)
 

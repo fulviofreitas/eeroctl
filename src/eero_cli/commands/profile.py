@@ -119,7 +119,9 @@ def profile_list(ctx: click.Context) -> None:
                         else len(p.devices) if p.devices else 0
                     )
 
-                    table.add_row(p.id or "", p.name, status, schedule, default, premium, str(device_count))
+                    table.add_row(
+                        p.id or "", p.name, status, schedule, default, premium, str(device_count)
+                    )
 
                 console.print(table)
 
