@@ -4,8 +4,9 @@ This module provides a context object that is passed through Click commands
 to share state like the client, output settings, and global flags.
 """
 
+from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, ContextManager, Dict, Optional
 
 import click
 from eero import EeroClient
@@ -98,6 +99,22 @@ class EeroCliContext:
     def is_structured_output(self) -> bool:
         """Check if output format is a structured format (JSON, YAML, or text)."""
         return self.output_format in ("json", "yaml", "text")
+
+    def status(self, message: str) -> ContextManager:
+        """Return a status spinner context manager, but only for table output.
+
+        For parseable outputs (json, yaml, list, text), returns a no-op context
+        to avoid polluting the output with status messages.
+
+        Args:
+            message: Status message to display
+
+        Returns:
+            Status context manager or nullcontext
+        """
+        if self.output_format == "table":
+            return self.console.status(message)
+        return nullcontext()
 
     def render_structured(self, data: Any, schema: str) -> None:
         """Render data in the current structured format (JSON, YAML, or text).

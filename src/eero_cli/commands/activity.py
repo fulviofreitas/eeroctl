@@ -64,7 +64,7 @@ async def activity_summary(ctx: click.Context, client: EeroClient) -> None:
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
-    with console.status("Getting network activity..."):
+    with cli_ctx.status("Getting network activity..."):
         try:
             activity_data = await client.get_activity(cli_ctx.network_id)
         except Exception as e:
@@ -96,7 +96,7 @@ async def activity_clients(ctx: click.Context, client: EeroClient) -> None:
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
-    with console.status("Getting client activity..."):
+    with cli_ctx.status("Getting client activity..."):
         try:
             clients_data = await client.get_activity_clients(cli_ctx.network_id)
         except Exception as e:
@@ -154,7 +154,7 @@ async def activity_history(ctx: click.Context, client: EeroClient, period: str) 
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
-    with console.status(f"Getting activity history ({period})..."):
+    with cli_ctx.status(f"Getting activity history ({period})..."):
         try:
             history_data = await client.get_activity_history(cli_ctx.network_id, period)
         except Exception as e:
@@ -187,7 +187,7 @@ async def activity_categories(ctx: click.Context, client: EeroClient) -> None:
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
-    with console.status("Getting activity categories..."):
+    with cli_ctx.status("Getting activity categories..."):
         try:
             categories_data = await client.get_activity_categories(cli_ctx.network_id)
         except Exception as e:

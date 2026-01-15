@@ -116,7 +116,7 @@ async def _interactive_login(
                     reuse = Confirm.ask("Do you want to reuse the existing session?")
 
                     if reuse:
-                        with console.status("Testing existing session..."):
+                        with cli_ctx.status("Testing existing session..."):
                             try:
                                 networks = await client.get_networks()
                                 console.print(
@@ -143,7 +143,7 @@ async def _interactive_login(
 
     user_identifier = Prompt.ask("Email or phone number")
 
-    with console.status("Requesting verification code..."):
+    with cli_ctx.status("Requesting verification code..."):
         try:
             result = await client.login(user_identifier)
             if not result:
@@ -159,7 +159,7 @@ async def _interactive_login(
     for attempt in range(max_attempts):
         verification_code = Prompt.ask("Verification code (check your email/phone)")
 
-        with console.status("Verifying..."):
+        with cli_ctx.status("Verifying..."):
             try:
                 result = await client.verify(verification_code)
                 if result:
@@ -171,7 +171,7 @@ async def _interactive_login(
         if attempt < max_attempts - 1:
             resend = Confirm.ask("Resend verification code?")
             if resend:
-                with console.status("Resending..."):
+                with cli_ctx.status("Resending..."):
                     await client._api.auth.resend_verification_code()
                     console.print("[green]Code resent![/green]")
 
@@ -196,7 +196,7 @@ def auth_logout(ctx: click.Context) -> None:
                 console.print("[yellow]Not logged in[/yellow]")
                 return
 
-            with console.status("Logging out..."):
+            with cli_ctx.status("Logging out..."):
                 try:
                     result = await client.logout()
                     if result:
@@ -279,7 +279,7 @@ def auth_status(ctx: click.Context) -> None:
             else:
                 if is_auth:
                     try:
-                        with console.status("Checking session..."):
+                        with cli_ctx.status("Checking session..."):
                             networks = await client.get_networks()
 
                         content = (

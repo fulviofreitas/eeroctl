@@ -49,17 +49,24 @@ class TestNetworkList:
     @pytest.fixture
     def mock_networks(self):
         """Create mock network objects."""
+        # Create mock status with .name attribute (like an enum)
+        status1 = MagicMock()
+        status1.name = "ONLINE"
+
+        status2 = MagicMock()
+        status2.name = "ONLINE"
+
         network1 = MagicMock()
         network1.id = "net_1"
         network1.name = "Home Network"
-        network1.status = "connected"
+        network1.status = status1
         network1.public_ip = "203.0.113.1"
         network1.isp_name = "Comcast"
 
         network2 = MagicMock()
         network2.id = "net_2"
         network2.name = "Office Network"
-        network2.status = "connected"
+        network2.status = status2
         network2.public_ip = "203.0.113.2"
         network2.isp_name = "AT&T"
 

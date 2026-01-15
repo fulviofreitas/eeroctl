@@ -83,7 +83,7 @@ def network_list(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_networks(client: EeroClient) -> None:
-            with console.status("Getting networks..."):
+            with cli_ctx.status("Getting networks..."):
                 networks = await client.get_networks()
 
             if not networks:
@@ -95,7 +95,7 @@ def network_list(ctx: click.Context) -> None:
                     {
                         "id": n.id,
                         "name": n.name,
-                        "status": str(n.status),
+                        "status": n.status.name if n.status else None,
                         "public_ip": n.public_ip,
                         "isp_name": n.isp_name,
                     }
@@ -104,7 +104,8 @@ def network_list(ctx: click.Context) -> None:
                 cli_ctx.render_structured(data, "eero.network.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
                 for n in networks:
-                    status = str(n.status) if n.status else ""
+                    # Extract just the enum name (e.g., "ONLINE" from EeroNetworkStatus.ONLINE)
+                    status = n.status.name if n.status else ""
                     # Use print() with fixed-width columns for alignment
                     print(
                         f"{n.id or '':<12}  {n.name or '':<25}  {status:<15}  "
@@ -119,7 +120,8 @@ def network_list(ctx: click.Context) -> None:
                 table.add_column("ISP", style="magenta")
 
                 for n in networks:
-                    status = str(n.status)
+                    # Extract just the enum name (e.g., "ONLINE" from EeroNetworkStatus.ONLINE)
+                    status = n.status.name if n.status else ""
                     if "online" in status.lower() or "connected" in status.lower():
                         status_display = f"[green]{status}[/green]"
                     elif "offline" in status.lower():
@@ -165,7 +167,7 @@ def network_use(ctx: click.Context, network_id: str) -> None:
             set_preferred_network(network_id)
 
             try:
-                with console.status(f"Verifying network {network_id}..."):
+                with cli_ctx.status(f"Verifying network {network_id}..."):
                     net = await client.get_network(network_id)
                 console.print(
                     f"[bold green]Preferred network set to '{net.name}' ({network_id})[/bold green]"
@@ -193,7 +195,7 @@ def network_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_network(client: EeroClient) -> None:
-            with console.status("Getting network details..."):
+            with cli_ctx.status("Getting network details..."):
                 network = await client.get_network(cli_ctx.network_id)
 
             if cli_ctx.is_structured_output():
@@ -249,7 +251,7 @@ def network_rename(ctx: click.Context, name: str, force: bool) -> None:
 
     async def run_cmd() -> None:
         async def set_name(client: EeroClient) -> None:
-            with console.status(f"Renaming network to '{name}'..."):
+            with cli_ctx.status(f"Renaming network to '{name}'..."):
                 result = await client.set_network_name(name, cli_ctx.network_id)
 
             if result:
@@ -278,7 +280,7 @@ def network_premium(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def check_premium(client: EeroClient) -> None:
-            with console.status("Checking premium status..."):
+            with cli_ctx.status("Checking premium status..."):
                 premium_data = await client.get_premium_status(cli_ctx.network_id)
                 is_premium = await client.is_premium(cli_ctx.network_id)
 
@@ -343,7 +345,7 @@ def dns_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_dns(client: EeroClient) -> None:
-            with console.status("Getting DNS settings..."):
+            with cli_ctx.status("Getting DNS settings..."):
                 dns_data = await client.get_dns_settings(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -418,7 +420,7 @@ def dns_mode_set(ctx: click.Context, mode: str, servers: tuple, force: bool) -> 
     async def run_cmd() -> None:
         async def set_mode(client: EeroClient) -> None:
             custom_servers = list(servers) if servers else None
-            with console.status(f"Setting DNS mode to {mode}..."):
+            with cli_ctx.status(f"Setting DNS mode to {mode}..."):
                 result = await client.set_dns_mode(mode, custom_servers, cli_ctx.network_id)
 
             if result:
@@ -477,7 +479,7 @@ def _set_dns_caching(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
 
     async def run_cmd() -> None:
         async def set_caching(client: EeroClient) -> None:
-            with console.status(f"{action.capitalize()}ing DNS caching..."):
+            with cli_ctx.status(f"{action.capitalize()}ing DNS caching..."):
                 result = await client.set_dns_caching(enable, cli_ctx.network_id)
 
             if result:
@@ -527,7 +529,7 @@ def security_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_security(client: EeroClient) -> None:
-            with console.status("Getting security settings..."):
+            with cli_ctx.status("Getting security settings..."):
                 sec_data = await client.get_security_settings(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -606,7 +608,7 @@ def _set_security_setting(ctx, api_method: str, display_name: str, enable: bool,
     async def run_cmd() -> None:
         async def set_setting(client: EeroClient) -> None:
             method = getattr(client, api_method)
-            with console.status(f"{action.capitalize()}ing {display_name}..."):
+            with cli_ctx.status(f"{action.capitalize()}ing {display_name}..."):
                 result = await method(enable, cli_ctx.network_id)
 
             if result:
@@ -668,7 +670,7 @@ def sqm_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_sqm(client: EeroClient) -> None:
-            with console.status("Getting SQM settings..."):
+            with cli_ctx.status("Getting SQM settings..."):
                 sqm_data = await client.get_sqm_settings(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -731,7 +733,7 @@ def _set_sqm_enabled(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
 
     async def run_cmd() -> None:
         async def set_sqm(client: EeroClient) -> None:
-            with console.status(f"{action.capitalize()}ing SQM..."):
+            with cli_ctx.status(f"{action.capitalize()}ing SQM..."):
                 result = await client.set_sqm_enabled(enable, cli_ctx.network_id)
 
             if result:
@@ -786,7 +788,7 @@ def sqm_set(
 
     async def run_cmd() -> None:
         async def configure_sqm(client: EeroClient) -> None:
-            with console.status("Configuring SQM..."):
+            with cli_ctx.status("Configuring SQM..."):
                 result = await client.configure_sqm(
                     enabled=True,
                     upload_mbps=upload,
@@ -844,7 +846,7 @@ def guest_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_guest(client: EeroClient) -> None:
-            with console.status("Getting guest network settings..."):
+            with cli_ctx.status("Getting guest network settings..."):
                 network = await client.get_network(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -935,7 +937,7 @@ def _set_guest_network(
 
     async def run_cmd() -> None:
         async def set_guest(client: EeroClient) -> None:
-            with console.status(f"{action.capitalize()}ing guest network..."):
+            with cli_ctx.status(f"{action.capitalize()}ing guest network..."):
                 result = await client.set_guest_network(
                     enabled=enable,
                     name=name,
@@ -982,7 +984,7 @@ def backup_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_backup(client: EeroClient) -> None:
-            with console.status("Getting backup network settings..."):
+            with cli_ctx.status("Getting backup network settings..."):
                 try:
                     backup_data = await client.get_backup_network(cli_ctx.network_id)
                 except Exception as e:
@@ -1043,7 +1045,7 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
 
     async def run_cmd() -> None:
         async def set_backup(client: EeroClient) -> None:
-            with console.status(f"{action.capitalize()}ing backup network..."):
+            with cli_ctx.status(f"{action.capitalize()}ing backup network..."):
                 try:
                     result = await client.set_backup_network(enable, cli_ctx.network_id)
                 except Exception as e:
@@ -1073,7 +1075,7 @@ def backup_status(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_status(client: EeroClient) -> None:
-            with console.status("Getting backup status..."):
+            with cli_ctx.status("Getting backup status..."):
                 try:
                     status_data = await client.get_backup_status(cli_ctx.network_id)
                     is_using = await client.is_using_backup(cli_ctx.network_id)
@@ -1124,7 +1126,7 @@ def speedtest_run(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def run_test(client: EeroClient) -> None:
-            with console.status("Running speed test (this may take a minute)..."):
+            with cli_ctx.status("Running speed test (this may take a minute)..."):
                 result = await client.run_speed_test(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -1156,7 +1158,7 @@ def speedtest_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_results(client: EeroClient) -> None:
-            with console.status("Getting speed test results..."):
+            with cli_ctx.status("Getting speed test results..."):
                 network = await client.get_network(cli_ctx.network_id)
 
             speed_test = network.speed_test
@@ -1213,7 +1215,7 @@ def forwards_list(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_forwards(client: EeroClient) -> None:
-            with console.status("Getting port forwards..."):
+            with cli_ctx.status("Getting port forwards..."):
                 forwards = await client.get_forwards(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -1259,7 +1261,7 @@ def forwards_show(ctx: click.Context, forward_id: str) -> None:
 
     async def run_cmd() -> None:
         async def get_forward(client: EeroClient) -> None:
-            with console.status("Getting port forward..."):
+            with cli_ctx.status("Getting port forward..."):
                 forwards = await client.get_forwards(cli_ctx.network_id)
 
             target = None
@@ -1313,7 +1315,7 @@ def dhcp_reservations(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_reservations(client: EeroClient) -> None:
-            with console.status("Getting DHCP reservations..."):
+            with cli_ctx.status("Getting DHCP reservations..."):
                 reservations = await client.get_reservations(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -1352,7 +1354,7 @@ def dhcp_leases(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_leases(client: EeroClient) -> None:
-            with console.status("Getting DHCP leases..."):
+            with cli_ctx.status("Getting DHCP leases..."):
                 # Leases come from devices list
                 devices = await client.get_devices(cli_ctx.network_id)
 
@@ -1404,7 +1406,7 @@ def routing_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_routing(client: EeroClient) -> None:
-            with console.status("Getting routing information..."):
+            with cli_ctx.status("Getting routing information..."):
                 routing = await client.get_routing(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -1447,7 +1449,7 @@ def thread_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_thread(client: EeroClient) -> None:
-            with console.status("Getting Thread information..."):
+            with cli_ctx.status("Getting Thread information..."):
                 thread_data = await client.get_thread(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -1492,7 +1494,7 @@ def support_show(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_support(client: EeroClient) -> None:
-            with console.status("Getting support information..."):
+            with cli_ctx.status("Getting support information..."):
                 support_data = await client.get_support(cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -1545,7 +1547,7 @@ def bundle_export(ctx: click.Context, out: str, force: bool) -> None:
 
     async def run_cmd() -> None:
         async def export_bundle(client: EeroClient) -> None:
-            with console.status("Generating support bundle..."):
+            with cli_ctx.status("Generating support bundle..."):
                 support_data = await client.get_support(cli_ctx.network_id)
                 diagnostics = await client.get_diagnostics(cli_ctx.network_id)
 

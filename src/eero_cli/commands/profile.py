@@ -59,7 +59,7 @@ def profile_list(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_profiles(client: EeroClient) -> None:
-            with console.status("Getting profiles..."):
+            with cli_ctx.status("Getting profiles..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             if not profiles:
@@ -129,7 +129,7 @@ def profile_show(ctx: click.Context, profile_id: str) -> None:
 
     async def run_cmd() -> None:
         async def get_profile(client: EeroClient) -> None:
-            with console.status("Getting profiles..."):
+            with cli_ctx.status("Getting profiles..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             target = None
@@ -142,7 +142,7 @@ def profile_show(ctx: click.Context, profile_id: str) -> None:
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            with console.status("Getting profile details..."):
+            with cli_ctx.status("Getting profile details..."):
                 profile = await client.get_profile(target.id, cli_ctx.network_id)
 
             if cli_ctx.is_structured_output():
@@ -207,7 +207,7 @@ def _set_profile_paused(
     async def run_cmd() -> None:
         async def toggle_pause(client: EeroClient) -> None:
             # Find profile first
-            with console.status("Finding profile..."):
+            with cli_ctx.status("Finding profile..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             target = None
@@ -234,7 +234,7 @@ def _set_profile_paused(
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with console.status(f"{action.capitalize()}ing profile..."):
+            with cli_ctx.status(f"{action.capitalize()}ing profile..."):
                 result = await client.pause_profile(target.id, paused, cli_ctx.network_id)
 
             if result:
@@ -277,7 +277,7 @@ def apps_list(ctx: click.Context, profile_id: str) -> None:
     async def run_cmd() -> None:
         async def get_apps(client: EeroClient) -> None:
             # Find profile first
-            with console.status("Finding profile..."):
+            with cli_ctx.status("Finding profile..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             target = None
@@ -290,7 +290,7 @@ def apps_list(ctx: click.Context, profile_id: str) -> None:
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            with console.status("Getting blocked apps..."):
+            with cli_ctx.status("Getting blocked apps..."):
                 try:
                     apps = await client.get_blocked_applications(target.id, cli_ctx.network_id)
                 except Exception as e:
@@ -338,7 +338,7 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple) -> None:
     async def run_cmd() -> None:
         async def block_apps(client: EeroClient) -> None:
             # Find profile first
-            with console.status("Finding profile..."):
+            with cli_ctx.status("Finding profile..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             target = None
@@ -352,7 +352,7 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple) -> None:
                 sys.exit(ExitCode.NOT_FOUND)
 
             for app in apps:
-                with console.status(f"Blocking {app}..."):
+                with cli_ctx.status(f"Blocking {app}..."):
                     try:
                         result = await client.add_blocked_application(
                             target.id, app, cli_ctx.network_id
@@ -390,7 +390,7 @@ def apps_unblock(ctx: click.Context, profile_id: str, apps: tuple) -> None:
     async def run_cmd() -> None:
         async def unblock_apps(client: EeroClient) -> None:
             # Find profile first
-            with console.status("Finding profile..."):
+            with cli_ctx.status("Finding profile..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             target = None
@@ -404,7 +404,7 @@ def apps_unblock(ctx: click.Context, profile_id: str, apps: tuple) -> None:
                 sys.exit(ExitCode.NOT_FOUND)
 
             for app in apps:
-                with console.status(f"Unblocking {app}..."):
+                with cli_ctx.status(f"Unblocking {app}..."):
                     try:
                         result = await client.remove_blocked_application(
                             target.id, app, cli_ctx.network_id
@@ -453,7 +453,7 @@ def schedule_show(ctx: click.Context, profile_id: str) -> None:
     async def run_cmd() -> None:
         async def get_schedule(client: EeroClient) -> None:
             # Find profile first
-            with console.status("Finding profile..."):
+            with cli_ctx.status("Finding profile..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             target = None
@@ -466,7 +466,7 @@ def schedule_show(ctx: click.Context, profile_id: str) -> None:
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            with console.status("Getting schedule..."):
+            with cli_ctx.status("Getting schedule..."):
                 schedule_data = await client.get_profile_schedule(target.id, cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -524,7 +524,7 @@ def schedule_set(
     async def run_cmd() -> None:
         async def set_schedule(client: EeroClient) -> None:
             # Find profile first
-            with console.status("Finding profile..."):
+            with cli_ctx.status("Finding profile..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             target = None
@@ -551,7 +551,7 @@ def schedule_set(
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with console.status("Setting schedule..."):
+            with cli_ctx.status("Setting schedule..."):
                 result = await client.enable_bedtime(
                     target.id, start, end, days_list, cli_ctx.network_id
                 )
@@ -579,7 +579,7 @@ def schedule_clear(ctx: click.Context, profile_id: str, force: bool) -> None:
     async def run_cmd() -> None:
         async def clear_schedule(client: EeroClient) -> None:
             # Find profile first
-            with console.status("Finding profile..."):
+            with cli_ctx.status("Finding profile..."):
                 profiles = await client.get_profiles(cli_ctx.network_id)
 
             target = None
@@ -606,7 +606,7 @@ def schedule_clear(ctx: click.Context, profile_id: str, force: bool) -> None:
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with console.status("Clearing schedule..."):
+            with cli_ctx.status("Clearing schedule..."):
                 result = await client.clear_profile_schedule(target.id, cli_ctx.network_id)
 
             if result:

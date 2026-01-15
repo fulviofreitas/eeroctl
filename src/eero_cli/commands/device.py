@@ -59,7 +59,7 @@ def device_list(ctx: click.Context) -> None:
 
     async def run_cmd() -> None:
         async def get_devices(client: EeroClient) -> None:
-            with console.status("Getting devices..."):
+            with cli_ctx.status("Getting devices..."):
                 devices = await client.get_devices(cli_ctx.network_id)
 
             if not devices:
@@ -132,7 +132,7 @@ def device_show(ctx: click.Context, device_id: str) -> None:
 
     async def run_cmd() -> None:
         async def get_device(client: EeroClient) -> None:
-            with console.status("Getting devices..."):
+            with cli_ctx.status("Getting devices..."):
                 devices = await client.get_devices(cli_ctx.network_id)
 
             # Find device by ID, MAC, or name
@@ -153,7 +153,7 @@ def device_show(ctx: click.Context, device_id: str) -> None:
                 sys.exit(ExitCode.NOT_FOUND)
 
             # Get full details
-            with console.status("Getting device details..."):
+            with cli_ctx.status("Getting device details..."):
                 device = await client.get_device(target.id, cli_ctx.network_id)
 
             if cli_ctx.is_structured_output():
@@ -192,7 +192,7 @@ def device_rename(ctx: click.Context, device_id: str, name: str) -> None:
     async def run_cmd() -> None:
         async def rename_device(client: EeroClient) -> None:
             # Find device first
-            with console.status("Finding device..."):
+            with cli_ctx.status("Finding device..."):
                 devices = await client.get_devices(cli_ctx.network_id)
 
             target = None
@@ -210,7 +210,7 @@ def device_rename(ctx: click.Context, device_id: str, name: str) -> None:
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            with console.status(f"Renaming device to '{name}'..."):
+            with cli_ctx.status(f"Renaming device to '{name}'..."):
                 result = await client.set_device_nickname(target.id, name, cli_ctx.network_id)
 
             if result:
@@ -264,7 +264,7 @@ def _set_device_blocked(
     async def run_cmd() -> None:
         async def toggle_block(client: EeroClient) -> None:
             # Find device first
-            with console.status("Finding device..."):
+            with cli_ctx.status("Finding device..."):
                 devices = await client.get_devices(cli_ctx.network_id)
 
             target = None
@@ -298,7 +298,7 @@ def _set_device_blocked(
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with console.status(f"{action.capitalize()}ing {device_name}..."):
+            with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
                 result = await client.block_device(target.id, blocked, cli_ctx.network_id)
 
             if result:
@@ -341,7 +341,7 @@ def priority_show(ctx: click.Context, device_id: str) -> None:
     async def run_cmd() -> None:
         async def get_priority(client: EeroClient) -> None:
             # Find device first
-            with console.status("Finding device..."):
+            with cli_ctx.status("Finding device..."):
                 devices = await client.get_devices(cli_ctx.network_id)
 
             target = None
@@ -359,7 +359,7 @@ def priority_show(ctx: click.Context, device_id: str) -> None:
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            with console.status("Getting priority status..."):
+            with cli_ctx.status("Getting priority status..."):
                 priority_data = await client.get_device_priority(target.id, cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
@@ -396,7 +396,7 @@ def priority_on(ctx: click.Context, device_id: str, minutes: int) -> None:
     async def run_cmd() -> None:
         async def set_priority(client: EeroClient) -> None:
             # Find device first
-            with console.status("Finding device..."):
+            with cli_ctx.status("Finding device..."):
                 devices = await client.get_devices(cli_ctx.network_id)
 
             target = None
@@ -415,7 +415,7 @@ def priority_on(ctx: click.Context, device_id: str, minutes: int) -> None:
                 sys.exit(ExitCode.NOT_FOUND)
 
             duration_str = f" for {minutes} minutes" if minutes > 0 else " (indefinite)"
-            with console.status(f"Prioritizing device{duration_str}..."):
+            with cli_ctx.status(f"Prioritizing device{duration_str}..."):
                 result = await client.prioritize_device(target.id, minutes, cli_ctx.network_id)
 
             if result:
@@ -440,7 +440,7 @@ def priority_off(ctx: click.Context, device_id: str) -> None:
     async def run_cmd() -> None:
         async def remove_priority(client: EeroClient) -> None:
             # Find device first
-            with console.status("Finding device..."):
+            with cli_ctx.status("Finding device..."):
                 devices = await client.get_devices(cli_ctx.network_id)
 
             target = None
@@ -458,7 +458,7 @@ def priority_off(ctx: click.Context, device_id: str) -> None:
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            with console.status("Removing priority..."):
+            with cli_ctx.status("Removing priority..."):
                 result = await client.deprioritize_device(target.id, cli_ctx.network_id)
 
             if result:

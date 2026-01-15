@@ -47,7 +47,7 @@ async def troubleshoot_connectivity(ctx: click.Context, client: EeroClient) -> N
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
-    with console.status("Checking connectivity..."):
+    with cli_ctx.status("Checking connectivity..."):
         network = await client.get_network(cli_ctx.network_id)
         diagnostics = await client.get_diagnostics(cli_ctx.network_id)
 
@@ -111,7 +111,7 @@ async def troubleshoot_ping(
     if from_eero:
         console.print(f"[dim]From: {from_eero}[/dim]")
 
-    with console.status("Running diagnostics..."):
+    with cli_ctx.status("Running diagnostics..."):
         diagnostics = await client.get_diagnostics(cli_ctx.network_id)
 
     if cli_ctx.is_structured_output():
@@ -163,7 +163,7 @@ async def troubleshoot_trace(
     )
     console.print(f"[dim]Target: {target}[/dim]")
 
-    with console.status("Running diagnostics..."):
+    with cli_ctx.status("Running diagnostics..."):
         # diagnostics not currently used but may be needed for full trace support
         _ = await client.get_diagnostics(cli_ctx.network_id)
         routing = await client.get_routing(cli_ctx.network_id)
@@ -205,7 +205,7 @@ async def troubleshoot_doctor(ctx: click.Context, client: EeroClient) -> None:
 
     checks = []
 
-    with console.status("Running diagnostics..."):
+    with cli_ctx.status("Running diagnostics..."):
         # Check network status
         try:
             network = await client.get_network(cli_ctx.network_id)
