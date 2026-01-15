@@ -85,3 +85,21 @@ ignore = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+# =============================================================================
+# Bandit Security Scanner Configuration
+# =============================================================================
+# Bandit is a tool designed to find common security issues in Python code.
+# https://bandit.readthedocs.io/
+# =============================================================================
+[tool.bandit]
+# Directories to scan
+targets = ["src"]
+# Exclude test files from security scanning
+exclude_dirs = ["tests", ".venv", "build", "dist"]
+# Skip specific tests if needed (uncomment to skip)
+# skips = ["B101"]  # Example: skip assert_used checks
+# Confidence level: LOW, MEDIUM, HIGH
+# confidence_level = "MEDIUM"
+# Severity level: LOW, MEDIUM, HIGH  
+# severity_level = "MEDIUM"
