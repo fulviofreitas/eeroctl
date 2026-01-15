@@ -14,19 +14,44 @@ Command-line interface for managing your Eero mesh Wi-Fi network.
 
 ### Using uv (Recommended)
 
+[uv](https://docs.astral.sh/uv/) is a fast Python package manager that automatically manages virtual environments.
+
 ```bash
 git clone https://github.com/fulviofreitas/eero-cli.git
 cd eero-cli
-uv sync
-uv run eero --help
-```
-
-### Using pip
-
-```bash
-pip install git+https://github.com/fulviofreitas/eero-cli.git
+uv sync                            # Creates .venv/ and installs dependencies
+source .venv/bin/activate          # On Windows: .venv\Scripts\activate
 eero --help
 ```
+
+<details>
+<summary><strong>Using pip (Standard Python)</strong></summary>
+
+For a traditional Python virtual environment setup:
+
+```bash
+# Clone the repository
+git clone https://github.com/fulviofreitas/eero-cli.git
+cd eero-cli
+
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install the package in development mode
+pip install -e .
+
+# Verify installation
+eero --help
+```
+
+To deactivate the virtual environment when done:
+
+```bash
+deactivate
+```
+
+</details>
 
 ## Quick Start
 
@@ -104,15 +129,15 @@ eero --output json network list
 eero network list --output json
 ```
 
-| Flag                | Short | Description                                        |
-| ------------------- | ----- | -------------------------------------------------- |
+| Flag                | Short | Description                                            |
+| ------------------- | ----- | ------------------------------------------------------ |
 | `--output`          | `-o`  | Output format: `table`, `list`, `json`, `yaml`, `text` |
-| `--network-id`      | `-n`  | Specify network ID                                 |
-| `--non-interactive` |       | Never prompt for input                             |
-| `--force` / `--yes` | `-y`  | Skip confirmation prompts                          |
-| `--quiet`           | `-q`  | Suppress non-essential output                      |
-| `--no-color`        |       | Disable colored output                             |
-| `--debug`           |       | Enable debug logging                               |
+| `--network-id`      | `-n`  | Specify network ID                                     |
+| `--non-interactive` |       | Never prompt for input                                 |
+| `--force` / `--yes` | `-y`  | Skip confirmation prompts                              |
+| `--quiet`           | `-q`  | Suppress non-essential output                          |
+| `--no-color`        |       | Disable colored output                                 |
+| `--debug`           |       | Enable debug logging                                   |
 
 ## Output Formats
 
