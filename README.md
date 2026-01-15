@@ -66,7 +66,7 @@ eero network list
 eero network show
 
 # List connected devices
-eero client list
+eero device list
 
 # List Eero mesh nodes
 eero eero list
@@ -101,9 +101,9 @@ eero
 │   ├── led          # LED settings
 │   └── ...
 │
-├── client           # Connected device management
-│   ├── list         # List all clients
-│   ├── show <id>    # Show client details
+├── device           # Connected device management
+│   ├── list         # List all devices
+│   ├── show <id>    # Show device details
 │   ├── block <id>   # Block a device
 │   └── ...
 │
@@ -149,7 +149,7 @@ eero network list
 eero --output json network list | jq '.data[].name'
 
 # YAML for debugging
-eero --output yaml client list
+eero --output yaml device list
 
 # Plain text key-value pairs
 eero --output text network show

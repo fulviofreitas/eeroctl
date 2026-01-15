@@ -1,12 +1,12 @@
-"""Client (device) commands for the Eero CLI.
+"""Device (connected device) commands for the Eero CLI.
 
 Commands:
-- eero client list: List all connected devices
-- eero client show: Show device details
-- eero client rename: Rename a device
-- eero client block: Block a device
-- eero client unblock: Unblock a device
-- eero client priority: Device priority management
+- eero device list: List all connected devices
+- eero device show: Show device details
+- eero device rename: Rename a device
+- eero device block: Block a device
+- eero device unblock: Unblock a device
+- eero device priority: Device priority management
 """
 
 import asyncio
@@ -26,10 +26,10 @@ from ..safety import OperationRisk, SafetyError, confirm_or_fail
 from ..utils import run_with_client
 
 
-@click.group(name="client")
+@click.group(name="device")
 @click.pass_context
-def client_group(ctx: click.Context) -> None:
-    """Manage connected devices (clients).
+def device_group(ctx: click.Context) -> None:
+    """Manage connected devices.
 
     \b
     Commands:
@@ -42,17 +42,17 @@ def client_group(ctx: click.Context) -> None:
 
     \b
     Examples:
-      eero client list                    # List all devices
-      eero client show "iPhone"           # Show by name
-      eero client block AA:BB:CC:DD:EE:FF # Block by MAC
-      eero client priority show "iPad"    # Show priority
+      eero device list                    # List all devices
+      eero device show "iPhone"           # Show by name
+      eero device block AA:BB:CC:DD:EE:FF # Block by MAC
+      eero device priority show "iPad"    # Show priority
     """
     ensure_cli_context(ctx)
 
 
-@client_group.command(name="list")
+@device_group.command(name="list")
 @click.pass_context
-def client_list(ctx: click.Context) -> None:
+def device_list(ctx: click.Context) -> None:
     """List all connected devices."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
@@ -68,11 +68,18 @@ def client_list(ctx: click.Context) -> None:
 
             if cli_ctx.is_structured_output():
                 data = [d.model_dump(mode="json") for d in devices]
-                cli_ctx.render_structured(data, "eero.client.list/v1")
+                cli_ctx.render_structured(data, "eero.device.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
                 for d in devices:
                     name = d.display_name or d.hostname or d.nickname or "Unknown"
-                    console.print(f"{d.id}\t{name}\t{d.ip or d.ipv4}\t{d.mac}")
+                    status = d.status.value if d.status else "unknown"
+                    device_type = d.device_type or ""
+                    connection = d.connection_type or ""
+                    # Use print() with fixed-width columns for alignment
+                    print(
+                        f"{d.id or '':<14}  {name:<30}  {d.ip or d.ipv4 or '':<15}  "
+                        f"{d.mac or '':<17}  {status:<12}  {device_type:<20}  {connection}"
+                    )
             else:
                 table = Table(title="Connected Devices")
                 table.add_column("ID", style="dim")
@@ -110,15 +117,15 @@ def client_list(ctx: click.Context) -> None:
     asyncio.run(run_cmd())
 
 
-@client_group.command(name="show")
-@click.argument("client_id")
+@device_group.command(name="show")
+@click.argument("device_id")
 @click.pass_context
-def client_show(ctx: click.Context, client_id: str) -> None:
+def device_show(ctx: click.Context, device_id: str) -> None:
     """Show details of a specific device.
 
     \b
     Arguments:
-      CLIENT_ID  Device ID, MAC address, or name
+      DEVICE_ID  Device ID, MAC address, or name
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
@@ -132,17 +139,17 @@ def client_show(ctx: click.Context, client_id: str) -> None:
             target = None
             for d in devices:
                 if (
-                    d.id == client_id
-                    or d.mac == client_id
-                    or d.display_name == client_id
-                    or d.nickname == client_id
-                    or d.hostname == client_id
+                    d.id == device_id
+                    or d.mac == device_id
+                    or d.display_name == device_id
+                    or d.nickname == device_id
+                    or d.hostname == device_id
                 ):
                     target = d
                     break
 
             if not target or not target.id:
-                console.print(f"[red]Device '{client_id}' not found[/red]")
+                console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             # Get full details
@@ -150,7 +157,7 @@ def client_show(ctx: click.Context, client_id: str) -> None:
                 device = await client.get_device(target.id, cli_ctx.network_id)
 
             if cli_ctx.is_structured_output():
-                cli_ctx.render_structured(device.model_dump(mode="json"), "eero.client.show/v1")
+                cli_ctx.render_structured(device.model_dump(mode="json"), "eero.device.show/v1")
             else:
                 from ..formatting import print_device_details
 
@@ -164,16 +171,16 @@ def client_show(ctx: click.Context, client_id: str) -> None:
     asyncio.run(run_cmd())
 
 
-@client_group.command(name="rename")
-@click.argument("client_id")
+@device_group.command(name="rename")
+@click.argument("device_id")
 @click.option("--name", required=True, help="New nickname for the device")
 @click.pass_context
-def client_rename(ctx: click.Context, client_id: str, name: str) -> None:
+def device_rename(ctx: click.Context, device_id: str, name: str) -> None:
     """Rename a device.
 
     \b
     Arguments:
-      CLIENT_ID  Device ID, MAC address, or name
+      DEVICE_ID  Device ID, MAC address, or name
 
     \b
     Options:
@@ -191,16 +198,16 @@ def client_rename(ctx: click.Context, client_id: str, name: str) -> None:
             target = None
             for d in devices:
                 if (
-                    d.id == client_id
-                    or d.mac == client_id
-                    or d.display_name == client_id
-                    or d.nickname == client_id
+                    d.id == device_id
+                    or d.mac == device_id
+                    or d.display_name == device_id
+                    or d.nickname == device_id
                 ):
                     target = d
                     break
 
             if not target or not target.id:
-                console.print(f"[red]Device '{client_id}' not found[/red]")
+                console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with console.status(f"Renaming device to '{name}'..."):
@@ -217,38 +224,38 @@ def client_rename(ctx: click.Context, client_id: str, name: str) -> None:
     asyncio.run(run_cmd())
 
 
-@client_group.command(name="block")
-@click.argument("client_id")
+@device_group.command(name="block")
+@click.argument("device_id")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
 @click.pass_context
-def client_block(ctx: click.Context, client_id: str, force: bool) -> None:
+def device_block(ctx: click.Context, device_id: str, force: bool) -> None:
     """Block a device from the network.
 
     \b
     Arguments:
-      CLIENT_ID  Device ID, MAC address, or name
+      DEVICE_ID  Device ID, MAC address, or name
     """
     cli_ctx = get_cli_context(ctx)
-    _set_device_blocked(cli_ctx, client_id, True, force)
+    _set_device_blocked(cli_ctx, device_id, True, force)
 
 
-@client_group.command(name="unblock")
-@click.argument("client_id")
+@device_group.command(name="unblock")
+@click.argument("device_id")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
 @click.pass_context
-def client_unblock(ctx: click.Context, client_id: str, force: bool) -> None:
+def device_unblock(ctx: click.Context, device_id: str, force: bool) -> None:
     """Unblock a device.
 
     \b
     Arguments:
-      CLIENT_ID  Device ID, MAC address, or name
+      DEVICE_ID  Device ID, MAC address, or name
     """
     cli_ctx = get_cli_context(ctx)
-    _set_device_blocked(cli_ctx, client_id, False, force)
+    _set_device_blocked(cli_ctx, device_id, False, force)
 
 
 def _set_device_blocked(
-    cli_ctx: EeroCliContext, client_id: str, blocked: bool, force: bool
+    cli_ctx: EeroCliContext, device_id: str, blocked: bool, force: bool
 ) -> None:
     """Block or unblock a device."""
     console = cli_ctx.console
@@ -263,19 +270,19 @@ def _set_device_blocked(
             target = None
             for d in devices:
                 if (
-                    d.id == client_id
-                    or d.mac == client_id
-                    or d.display_name == client_id
-                    or d.nickname == client_id
+                    d.id == device_id
+                    or d.mac == device_id
+                    or d.display_name == device_id
+                    or d.nickname == device_id
                 ):
                     target = d
                     break
 
             if not target or not target.id:
-                console.print(f"[red]Device '{client_id}' not found[/red]")
+                console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            device_name = target.display_name or target.nickname or target.hostname or client_id
+            device_name = target.display_name or target.nickname or target.hostname or device_id
 
             try:
                 confirm_or_fail(
@@ -308,7 +315,7 @@ def _set_device_blocked(
 # ==================== Priority Subcommand Group ====================
 
 
-@client_group.group(name="priority")
+@device_group.group(name="priority")
 @click.pass_context
 def priority_group(ctx: click.Context) -> None:
     """Manage device bandwidth priority.
@@ -323,9 +330,9 @@ def priority_group(ctx: click.Context) -> None:
 
 
 @priority_group.command(name="show")
-@click.argument("client_id")
+@click.argument("device_id")
 @click.pass_context
-def priority_show(ctx: click.Context, client_id: str) -> None:
+def priority_show(ctx: click.Context, device_id: str) -> None:
     """Show priority status for a device."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
@@ -340,23 +347,23 @@ def priority_show(ctx: click.Context, client_id: str) -> None:
             target = None
             for d in devices:
                 if (
-                    d.id == client_id
-                    or d.mac == client_id
-                    or d.display_name == client_id
-                    or d.nickname == client_id
+                    d.id == device_id
+                    or d.mac == device_id
+                    or d.display_name == device_id
+                    or d.nickname == device_id
                 ):
                     target = d
                     break
 
             if not target or not target.id:
-                console.print(f"[red]Device '{client_id}' not found[/red]")
+                console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with console.status("Getting priority status..."):
                 priority_data = await client.get_device_priority(target.id, cli_ctx.network_id)
 
             if cli_ctx.is_json_output():
-                renderer.render_json(priority_data, "eero.client.priority.show/v1")
+                renderer.render_json(priority_data, "eero.device.priority.show/v1")
             else:
                 prioritized = priority_data.get("prioritized", False)
                 duration = priority_data.get("duration", 0)
@@ -373,10 +380,10 @@ def priority_show(ctx: click.Context, client_id: str) -> None:
 
 
 @priority_group.command(name="on")
-@click.argument("client_id")
+@click.argument("device_id")
 @click.option("--minutes", "-m", type=int, default=0, help="Duration in minutes (0=indefinite)")
 @click.pass_context
-def priority_on(ctx: click.Context, client_id: str, minutes: int) -> None:
+def priority_on(ctx: click.Context, device_id: str, minutes: int) -> None:
     """Enable priority for a device.
 
     \b
@@ -395,16 +402,16 @@ def priority_on(ctx: click.Context, client_id: str, minutes: int) -> None:
             target = None
             for d in devices:
                 if (
-                    d.id == client_id
-                    or d.mac == client_id
-                    or d.display_name == client_id
-                    or d.nickname == client_id
+                    d.id == device_id
+                    or d.mac == device_id
+                    or d.display_name == device_id
+                    or d.nickname == device_id
                 ):
                     target = d
                     break
 
             if not target or not target.id:
-                console.print(f"[red]Device '{client_id}' not found[/red]")
+                console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             duration_str = f" for {minutes} minutes" if minutes > 0 else " (indefinite)"
@@ -423,9 +430,9 @@ def priority_on(ctx: click.Context, client_id: str, minutes: int) -> None:
 
 
 @priority_group.command(name="off")
-@click.argument("client_id")
+@click.argument("device_id")
 @click.pass_context
-def priority_off(ctx: click.Context, client_id: str) -> None:
+def priority_off(ctx: click.Context, device_id: str) -> None:
     """Remove priority from a device."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
@@ -439,16 +446,16 @@ def priority_off(ctx: click.Context, client_id: str) -> None:
             target = None
             for d in devices:
                 if (
-                    d.id == client_id
-                    or d.mac == client_id
-                    or d.display_name == client_id
-                    or d.nickname == client_id
+                    d.id == device_id
+                    or d.mac == device_id
+                    or d.display_name == device_id
+                    or d.nickname == device_id
                 ):
                     target = d
                     break
 
             if not target or not target.id:
-                console.print(f"[red]Device '{client_id}' not found[/red]")
+                console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with console.status("Removing priority..."):

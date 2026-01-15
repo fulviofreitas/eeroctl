@@ -13,8 +13,8 @@ from rich.console import Console
 from .commands import (
     activity_group,
     auth_group,
-    client_group,
     completion_group,
+    device_group,
     eero_group,
     network_group,
     profile_group,
@@ -94,7 +94,7 @@ def cli(
         eero network list           # List networks
         eero network show           # Show current network
         eero eero list              # List Eero nodes
-        eero client list            # List connected clients
+        eero device list            # List connected devices
         eero profile list           # List profiles
     """
     # Setup logging
@@ -139,7 +139,7 @@ def cli(
 cli.add_command(auth_group, name="auth")
 cli.add_command(network_group, name="network")
 cli.add_command(eero_group, name="eero")
-cli.add_command(client_group, name="client")
+cli.add_command(device_group, name="device")
 cli.add_command(profile_group, name="profile")
 cli.add_command(activity_group, name="activity")
 cli.add_command(troubleshoot_group, name="troubleshoot")

@@ -71,9 +71,9 @@ eero
 │       ├── show
 │       └── check
 │
-├── client           # Connected device management
-│   ├── list         # List all clients
-│   ├── show <id>    # Show client details
+├── device           # Connected device management
+│   ├── list         # List all devices
+│   ├── show <id>    # Show device details
 │   ├── rename <id> --name <name>
 │   ├── block <id>
 │   ├── unblock <id>
@@ -208,7 +208,7 @@ Human-readable structured format, great for configuration and debugging.
 
 ```bash
 eero --output yaml network list
-eero -o yaml client list
+eero -o yaml device list
 ```
 
 ### Text
@@ -225,7 +225,7 @@ eero -o text eero list
 Simple line-by-line output, grep-friendly.
 
 ```bash
-eero --output list client list
+eero --output list device list
 eero -o list network list
 ```
 

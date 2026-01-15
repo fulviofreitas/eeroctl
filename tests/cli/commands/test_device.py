@@ -1,11 +1,11 @@
-"""Unit tests for eero.cli.commands.client module.
+"""Unit tests for eero.cli.commands.device module.
 
 Tests cover:
-- client list command
-- client show command
-- client rename command
-- client block/unblock commands
-- client priority subcommands
+- device list command
+- device show command
+- device rename command
+- device block/unblock commands
+- device priority subcommands
 """
 
 import pytest
@@ -14,17 +14,17 @@ from click.testing import CliRunner
 from eero_cli.main import cli
 
 
-class TestClientGroup:
-    """Tests for the client command group."""
+class TestDeviceGroup:
+    """Tests for the device command group."""
 
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create a CLI runner."""
         return CliRunner()
 
-    def test_client_help(self, runner):
-        """Test client group shows help."""
-        result = runner.invoke(cli, ["client", "--help"])
+    def test_device_help(self, runner):
+        """Test device group shows help."""
+        result = runner.invoke(cli, ["device", "--help"])
 
         assert result.exit_code == 0
         assert "Manage connected devices" in result.output
@@ -36,127 +36,127 @@ class TestClientGroup:
         assert "priority" in result.output
 
 
-class TestClientList:
-    """Tests for client list command."""
+class TestDeviceList:
+    """Tests for device list command."""
 
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create a CLI runner."""
         return CliRunner()
 
-    def test_client_list_help(self, runner):
-        """Test client list shows help."""
-        result = runner.invoke(cli, ["client", "list", "--help"])
+    def test_device_list_help(self, runner):
+        """Test device list shows help."""
+        result = runner.invoke(cli, ["device", "list", "--help"])
 
         assert result.exit_code == 0
         assert "List all connected devices" in result.output
 
 
-class TestClientShow:
-    """Tests for client show command."""
+class TestDeviceShow:
+    """Tests for device show command."""
 
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create a CLI runner."""
         return CliRunner()
 
-    def test_client_show_help(self, runner):
-        """Test client show shows help."""
-        result = runner.invoke(cli, ["client", "show", "--help"])
+    def test_device_show_help(self, runner):
+        """Test device show shows help."""
+        result = runner.invoke(cli, ["device", "show", "--help"])
 
         assert result.exit_code == 0
         assert "Show details of a specific device" in result.output
-        assert "CLIENT_ID" in result.output
+        assert "DEVICE_ID" in result.output
 
-    def test_client_show_requires_argument(self, runner):
-        """Test client show requires device ID argument."""
-        result = runner.invoke(cli, ["client", "show"])
+    def test_device_show_requires_argument(self, runner):
+        """Test device show requires device ID argument."""
+        result = runner.invoke(cli, ["device", "show"])
 
         assert result.exit_code != 0
         assert "Missing argument" in result.output
 
 
-class TestClientRename:
-    """Tests for client rename command."""
+class TestDeviceRename:
+    """Tests for device rename command."""
 
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create a CLI runner."""
         return CliRunner()
 
-    def test_client_rename_help(self, runner):
-        """Test client rename shows help."""
-        result = runner.invoke(cli, ["client", "rename", "--help"])
+    def test_device_rename_help(self, runner):
+        """Test device rename shows help."""
+        result = runner.invoke(cli, ["device", "rename", "--help"])
 
         assert result.exit_code == 0
         assert "Rename a device" in result.output
         assert "--name" in result.output
 
-    def test_client_rename_requires_argument(self, runner):
-        """Test client rename requires device ID argument."""
-        result = runner.invoke(cli, ["client", "rename", "--name", "New Name"])
+    def test_device_rename_requires_argument(self, runner):
+        """Test device rename requires device ID argument."""
+        result = runner.invoke(cli, ["device", "rename", "--name", "New Name"])
 
         assert result.exit_code != 0
         assert "Missing argument" in result.output
 
-    def test_client_rename_requires_name_option(self, runner):
-        """Test client rename requires --name option."""
-        result = runner.invoke(cli, ["client", "rename", "device_id"])
+    def test_device_rename_requires_name_option(self, runner):
+        """Test device rename requires --name option."""
+        result = runner.invoke(cli, ["device", "rename", "device_id"])
 
         assert result.exit_code != 0
         assert "Missing option" in result.output or "--name" in result.output
 
 
-class TestClientBlock:
-    """Tests for client block command."""
+class TestDeviceBlock:
+    """Tests for device block command."""
 
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create a CLI runner."""
         return CliRunner()
 
-    def test_client_block_help(self, runner):
-        """Test client block shows help."""
-        result = runner.invoke(cli, ["client", "block", "--help"])
+    def test_device_block_help(self, runner):
+        """Test device block shows help."""
+        result = runner.invoke(cli, ["device", "block", "--help"])
 
         assert result.exit_code == 0
         assert "Block a device" in result.output
         assert "--force" in result.output
 
-    def test_client_block_requires_argument(self, runner):
-        """Test client block requires device ID argument."""
-        result = runner.invoke(cli, ["client", "block"])
+    def test_device_block_requires_argument(self, runner):
+        """Test device block requires device ID argument."""
+        result = runner.invoke(cli, ["device", "block"])
 
         assert result.exit_code != 0
         assert "Missing argument" in result.output
 
 
-class TestClientUnblock:
-    """Tests for client unblock command."""
+class TestDeviceUnblock:
+    """Tests for device unblock command."""
 
     @pytest.fixture
     def runner(self) -> CliRunner:
         """Create a CLI runner."""
         return CliRunner()
 
-    def test_client_unblock_help(self, runner):
-        """Test client unblock shows help."""
-        result = runner.invoke(cli, ["client", "unblock", "--help"])
+    def test_device_unblock_help(self, runner):
+        """Test device unblock shows help."""
+        result = runner.invoke(cli, ["device", "unblock", "--help"])
 
         assert result.exit_code == 0
         assert "Unblock a device" in result.output
         assert "--force" in result.output
 
-    def test_client_unblock_requires_argument(self, runner):
-        """Test client unblock requires device ID argument."""
-        result = runner.invoke(cli, ["client", "unblock"])
+    def test_device_unblock_requires_argument(self, runner):
+        """Test device unblock requires device ID argument."""
+        result = runner.invoke(cli, ["device", "unblock"])
 
         assert result.exit_code != 0
         assert "Missing argument" in result.output
 
 
-class TestClientPriority:
-    """Tests for client priority subcommands."""
+class TestDevicePriority:
+    """Tests for device priority subcommands."""
 
     @pytest.fixture
     def runner(self) -> CliRunner:
@@ -165,7 +165,7 @@ class TestClientPriority:
 
     def test_priority_group_help(self, runner):
         """Test priority group shows help."""
-        result = runner.invoke(cli, ["client", "priority", "--help"])
+        result = runner.invoke(cli, ["device", "priority", "--help"])
 
         assert result.exit_code == 0
         assert "Manage device bandwidth priority" in result.output
@@ -175,21 +175,21 @@ class TestClientPriority:
 
     def test_priority_show_help(self, runner):
         """Test priority show shows help."""
-        result = runner.invoke(cli, ["client", "priority", "show", "--help"])
+        result = runner.invoke(cli, ["device", "priority", "show", "--help"])
 
         assert result.exit_code == 0
         assert "Show priority status" in result.output
 
     def test_priority_show_requires_argument(self, runner):
         """Test priority show requires device ID argument."""
-        result = runner.invoke(cli, ["client", "priority", "show"])
+        result = runner.invoke(cli, ["device", "priority", "show"])
 
         assert result.exit_code != 0
         assert "Missing argument" in result.output
 
     def test_priority_on_help(self, runner):
         """Test priority on shows help."""
-        result = runner.invoke(cli, ["client", "priority", "on", "--help"])
+        result = runner.invoke(cli, ["device", "priority", "on", "--help"])
 
         assert result.exit_code == 0
         assert "Enable priority" in result.output
@@ -197,7 +197,7 @@ class TestClientPriority:
 
     def test_priority_off_help(self, runner):
         """Test priority off shows help."""
-        result = runner.invoke(cli, ["client", "priority", "off", "--help"])
+        result = runner.invoke(cli, ["device", "priority", "off", "--help"])
 
         assert result.exit_code == 0
         assert "Remove priority" in result.output

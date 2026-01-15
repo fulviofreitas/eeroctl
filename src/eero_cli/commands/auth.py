@@ -68,11 +68,19 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
             use_keyring=not no_keyring,
         ) as client:
             if client.is_authenticated and not force:
-                console.print(
-                    "[bold yellow]Already authenticated.[/bold yellow] "
-                    "Use --force to login again."
-                )
-                return
+                # Validate session is actually working, not just locally present
+                try:
+                    await client.get_networks()
+                    console.print(
+                        "[bold yellow]Already authenticated.[/bold yellow] "
+                        "Use --force to login again."
+                    )
+                    return
+                except EeroAuthenticationException:
+                    # Session expired, continue with login flow
+                    console.print(
+                        "[yellow]Session expired. Starting new login...[/yellow]"
+                    )
 
             await _interactive_login(client, force, console, cli_ctx)
 

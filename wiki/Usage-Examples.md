@@ -103,23 +103,23 @@ eero eero nightlight schedule "Bedroom" --on-time 22:00 --off-time 06:00
 
 ---
 
-## Client Devices
+## Devices
 
 ```bash
-# List all connected clients
-eero client list
+# List all connected devices
+eero device list
 
-# Show client as JSON
-eero --output json client show "iPhone"
+# Show device as JSON
+eero --output json device show "iPhone"
 
-# Rename a client
-eero client rename "00:11:22:33:44:55" --name "Work Laptop"
+# Rename a device
+eero device rename "00:11:22:33:44:55" --name "Work Laptop"
 
 # Block a device
-eero client block "Smart TV" --force
+eero device block "Smart TV" --force
 
 # Prioritize a device for 30 minutes
-eero client priority on "Gaming PC" --minutes 30
+eero device priority on "Gaming PC" --minutes 30
 ```
 
 ---
@@ -195,8 +195,8 @@ set -e
 NETWORK=$(eero --output json network show | jq -r '.data.name')
 echo "Managing network: $NETWORK"
 
-# List offline clients
-eero --output json client list | jq -r '.data[] | select(.connected == false) | .display_name'
+# List offline devices
+eero --output json device list | jq -r '.data[] | select(.connected == false) | .display_name'
 ```
 
 ### Using with cron

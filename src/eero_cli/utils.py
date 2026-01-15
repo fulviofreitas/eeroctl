@@ -165,7 +165,7 @@ async def run_with_client(func):
             await func(client)
     except EeroAuthenticationException:
         console.print("[bold red]Not authenticated[/bold red]")
-        console.print("Please login first: [bold]eero login[/bold]")
+        console.print("Please login first: [bold]eero auth login[/bold]")
         raise SystemExit(1)
 
 
