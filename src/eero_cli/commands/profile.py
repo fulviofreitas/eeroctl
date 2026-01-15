@@ -75,10 +75,16 @@ def profile_list(ctx: click.Context) -> None:
                     schedule = "enabled" if p.schedule_enabled else "-"
                     default = "yes" if p.default else "-"
                     premium = "yes" if p.premium_enabled else "-"
+                    # Use device_count if available, otherwise count devices list
+                    device_count = (
+                        p.device_count
+                        if p.device_count is not None
+                        else len(p.devices) if p.devices else 0
+                    )
                     # Use print() with fixed-width columns for alignment
                     print(
                         f"{p.id or '':<14}  {p.name:<20}  {status:<8}  "
-                        f"{schedule:<10}  {default:<8}  {premium}"
+                        f"{schedule:<10}  {default:<8}  {premium:<8}  {device_count}"
                     )
             else:
                 table = Table(title="Profiles")
@@ -88,6 +94,7 @@ def profile_list(ctx: click.Context) -> None:
                 table.add_column("Schedule")
                 table.add_column("Default")
                 table.add_column("Premium")
+                table.add_column("Devices", justify="right")
 
                 for p in profiles:
                     # Status: Paused or Active
@@ -105,7 +112,14 @@ def profile_list(ctx: click.Context) -> None:
                     # Premium features indicator
                     premium = "[magenta]✓[/magenta]" if p.premium_enabled else "[dim]-[/dim]"
 
-                    table.add_row(p.id or "", p.name, status, schedule, default, premium)
+                    # Device count - use device_count if available, otherwise count devices list
+                    device_count = (
+                        p.device_count
+                        if p.device_count is not None
+                        else len(p.devices) if p.devices else 0
+                    )
+
+                    table.add_row(p.id or "", p.name, status, schedule, default, premium, str(device_count))
 
                 console.print(table)
 

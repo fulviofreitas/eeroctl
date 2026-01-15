@@ -248,13 +248,24 @@ class TestAuthStatus:
         assert result.exit_code == 0
         assert "Show current authentication status" in result.output
 
+    @patch("eero_cli.commands.auth._get_session_info")
+    @patch("eero_cli.commands.auth._check_keyring_available")
     @patch("eero_cli.commands.auth.EeroClient")
     @patch("eero_cli.commands.auth.get_cookie_file")
     def test_status_when_not_authenticated(
-        self, mock_cookie_file, mock_client_class, runner, tmp_path
+        self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
     ):
         """Test status shows not authenticated."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
+        mock_keyring.return_value = False
+        mock_session_info.return_value = {
+            "cookie_file": str(tmp_path / "cookies.json"),
+            "cookie_exists": False,
+            "session_expiry": None,
+            "session_expired": True,
+            "has_token": False,
+            "preferred_network_id": None,
+        }
 
         mock_client = AsyncMock()
         mock_client.is_authenticated = False
@@ -266,42 +277,94 @@ class TestAuthStatus:
 
         assert "Not Authenticated" in result.output
 
+    @patch("eero_cli.commands.auth._get_session_info")
+    @patch("eero_cli.commands.auth._check_keyring_available")
     @patch("eero_cli.commands.auth.EeroClient")
     @patch("eero_cli.commands.auth.get_cookie_file")
-    def test_status_when_authenticated(self, mock_cookie_file, mock_client_class, runner, tmp_path):
-        """Test status shows authenticated with network count."""
+    def test_status_when_authenticated(
+        self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
+    ):
+        """Test status shows authenticated with account info."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
+        mock_keyring.return_value = False
+        mock_session_info.return_value = {
+            "cookie_file": str(tmp_path / "cookies.json"),
+            "cookie_exists": True,
+            "session_expiry": "2099-12-31T23:59:59",
+            "session_expired": False,
+            "has_token": True,
+            "preferred_network_id": "123",
+        }
 
-        # Create mock networks
-        mock_network = MagicMock()
-        mock_network.id = "net_123"
-        mock_network.name = "Home Network"
+        # Create mock account with all required attributes
+        mock_user = MagicMock()
+        mock_user.id = "user_123"
+        mock_user.name = "Test User"
+        mock_user.email = "test@example.com"
+        mock_user.phone = None
+        mock_user.role = "owner"
+        mock_user.created_at = None
+
+        mock_account = MagicMock()
+        mock_account.id = "account_123"
+        mock_account.name = "Test Account"
+        mock_account.premium_status = "active"
+        mock_account.premium_expiry = None
+        mock_account.created_at = None
+        mock_account.users = [mock_user]
 
         mock_client = AsyncMock()
         mock_client.is_authenticated = True
-        mock_client.get_networks = AsyncMock(return_value=[mock_network])
+        mock_client.get_account = AsyncMock(return_value=mock_account)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client_class.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "status"])
 
-        assert "Authenticated" in result.output
-        assert "Networks" in result.output or "1" in result.output
+        # Check for session and account info
+        assert "Valid" in result.output or "valid" in result.output
+        assert "Account" in result.output or "account_123" in result.output
 
+    @patch("eero_cli.commands.auth._get_session_info")
+    @patch("eero_cli.commands.auth._check_keyring_available")
     @patch("eero_cli.commands.auth.EeroClient")
     @patch("eero_cli.commands.auth.get_cookie_file")
-    def test_status_json_output(self, mock_cookie_file, mock_client_class, runner, tmp_path):
+    def test_status_json_output(
+        self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
+    ):
         """Test status with JSON output format."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
+        mock_keyring.return_value = False
+        mock_session_info.return_value = {
+            "cookie_file": str(tmp_path / "cookies.json"),
+            "cookie_exists": True,
+            "session_expiry": "2099-12-31T23:59:59",
+            "session_expired": False,
+            "has_token": True,
+            "preferred_network_id": "123",
+        }
 
-        mock_network = MagicMock()
-        mock_network.id = "net_123"
-        mock_network.name = "Home Network"
+        # Create mock account
+        mock_user = MagicMock()
+        mock_user.id = "user_123"
+        mock_user.name = "Test User"
+        mock_user.email = "test@example.com"
+        mock_user.phone = None
+        mock_user.role = "owner"
+        mock_user.created_at = None
+
+        mock_account = MagicMock()
+        mock_account.id = "account_123"
+        mock_account.name = "Test Account"
+        mock_account.premium_status = "active"
+        mock_account.premium_expiry = None
+        mock_account.created_at = None
+        mock_account.users = [mock_user]
 
         mock_client = AsyncMock()
         mock_client.is_authenticated = True
-        mock_client.get_networks = AsyncMock(return_value=[mock_network])
+        mock_client.get_account = AsyncMock(return_value=mock_account)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client_class.return_value = mock_client
@@ -313,19 +376,33 @@ class TestAuthStatus:
             data = json.loads(result.output)
             assert "data" in data
             assert data["data"]["authenticated"] is True
+            assert data["data"]["session_valid"] is True
+            assert data["data"]["account"]["id"] == "account_123"
         except json.JSONDecodeError:
             # Output might have other content, just check it ran
             pass
 
+    @patch("eero_cli.commands.auth._get_session_info")
+    @patch("eero_cli.commands.auth._check_keyring_available")
     @patch("eero_cli.commands.auth.EeroClient")
     @patch("eero_cli.commands.auth.get_cookie_file")
-    def test_status_session_expired(self, mock_cookie_file, mock_client_class, runner, tmp_path):
+    def test_status_session_expired(
+        self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
+    ):
         """Test status shows expired when session is invalid."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
+        mock_keyring.return_value = False
+        mock_session_info.return_value = {
+            "cookie_file": str(tmp_path / "cookies.json"),
+            "cookie_exists": True,
+            "session_expiry": "2020-01-01T00:00:00",  # Past date = expired
+            "session_expired": True,
+            "has_token": True,
+            "preferred_network_id": "123",
+        }
 
         mock_client = AsyncMock()
         mock_client.is_authenticated = True
-        mock_client.get_networks = AsyncMock(side_effect=EeroAuthenticationException("Expired"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client_class.return_value = mock_client

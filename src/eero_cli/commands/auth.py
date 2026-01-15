@@ -17,9 +17,11 @@ from eero import EeroClient
 from eero.exceptions import EeroAuthenticationException, EeroException
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
+from rich.table import Table
 
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
+from ..output import OutputFormat
 from ..utils import get_cookie_file
 
 
@@ -244,71 +246,190 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
     asyncio.run(run())
 
 
+def _get_session_info() -> dict:
+    """Read session info from cookie file."""
+    from datetime import datetime
+
+    cookie_file = get_cookie_file()
+    session_info = {
+        "cookie_file": str(cookie_file),
+        "cookie_exists": cookie_file.exists(),
+        "session_expiry": None,
+        "session_expired": True,  # Default to expired
+        "has_token": False,
+        "preferred_network_id": None,
+    }
+
+    if cookie_file.exists():
+        try:
+            with open(cookie_file, "r") as f:
+                data = json.load(f)
+            session_info["session_expiry"] = data.get("session_expiry")
+            session_info["preferred_network_id"] = data.get("preferred_network_id")
+            session_info["has_token"] = bool(data.get("user_token"))
+
+            # Check if session is expired based on expiry date
+            expiry_str = data.get("session_expiry")
+            if expiry_str:
+                try:
+                    expiry = datetime.fromisoformat(expiry_str)
+                    session_info["session_expired"] = datetime.now() > expiry
+                except ValueError:
+                    pass
+        except Exception:
+            pass
+
+    return session_info
+
+
+def _check_keyring_available() -> bool:
+    """Check if keyring is available and has eero credentials."""
+    try:
+        import keyring
+        token = keyring.get_password("eero", "user_token")
+        return token is not None
+    except Exception:
+        return False
+
+
 @auth_group.command(name="status")
 @click.pass_context
 def auth_status(ctx: click.Context) -> None:
     """Show current authentication status.
 
-    Displays whether you are currently authenticated and
-    shows basic account information if available.
+    Displays session info, authentication method, and account details.
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
-    renderer = cli_ctx.renderer
 
     async def run() -> None:
-        async with EeroClient(cookie_file=str(get_cookie_file())) as client:
-            is_auth = client.is_authenticated
+        cookie_file = get_cookie_file()
+        session_info = _get_session_info()
+        keyring_available = _check_keyring_available()
 
-            if cli_ctx.is_json_output():
+        async with EeroClient(cookie_file=str(cookie_file)) as client:
+            is_auth = client.is_authenticated
+            account_data = None
+
+            # Determine session validity based on expiry date, not API call
+            # (API call may fail due to network issues, not expired session)
+            session_valid = is_auth and session_info["has_token"] and not session_info["session_expired"]
+
+            # Try to get account info if we have a valid session
+            if session_valid:
+                try:
+                    with cli_ctx.status("Getting account info..."):
+                        account = await client.get_account()
+                    account_data = {
+                        "id": account.id,
+                        "name": account.name,
+                        "premium_status": account.premium_status,
+                        "premium_expiry": str(account.premium_expiry) if account.premium_expiry else None,
+                        "created_at": str(account.created_at) if account.created_at else None,
+                        "users": [
+                            {
+                                "id": u.id,
+                                "name": u.name,
+                                "email": u.email,
+                                "phone": u.phone,
+                                "role": u.role,
+                                "created_at": str(u.created_at) if u.created_at else None,
+                            }
+                            for u in (account.users or [])
+                        ],
+                    }
+                except Exception:
+                    # API call failed but session may still be valid per expiry date
+                    pass
+
+            # Determine auth method
+            auth_method = "keyring" if keyring_available else "cookie"
+
+            if cli_ctx.is_structured_output():
                 data = {
                     "authenticated": is_auth,
-                    "session_valid": False,
-                    "networks": [],
+                    "session_valid": session_valid,
+                    "auth_method": auth_method,
+                    "session": {
+                        "cookie_file": session_info["cookie_file"],
+                        "expiry": session_info["session_expiry"],
+                        "preferred_network_id": session_info["preferred_network_id"],
+                    },
+                    "keyring_available": keyring_available,
+                    "account": account_data,
                 }
+                cli_ctx.render_structured(data, "eero.auth.status/v1")
 
-                if is_auth:
-                    try:
-                        networks = await client.get_networks()
-                        data["session_valid"] = True
-                        data["networks"] = [{"id": n.id, "name": n.name} for n in networks]
-                    except Exception:
-                        pass
+            elif cli_ctx.output_format == OutputFormat.LIST:
+                # List format - parseable key-value rows
+                status = "valid" if session_valid else ("expired" if is_auth else "not_authenticated")
+                print(f"status              {status}")
+                print(f"auth_method         {auth_method}")
+                print(f"cookie_file         {session_info['cookie_file']}")
+                print(f"session_expiry      {session_info['session_expiry'] or 'N/A'}")
+                print(f"keyring_available   {keyring_available}")
+                if account_data:
+                    print(f"account_id          {account_data['id']}")
+                    print(f"account_name        {account_data['name'] or 'N/A'}")
+                    print(f"premium_status      {account_data['premium_status'] or 'N/A'}")
+                    print(f"premium_expiry      {account_data['premium_expiry'] or 'N/A'}")
+                    for u in account_data.get("users", []):
+                        print(f"user                {u['email']}  {u['role']}  {u['name'] or ''}")
 
-                renderer.render_json(data, "eero.auth.status/v1")
             else:
-                if is_auth:
-                    try:
-                        with cli_ctx.status("Checking session..."):
-                            networks = await client.get_networks()
+                # Table format - Rich tables
+                # Session info table
+                session_table = Table(title="Session Information")
+                session_table.add_column("Property", style="cyan")
+                session_table.add_column("Value")
 
-                        content = (
-                            "[bold]Status:[/bold] [green]Authenticated[/green]\n"
-                            f"[bold]Networks:[/bold] {len(networks)}"
-                        )
-                        for net in networks:
-                            content += f"\n  • {net.name} ({net.id})"
-
-                        console.print(
-                            Panel(content, title="Authentication Status", border_style="green")
-                        )
-                    except Exception:
-                        console.print(
-                            Panel(
-                                "[bold]Status:[/bold] [yellow]Session Expired[/yellow]\n"
-                                "Run `eero auth login` to authenticate.",
-                                title="Authentication Status",
-                                border_style="yellow",
-                            )
-                        )
+                if session_valid:
+                    status_display = "[green]Valid[/green]"
+                elif is_auth and session_info["session_expired"]:
+                    status_display = "[yellow]Expired[/yellow]"
                 else:
-                    console.print(
-                        Panel(
-                            "[bold]Status:[/bold] [red]Not Authenticated[/red]\n"
-                            "Run `eero auth login` to authenticate.",
-                            title="Authentication Status",
-                            border_style="red",
-                        )
-                    )
+                    status_display = "[red]Not Authenticated[/red]"
+
+                session_table.add_row("Status", status_display)
+                session_table.add_row("Auth Method", f"[blue]{auth_method}[/blue]")
+                session_table.add_row("Cookie File", session_info["cookie_file"])
+                session_table.add_row("Session Expiry", session_info["session_expiry"] or "N/A")
+                session_table.add_row("Keyring Available", "[green]Yes[/green]" if keyring_available else "[dim]No[/dim]")
+
+                console.print(session_table)
+
+                # Account info table (only if we got account data)
+                if account_data:
+                    console.print()
+                    account_table = Table(title="Account Information")
+                    account_table.add_column("Property", style="cyan")
+                    account_table.add_column("Value")
+
+                    account_table.add_row("Account ID", account_data["id"])
+                    account_table.add_row("Account Name", account_data["name"] or "N/A")
+                    premium = account_data["premium_status"] or "N/A"
+                    if premium and "active" in premium.lower():
+                        premium = f"[green]{premium}[/green]"
+                    account_table.add_row("Premium Status", premium)
+                    account_table.add_row("Premium Expiry", account_data["premium_expiry"] or "N/A")
+                    account_table.add_row("Created", account_data["created_at"] or "N/A")
+
+                    console.print(account_table)
+
+                    # Users table
+                    if account_data.get("users"):
+                        console.print()
+                        users_table = Table(title="Account Users")
+                        users_table.add_column("Email", style="cyan")
+                        users_table.add_column("Name")
+                        users_table.add_column("Role", style="magenta")
+
+                        for u in account_data["users"]:
+                            users_table.add_row(u["email"], u["name"] or "", u["role"])
+
+                        console.print(users_table)
+                elif not session_valid:
+                    console.print()
+                    console.print("[yellow]Run `eero auth login` to authenticate.[/yellow]")
 
     asyncio.run(run())
