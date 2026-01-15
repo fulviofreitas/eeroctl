@@ -72,7 +72,14 @@ def profile_list(ctx: click.Context) -> None:
             elif cli_ctx.output_format == OutputFormat.LIST:
                 for p in profiles:
                     status = "paused" if p.paused else "active"
-                    console.print(f"{p.id}\t{p.name}\t{status}")
+                    schedule = "enabled" if p.schedule_enabled else "-"
+                    default = "yes" if p.default else "-"
+                    premium = "yes" if p.premium_enabled else "-"
+                    # Use print() with fixed-width columns for alignment
+                    print(
+                        f"{p.id or '':<14}  {p.name:<20}  {status:<8}  "
+                        f"{schedule:<10}  {default:<8}  {premium}"
+                    )
             else:
                 table = Table(title="Profiles")
                 table.add_column("ID", style="dim")

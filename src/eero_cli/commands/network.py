@@ -104,7 +104,12 @@ def network_list(ctx: click.Context) -> None:
                 cli_ctx.render_structured(data, "eero.network.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
                 for n in networks:
-                    console.print(f"{n.id}\t{n.name}\t{n.status}")
+                    status = str(n.status) if n.status else ""
+                    # Use print() with fixed-width columns for alignment
+                    print(
+                        f"{n.id or '':<12}  {n.name or '':<25}  {status:<15}  "
+                        f"{n.public_ip or 'N/A':<15}  {n.isp_name or 'N/A'}"
+                    )
             else:
                 table = Table(title="Eero Networks")
                 table.add_column("ID", style="dim")

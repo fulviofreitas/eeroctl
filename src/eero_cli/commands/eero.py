@@ -72,7 +72,13 @@ def eero_list(ctx: click.Context) -> None:
                 cli_ctx.render_structured(data, "eero.eero.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
                 for e in eeros:
-                    console.print(f"{e.eero_id}\t{e.location}\t{e.status}")
+                    role = "Gateway" if e.gateway else "Leaf"
+                    # Use print() with fixed-width columns for alignment
+                    print(
+                        f"{e.eero_id or '':<14}  {str(e.location) if e.location else '':<20}  "
+                        f"{e.model or '':<15}  {e.ip_address or '':<15}  {e.status or '':<10}  "
+                        f"{role:<8}  {e.connection_type or ''}"
+                    )
             else:
                 table = Table(title="Eero Devices")
                 table.add_column("ID", style="dim")
