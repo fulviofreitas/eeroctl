@@ -8,15 +8,6 @@ Tests cover:
 from unittest.mock import MagicMock
 
 import pytest
-from rich.console import Console
-
-from eero_cli.errors import (
-    handle_cli_error,
-    is_feature_unavailable_error,
-    is_not_found_error,
-    is_premium_error,
-)
-from eero_cli.exit_codes import ExitCode
 from eero.exceptions import (
     EeroAPIException,
     EeroAuthenticationException,
@@ -28,6 +19,15 @@ from eero.exceptions import (
     EeroTimeoutException,
     EeroValidationException,
 )
+from rich.console import Console
+
+from eero_cli.errors import (
+    handle_cli_error,
+    is_feature_unavailable_error,
+    is_not_found_error,
+    is_premium_error,
+)
+from eero_cli.exit_codes import ExitCode
 
 # ========================== handle_cli_error Tests ==========================
 

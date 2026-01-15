@@ -13,11 +13,11 @@ import os
 import sys
 
 import click
+from eero import EeroClient
+from eero.exceptions import EeroAuthenticationException, EeroException
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 
-from eero import EeroClient
-from eero.exceptions import EeroAuthenticationException, EeroException
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..utils import get_cookie_file

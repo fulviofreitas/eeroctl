@@ -14,11 +14,11 @@ import sys
 from typing import Literal
 
 import click
+from eero import EeroClient
+from eero.exceptions import EeroException, EeroNotFoundException
 from rich.panel import Panel
 from rich.table import Table
 
-from eero import EeroClient
-from eero.exceptions import EeroException, EeroNotFoundException
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..errors import is_feature_unavailable_error, is_not_found_error
 from ..exit_codes import ExitCode

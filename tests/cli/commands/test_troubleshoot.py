@@ -114,8 +114,8 @@ class TestTroubleshootDoctor:
         assert result.exit_code == 0
         assert "Run diagnostic checks" in result.output
 
-    @patch("eero.cli.commands.troubleshoot.EeroClient")
-    @patch("eero.cli.utils.get_cookie_file")
+    @patch("eero_cli.commands.troubleshoot.EeroClient")
+    @patch("eero_cli.utils.get_cookie_file")
     def test_doctor_runs_checks(self, mock_cookie_file, mock_client_class, runner, tmp_path):
         """Test doctor runs health checks."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -151,8 +151,8 @@ class TestTroubleshootDoctor:
         # Should run checks and display results
         assert "Network" in result.output or "Check" in result.output or "PASS" in result.output
 
-    @patch("eero.cli.commands.troubleshoot.EeroClient")
-    @patch("eero.cli.utils.get_cookie_file")
+    @patch("eero_cli.commands.troubleshoot.EeroClient")
+    @patch("eero_cli.utils.get_cookie_file")
     def test_doctor_json_output(self, mock_cookie_file, mock_client_class, runner, tmp_path):
         """Test doctor with JSON output."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"

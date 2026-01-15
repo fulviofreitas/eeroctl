@@ -6,15 +6,14 @@ Eero network data using Rich panels and tables.
 
 from typing import Any, Dict, List, Literal, Optional
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.table import Table
-
 from eero.const import EeroDeviceStatus
 from eero.models.device import Device
 from eero.models.eero import Eero
 from eero.models.network import Network
 from eero.models.profile import Profile
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
 
 # Create console for rich output
 console = Console()

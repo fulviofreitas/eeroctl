@@ -10,10 +10,10 @@ Commands:
 from typing import Optional
 
 import click
+from eero import EeroClient
 from rich.panel import Panel
 from rich.table import Table
 
-from eero import EeroClient
 from ..context import ensure_cli_context, get_cli_context
 from ..utils import with_client
 

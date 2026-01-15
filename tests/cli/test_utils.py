@@ -250,7 +250,7 @@ class TestWithClientDecorator:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
 
-        with patch("eero.cli.utils.EeroClient", return_value=mock_client):
+        with patch("eero_cli.utils.EeroClient", return_value=mock_client):
             my_command("a", "b", kwarg1="c")
 
         assert received_args == ["a", "b", "c"]
@@ -276,7 +276,7 @@ class TestRunWithClient:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
 
-        with patch("eero.cli.utils.EeroClient", return_value=mock_client):
+        with patch("eero_cli.utils.EeroClient", return_value=mock_client):
             await run_with_client(my_func)
 
         assert len(executed) == 1

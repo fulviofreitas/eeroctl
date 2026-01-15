@@ -14,10 +14,10 @@ import sys
 from typing import Literal, Optional
 
 import click
+from eero import EeroClient
 from rich.panel import Panel
 from rich.table import Table
 
-from eero import EeroClient
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..errors import is_premium_error
 from ..exit_codes import ExitCode
