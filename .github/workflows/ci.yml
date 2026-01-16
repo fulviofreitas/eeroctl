@@ -13,12 +13,17 @@ concurrency:
 
 permissions:
   contents: read
+  security-events: write  # Required for SARIF upload
+  pull-requests: write    # Required for PR comments
 
 env:
   PYTHON_VERSION: "3.12"
   UV_CACHE_DIR: /tmp/.uv-cache
 
 jobs:
+  # ===========================================================================
+  # 🧹 Lint & Format (First Gate - Fast Fail)
+  # ===========================================================================
   lint:
     name: 🧹 Lint & Format
     runs-on: ubuntu-latest
@@ -48,10 +53,14 @@ jobs:
       - name: ⚡ Lint with Ruff
         run: uvx ruff check src/ tests/
 
+  # ===========================================================================
+  # 🔍 Type Check (Parallel - Informational Only)
+  # ===========================================================================
   type-check:
     name: 🔍 Type Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: lint
     # Type checking is informational only until existing type issues are resolved
     continue-on-error: true
     steps:
@@ -73,10 +82,14 @@ jobs:
       - name: 🔬 Type check with mypy
         run: uv run mypy src/ --ignore-missing-imports || echo "::warning::Type checking found issues (non-blocking)"
 
+  # ===========================================================================
+  # 🧪 Test Matrix (After Lint)
+  # ===========================================================================
   test:
     name: 🧪 Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
+    needs: lint
     strategy:
       fail-fast: false
       matrix:
@@ -115,9 +128,233 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  all-tests-pass:
-    name: ✅ All Tests Pass
-    needs: [lint, type-check, test]
+  # ===========================================================================
+  # 🔒 Security Scan (After Lint, Parallel with Tests)
+  # ===========================================================================
+  # Scans Python source code for common security issues including:
+  #   - Hardcoded passwords/secrets
+  #   - SQL injection vulnerabilities
+  #   - Use of insecure functions (eval, exec, etc.)
+  #   - Weak cryptography usage
+  #   - Shell injection risks
+  # ===========================================================================
+  security:
+    name: 🛡️ Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+
+    env:
+      # Bandit configuration (values must be lowercase: all, low, medium, high)
+      BANDIT_CONFIDENCE: "medium"
+      BANDIT_SEVERITY: "medium"
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: 🐍 Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: 🔧 Install Bandit
+        run: |
+          uv tool install bandit[toml,sarif]
+          echo "✅ Bandit installed successfully"
+          uvx bandit --version
+
+      - name: 🔍 Run Bandit scan
+        id: bandit
+        run: |
+          echo "🔍 Starting Bandit security scan..."
+          echo "📁 Scanning: src/"
+          echo "📊 Minimum confidence: ${{ env.BANDIT_CONFIDENCE }}"
+          echo "⚠️  Minimum severity: ${{ env.BANDIT_SEVERITY }}"
+          echo "-------------------------------------------"
+          
+          set +e
+          
+          uvx bandit \
+            --recursive \
+            --format sarif \
+            --output bandit-results.sarif \
+            --confidence-level ${{ env.BANDIT_CONFIDENCE }} \
+            --severity-level ${{ env.BANDIT_SEVERITY }} \
+            --exclude "tests/,**/test_*.py,**/*_test.py" \
+            src/
+          
+          BANDIT_EXIT_CODE=$?
+          set -e
+          
+          # Ensure valid SARIF file exists
+          if [ ! -s bandit-results.sarif ]; then
+            echo "Creating empty SARIF file (Bandit produced no output)"
+            cat > bandit-results.sarif << 'EOF'
+          {
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [{
+              "tool": {
+                "driver": {
+                  "name": "Bandit",
+                  "informationUri": "https://bandit.readthedocs.io/",
+                  "version": "1.9.2"
+                }
+              },
+              "results": []
+            }]
+          }
+          EOF
+          fi
+          
+          # Generate human-readable output for logs
+          echo ""
+          echo "📋 Detailed Results:"
+          echo "-------------------------------------------"
+          uvx bandit \
+            --recursive \
+            --format txt \
+            --confidence-level ${{ env.BANDIT_CONFIDENCE }} \
+            --severity-level ${{ env.BANDIT_SEVERITY }} \
+            --exclude "tests/,**/test_*.py,**/*_test.py" \
+            src/ || true
+          
+          echo "exit_code=$BANDIT_EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          if [ $BANDIT_EXIT_CODE -eq 0 ]; then
+            echo ""
+            echo "✅ No security issues found!"
+          elif [ $BANDIT_EXIT_CODE -eq 1 ]; then
+            echo ""
+            echo "⚠️  Security issues detected!"
+          else
+            echo ""
+            echo "❌ Bandit encountered an error (exit code: $BANDIT_EXIT_CODE)"
+          fi
+        continue-on-error: true
+
+      - name: 📊 Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: bandit-results.sarif
+          category: "bandit"
+        continue-on-error: true
+
+      - name: 📤 Upload SARIF artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-sarif-report
+          path: bandit-results.sarif
+          retention-days: 30
+
+      - name: 💬 Comment on PR with findings
+        if: github.event_name == 'pull_request' && steps.bandit.outputs.exit_code != '0'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            let sarifData;
+            try {
+              sarifData = JSON.parse(fs.readFileSync('bandit-results.sarif', 'utf8'));
+            } catch (e) {
+              console.log('Could not read SARIF file:', e.message);
+              return;
+            }
+            
+            const results = sarifData.runs?.[0]?.results || [];
+            const totalFindings = results.length;
+            
+            if (totalFindings === 0) {
+              console.log('No findings to report');
+              return;
+            }
+            
+            const severityCounts = { high: 0, medium: 0, low: 0 };
+            
+            results.forEach(result => {
+              const level = result.level || 'warning';
+              if (level === 'error') severityCounts.high++;
+              else if (level === 'warning') severityCounts.medium++;
+              else severityCounts.low++;
+            });
+            
+            const comment = `## 🔒 Security Scan Results
+            
+            Bandit found **${totalFindings}** potential security issue(s) in this PR.
+            
+            | Severity | Count |
+            |----------|-------|
+            | 🔴 High | ${severityCounts.high} |
+            | 🟠 Medium | ${severityCounts.medium} |
+            | 🟡 Low | ${severityCounts.low} |
+            
+            ### 📋 Details
+            
+            Please review the findings in the **Security** tab or check the workflow logs for details.
+            
+            > 💡 **Tip**: You can view detailed findings by going to **Security** → **Code scanning alerts** in this repository.
+            
+            ---
+            <sub>🤖 Generated by Bandit Security Scanner</sub>`;
+            
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number
+            });
+            
+            const botComment = comments.find(c => 
+              c.user.type === 'Bot' && 
+              c.body.includes('🔒 Security Scan Results')
+            );
+            
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: botComment.id,
+                body: comment
+              });
+              console.log('Updated existing security comment');
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: comment
+              });
+              console.log('Created new security comment');
+            }
+
+      - name: ❌ Check for security failures
+        if: steps.bandit.outputs.exit_code == '1'
+        run: |
+          echo "::error::🔒 Security scan found vulnerabilities! Please review the findings."
+          echo ""
+          echo "📌 Next Steps:"
+          echo "  1. Check the Security tab in GitHub for detailed findings"
+          echo "  2. Review the PR comment for a summary"
+          echo "  3. Fix the identified security issues"
+          echo "  4. Re-run this workflow"
+          echo ""
+          exit 1
+
+  # ===========================================================================
+  # ✅ All Checks Pass (Final Gate)
+  # ===========================================================================
+  all-checks-pass:
+    name: ✅ All Checks Pass
+    needs: [lint, type-check, test, security]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     if: always()

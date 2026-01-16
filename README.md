@@ -1,5 +1,7 @@
 # 🌐 Eero CLI
 
+[![CI](https://github.com/fulviofreitas/eero-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/fulviofreitas/eero-cli/actions/workflows/ci.yml)
+
 Command-line interface for managing your Eero mesh Wi-Fi network.
 
 ## Features
