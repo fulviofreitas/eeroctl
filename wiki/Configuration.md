@@ -79,7 +79,7 @@ eero auth login
 For automated pipelines, set the session token directly:
 
 ```bash
-export EERO_SESSION_TOKEN="your-session-token"
+export EERO_SESSION_TOKEN="<YOUR-SESSION-TOKEN>"
 eero network list
 ```
 

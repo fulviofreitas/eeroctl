@@ -79,7 +79,7 @@ class TestNetworkList:
         assert result.exit_code == 0
         assert "List all networks" in result.output
 
-    @patch("eero_cli.commands.network.run_with_client")
+    @patch("eero_cli.commands.network.base.run_with_client")
     def test_network_list_displays_networks(self, mock_run_with_client, runner, mock_networks):
         """Test network list displays networks in table format."""
 
@@ -96,7 +96,7 @@ class TestNetworkList:
         # Should contain network names
         assert "Home Network" in result.output or "net_1" in result.output
 
-    @patch("eero_cli.commands.network.run_with_client")
+    @patch("eero_cli.commands.network.base.run_with_client")
     def test_network_list_empty(self, mock_run_with_client, runner):
         """Test network list with no networks."""
 
@@ -111,7 +111,7 @@ class TestNetworkList:
 
         assert "No networks found" in result.output
 
-    @patch("eero_cli.commands.network.run_with_client")
+    @patch("eero_cli.commands.network.base.run_with_client")
     def test_network_list_json_output(self, mock_run_with_client, runner, mock_networks):
         """Test network list with JSON output."""
 
