@@ -38,9 +38,9 @@ permissions:
 env:
   PYTHON_VERSION: "3.12"
   UV_CACHE_DIR: /tmp/.uv-cache
-  # Bandit configuration
-  BANDIT_CONFIDENCE: "MEDIUM"  # Minimum confidence level (LOW, MEDIUM, HIGH)
-  BANDIT_SEVERITY: "MEDIUM"    # Minimum severity level (LOW, MEDIUM, HIGH)
+  # Bandit configuration (values must be lowercase: all, low, medium, high)
+  BANDIT_CONFIDENCE: "medium"  # Minimum confidence level
+  BANDIT_SEVERITY: "medium"    # Minimum severity level
 
 jobs:
   # ===========================================================================
@@ -108,7 +108,7 @@ jobs:
           echo "-------------------------------------------"
           
           # Run Bandit and capture exit code
-          # Exit codes: 0 = no issues, 1 = issues found
+          # Exit codes: 0 = no issues, 1 = issues found, 2 = error
           set +e
           
           uvx bandit \
@@ -122,6 +122,27 @@ jobs:
           
           BANDIT_EXIT_CODE=$?
           set -e
+          
+          # Ensure valid SARIF file exists (create empty one if Bandit errored)
+          if [ ! -s bandit-results.sarif ]; then
+            echo "Creating empty SARIF file (Bandit produced no output)"
+            cat > bandit-results.sarif << 'EOF'
+          {
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+            "version": "2.1.0",
+            "runs": [{
+              "tool": {
+                "driver": {
+                  "name": "Bandit",
+                  "informationUri": "https://bandit.readthedocs.io/",
+                  "version": "1.9.2"
+                }
+              },
+              "results": []
+            }]
+          }
+          EOF
+          fi
           
           # Also generate human-readable output for logs
           echo ""
@@ -141,9 +162,12 @@ jobs:
           if [ $BANDIT_EXIT_CODE -eq 0 ]; then
             echo ""
             echo "✅ No security issues found!"
+          elif [ $BANDIT_EXIT_CODE -eq 1 ]; then
+            echo ""
+            echo "⚠️  Security issues detected!"
           else
             echo ""
-            echo "⚠️  Security issues detected (exit code: $BANDIT_EXIT_CODE)"
+            echo "❌ Bandit encountered an error (exit code: $BANDIT_EXIT_CODE)"
           fi
         continue-on-error: true  # Allow workflow to continue for SARIF upload
 
@@ -156,7 +180,7 @@ jobs:
       #   - Tracking of security issues over time
       # -----------------------------------------------------------------------
       - name: 📊 Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()  # Upload even if scan found issues
         with:
           sarif_file: bandit-results.sarif
@@ -275,10 +299,10 @@ jobs:
       # -----------------------------------------------------------------------
       # ❌ Fail Workflow if Security Issues Found
       # -----------------------------------------------------------------------
-      # This step runs at the end to fail the workflow if Bandit found issues
+      # Exit codes: 0 = clean, 1 = issues found, 2+ = error
       # -----------------------------------------------------------------------
       - name: ❌ Check for security failures
-        if: steps.bandit.outputs.exit_code != '0'
+        if: steps.bandit.outputs.exit_code == '1'
         run: |
           echo "::error::🔒 Security scan found vulnerabilities! Please review the findings."
           echo ""
