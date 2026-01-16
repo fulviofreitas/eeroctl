@@ -258,7 +258,7 @@ jobs:
 
       - name: 💬 Comment on PR with findings
         if: github.event_name == 'pull_request' && steps.bandit.outputs.exit_code != '0'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
