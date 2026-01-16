@@ -329,18 +329,6 @@ class TestOutputRenderer:
         assert "Warning" in text
         assert "Something might be wrong" in text
 
-    def test_render_deprecation(self, renderer):
-        """Test render_deprecation shows old and new commands."""
-        output = StringIO()
-        renderer.ctx._err_console = Console(file=output, force_terminal=False)
-
-        renderer.render_deprecation("old-cmd", "new-cmd")
-
-        text = output.getvalue()
-        assert "DEPRECATED" in text
-        assert "old-cmd" in text
-        assert "new-cmd" in text
-
     def test_render_success(self, renderer):
         """Test render_success outputs success message."""
         output = StringIO()
@@ -479,18 +467,6 @@ class TestOutputManager:
         """Test _format_value passes through plain strings."""
         result = manager._format_value("hello world")
         assert result == "hello world"
-
-    def test_deprecation_warning(self, manager):
-        """Test deprecation_warning outputs to stderr."""
-        output = StringIO()
-        manager._err_console = Console(file=output, force_terminal=False)
-
-        manager.deprecation_warning("old-cmd", "new-cmd")
-
-        text = output.getvalue()
-        assert "DEPRECATED" in text
-        assert "old-cmd" in text
-        assert "new-cmd" in text
 
     def test_get_columns_for_schema_network(self, manager):
         """Test column selection for network schema."""

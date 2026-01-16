@@ -468,12 +468,6 @@ def print_network_details(network: Network, detail_level: DetailLevel = "brief")
         console.print(resources_panel)
 
 
-# Backward compatibility aliases
-def print_network_details_extensive(network: Network) -> None:
-    """Print extensive network details (deprecated, use print_network_details with detail_level='full')."""
-    print_network_details(network, detail_level="full")
-
-
 # ==================== Eero Device Formatting ====================
 
 
@@ -729,12 +723,6 @@ def print_eero_details(eero: Eero, detail_level: DetailLevel = "brief") -> None:
             console.print(build_panel(location_parts, "Location", "yellow"))
 
 
-# Backward compatibility alias
-def print_eero_details_extensive(eero: Eero) -> None:
-    """Print extensive Eero details (deprecated, use print_eero_details with detail_level='full')."""
-    print_eero_details(eero, detail_level="full")
-
-
 # ==================== Device Formatting ====================
 
 
@@ -889,12 +877,6 @@ def print_device_details(device: Device, detail_level: DetailLevel = "brief") ->
     if not extensive and device.tags:
         lines = [f"[bold]{tag.name}:[/bold] {tag.color or 'No color'}" for tag in device.tags]
         console.print(build_panel(lines, "Tags", "yellow"))
-
-
-# Backward compatibility alias
-def print_device_details_extensive(device: Device) -> None:
-    """Print extensive device details (deprecated, use print_device_details with detail_level='full')."""
-    print_device_details(device, detail_level="full")
 
 
 # ==================== Profile Formatting ====================
@@ -1072,12 +1054,6 @@ def print_profile_details(profile: Profile, detail_level: DetailLevel = "brief")
         console.print(create_profile_devices_table(profile.devices))
     elif detail_level == "brief":
         console.print("[bold yellow]No devices in this profile[/bold yellow]")
-
-
-# Backward compatibility alias
-def print_profile_details_brief(profile: Profile) -> None:
-    """Print brief profile details (deprecated, use print_profile_details with detail_level='brief')."""
-    print_profile_details(profile, detail_level="brief")
 
 
 # ==================== Miscellaneous Formatting ====================

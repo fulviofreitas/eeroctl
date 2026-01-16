@@ -111,9 +111,6 @@ def handle_cli_error(
 def is_premium_error(e: Exception) -> bool:
     """Check if an exception indicates a premium feature requirement.
 
-    This is a helper for transitioning legacy string-matching code
-    to proper exception types.
-
     Args:
         e: Exception to check
 
@@ -122,16 +119,13 @@ def is_premium_error(e: Exception) -> bool:
     """
     if isinstance(e, EeroPremiumRequiredException):
         return True
-    # Legacy string matching for backward compatibility during transition
+    # Fallback string matching for generic exceptions
     error_str = str(e).lower()
     return "premium" in error_str or "plus" in error_str or "subscription" in error_str
 
 
 def is_feature_unavailable_error(e: Exception, feature_keyword: str) -> bool:
     """Check if an exception indicates a feature is unavailable.
-
-    This is a helper for transitioning legacy string-matching code
-    to proper exception types.
 
     Args:
         e: Exception to check
@@ -142,7 +136,7 @@ def is_feature_unavailable_error(e: Exception, feature_keyword: str) -> bool:
     """
     if isinstance(e, EeroFeatureUnavailableException):
         return True
-    # Legacy string matching for backward compatibility
+    # Fallback string matching for generic exceptions
     return feature_keyword.lower() in str(e).lower()
 
 

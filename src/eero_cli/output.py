@@ -389,17 +389,6 @@ class OutputRenderer:
         """
         self.ctx.err_console.print(f"[yellow]Warning:[/yellow] {message}")
 
-    def render_deprecation(self, old_cmd: str, new_cmd: str) -> None:
-        """Render a deprecation warning to stderr.
-
-        Args:
-            old_cmd: Old command syntax
-            new_cmd: New command syntax
-        """
-        self.ctx.err_console.print(
-            f"[yellow]DEPRECATED:[/yellow] `{old_cmd}` is deprecated; use `{new_cmd}`."
-        )
-
     def render_success(self, message: str) -> None:
         """Render a success message.
 
@@ -710,12 +699,6 @@ class OutputManager:
                 self.console.print(" ".join(parts))
             else:
                 self.console.print(str(item))
-
-    def deprecation_warning(self, old_cmd: str, new_cmd: str) -> None:
-        """Print deprecation warning to stderr."""
-        self._err_console.print(
-            f"[yellow]DEPRECATED:[/yellow] `{old_cmd}` is deprecated; use `{new_cmd}`."
-        )
 
 
 # Standard table definitions for common resources
