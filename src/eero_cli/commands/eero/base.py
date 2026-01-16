@@ -204,9 +204,9 @@ def eero_reboot(ctx: click.Context, eero_id: str, force: bool) -> None:
 
 
 # Import and register subcommand groups after eero_group is defined
-from .led import led_group
-from .nightlight import nightlight_group
-from .updates import updates_group
+from .led import led_group  # noqa: E402
+from .nightlight import nightlight_group  # noqa: E402
+from .updates import updates_group  # noqa: E402
 
 # Register all subcommand groups
 eero_group.add_command(led_group)

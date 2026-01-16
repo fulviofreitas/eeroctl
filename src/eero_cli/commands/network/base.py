@@ -299,15 +299,15 @@ def network_premium(ctx: click.Context) -> None:
 
 
 # Import and register subcommand groups after network_group is defined
-from .advanced import routing_show, support_group, thread_cmd_group
-from .backup import backup_group
-from .dhcp import dhcp_group
-from .dns import dns_group
-from .forwards import forwards_group
-from .guest import guest_group
-from .security import security_group
-from .speedtest import speedtest_group
-from .sqm import sqm_group
+from .advanced import routing_show, support_group, thread_cmd_group  # noqa: E402
+from .backup import backup_group  # noqa: E402
+from .dhcp import dhcp_group  # noqa: E402
+from .dns import dns_group  # noqa: E402
+from .forwards import forwards_group  # noqa: E402
+from .guest import guest_group  # noqa: E402
+from .security import security_group  # noqa: E402
+from .speedtest import speedtest_group  # noqa: E402
+from .sqm import sqm_group  # noqa: E402
 
 # Register all subcommand groups
 network_group.add_command(dns_group)

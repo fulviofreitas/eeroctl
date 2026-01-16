@@ -8,7 +8,6 @@ Commands:
 
 import asyncio
 import sys
-from typing import Optional
 
 import click
 from eero import EeroClient
