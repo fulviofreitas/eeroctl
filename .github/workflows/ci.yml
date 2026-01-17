@@ -132,9 +132,10 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🛡️ Run security scan
-        uses: fulviofreitas/eero-client/.github/actions/security-bandit@master
+        uses: fulviofreitas/eero-client/.github/actions/security-semgrep@master
         with:
-          src-path: "src/"
+          config: "p/python p/security-audit"
+          target-path: "src/"
           fail-on-findings: "true"
 
   # ============================================================================
