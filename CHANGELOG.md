@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0](https://github.com/fulviofreitas/eero-cli/compare/v1.0.0...v1.1.0) (2026-01-17)
+
+### ✨ Features
+
+* add __version__ to package ([27e1c04](https://github.com/fulviofreitas/eero-cli/commit/27e1c04bfa47709eb67340ae81e9219a50385223))
+
 ## 1.0.0 (2026-01-17)
 
 ### ⚠ BREAKING CHANGES
