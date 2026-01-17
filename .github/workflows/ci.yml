@@ -84,7 +84,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: lint
-    continue-on-error: true
 
     steps:
       - name: 📥 Checkout
@@ -116,7 +115,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: lint
-    continue-on-error: true
 
     steps:
       - name: 📥 Checkout code
@@ -196,9 +194,9 @@ jobs:
         run: |
           COMMITLINT="${{ needs.commitlint.result }}"
           LINT="${{ needs.lint.result }}"
-          TYPECHECK="${{ needs.type-check.outcome }}"
+          TYPECHECK="${{ needs.type-check.result }}"
           TEST="${{ needs.test.result }}"
-          SECURITY="${{ needs.security.outcome }}"
+          SECURITY="${{ needs.security.result }}"
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ## 🧪 CI Pipeline Summary
@@ -213,9 +211,8 @@ jobs:
 
           EOF
 
-          # Required: commitlint, lint, test
-          # Allowed to fail: type-check, security (informational)
-          if [[ "$COMMITLINT" == "success" && "$LINT" == "success" && "$TEST" == "success" ]]; then
+          # All jobs are required to pass
+          if [[ "$COMMITLINT" == "success" && "$LINT" == "success" && "$TYPECHECK" == "success" && "$TEST" == "success" && "$SECURITY" == "success" ]]; then
             cat >> $GITHUB_STEP_SUMMARY << 'EOF'
 
           > [!NOTE]
