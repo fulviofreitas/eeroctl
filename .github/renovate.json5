@@ -4,14 +4,15 @@
   // Base configuration
   extends: ["config:recommended", ":semanticCommits"],
 
-  // Timezone for scheduling
+  // Timezone for scheduling (used for prCreation hours if needed)
   timezone: "America/Los_Angeles",
 
-  // IMPORTANT: Create PRs immediately (no schedule delay)
+  // IMPORTANT: Explicitly set empty schedule to create PRs immediately
   // Without this, config:recommended applies a default schedule
   schedule: ["at any time"],
 
-  // PR limits - disable rate limiting for immediate updates
+  // PR limits to avoid noise
+  // Note: Set to 0 to disable rate limiting
   prHourlyLimit: 0,
   prConcurrentLimit: 0,
 
@@ -19,6 +20,7 @@
   branchPrefix: "deps/",
 
   // Commit message format (semantic commits)
+  // Using "chore" as it's a valid commitlint type for dependency updates
   commitMessagePrefix: "chore(deps):",
   commitMessageAction: "update",
 
@@ -32,10 +34,11 @@
   // Close the Dependency Dashboard issue if there are no more updates
   dependencyDashboardAutoclose: true,
 
-  // Don't require dashboard approval
+  // Dependency dashboard approval for certain updates
   dependencyDashboardApproval: false,
 
   // Allow recreating PRs that were closed without merging
+  // This ensures PRs can be recreated after branch deletion or config changes
   recreateWhen: "auto",
 
   // PR body template with useful information
@@ -44,12 +47,7 @@
   // Include release notes in PRs
   fetchChangeLogs: "pr",
 
-  // ============================================================================
   // Custom manager for git URL dependencies in pyproject.toml
-  // ============================================================================
-  // This regex manager tracks the eero-client dependency which uses a git URL
-  // with a version tag, allowing Renovate to detect and update the version.
-  // ============================================================================
   customManagers: [
     {
       customType: "regex",
@@ -63,9 +61,7 @@
     },
   ],
 
-  // ============================================================================
   // Package-specific rules
-  // ============================================================================
   packageRules: [
     // ==========================================================================
     // 🔴 CRITICAL: eero-client - Core API dependency
@@ -90,7 +86,7 @@
       reviewers: ["fulviofreitas"],
       assignees: ["fulviofreitas"],
 
-      // Custom commit message
+      // Custom commit message (prTitle inherits from this)
       commitMessagePrefix: "chore(deps-critical):",
       commitMessageExtra: "{{newVersion}}",
 
@@ -102,7 +98,7 @@
         "",
         "### Review Checklist",
         "- [ ] Review the changelog for breaking changes",
-        "- [ ] Verify API compatibility with CLI commands",
+        "- [ ] Verify API compatibility",
         "- [ ] Run full test suite locally if needed",
         "- [ ] Check for any deprecated methods",
         "",
@@ -124,6 +120,7 @@
       automergeType: "pr",
       automergeStrategy: "squash",
       commitMessagePrefix: "chore(deps-python):",
+      labels: ["dependencies", "renovate", "automerge"],
     },
 
     // ==========================================================================
@@ -138,6 +135,7 @@
       automergeType: "pr",
       automergeStrategy: "squash",
       commitMessagePrefix: "chore(deps-actions):",
+      labels: ["dependencies", "renovate", "automerge"],
     },
 
     // ==========================================================================
@@ -153,20 +151,21 @@
     },
 
     // ==========================================================================
-    // 🟣 Security updates: High priority
+    // 🟣 Security updates: High priority, fast-track
     // ==========================================================================
     {
       matchDepTypes: ["devDependencies", "dependencies"],
       matchUpdateTypes: ["patch"],
+      matchPackageNames: ["*"],
       prPriority: 20,
       description: "Security patches get high priority",
     },
   ],
 
-  // Vulnerability alerts configuration
+  // Vulnerability alerts configuration (top-level, not inside packageRules)
   vulnerabilityAlerts: {
     enabled: true,
-    labels: ["security", "critical"],
+    labels: ["security", "critical", "automerge"],
     automerge: true,
   },
 }
