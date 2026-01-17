@@ -1,4 +1,12 @@
-name: 🔄 CI
+# ============================================================================
+# 🧪 Continuous Integration Pipeline
+# ============================================================================
+# Chain: Commit Lint → Lint & Format → [Type Check ‖ Security ‖ Tests] → CI Success
+#
+# All reusable actions are sourced from fulviofreitas/eero-client/.github/actions/
+# ============================================================================
+
+name: 🧪 CI Pipeline
 
 on:
   push:
@@ -13,27 +21,48 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write  # Required for SARIF upload
-  pull-requests: write    # Required for PR comments
+  security-events: write
+  pull-requests: write
 
 env:
   PYTHON_VERSION: "3.12"
-  UV_CACHE_DIR: /tmp/.uv-cache
 
 jobs:
-  # ===========================================================================
-  # 🧹 Lint & Format (First Gate - Fast Fail)
-  # ===========================================================================
+  # ============================================================================
+  # 1️⃣ Commit Lint (Gate 1)
+  # ============================================================================
+  commitlint:
+    name: 📝 Commit Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📝 Validate commits
+        uses: fulviofreitas/eero-client/.github/actions/commitlint@master
+        with:
+          from-sha: ${{ github.event.pull_request.base.sha }}
+          to-sha: ${{ github.event.pull_request.head.sha }}
+
+  # ============================================================================
+  # 2️⃣ Lint & Format (Gate 2 - depends on Commit Lint)
+  # ============================================================================
   lint:
     name: 🧹 Lint & Format
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    needs: commitlint
+
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: 📦 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
@@ -41,34 +70,28 @@ jobs:
       - name: 🐍 Set up Python
         run: uv python install ${{ env.PYTHON_VERSION }}
 
-      - name: 🔧 Install linting tools
-        run: uv tool install ruff && uv tool install black && uv tool install isort
+      - name: 🧹 Run Python lint
+        uses: fulviofreitas/eero-client/.github/actions/python-lint@master
+        with:
+          src-path: "src/"
+          tests-path: "tests/"
 
-      - name: 🖤 Check formatting with Black
-        run: uvx black --check --diff src/ tests/
-
-      - name: 📑 Check import sorting with isort
-        run: uvx isort --check-only --diff src/ tests/
-
-      - name: ⚡ Lint with Ruff
-        run: uvx ruff check src/ tests/
-
-  # ===========================================================================
-  # 🔍 Type Check (Parallel - Informational Only)
-  # ===========================================================================
+  # ============================================================================
+  # 3️⃣ Type Check (Parallel - depends on Lint)
+  # ============================================================================
   type-check:
     name: 🔍 Type Check
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: lint
-    # Type checking is informational only until existing type issues are resolved
     continue-on-error: true
+
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: 📦 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
@@ -79,12 +102,45 @@ jobs:
       - name: 📚 Install dependencies
         run: uv sync --extra dev
 
-      - name: 🔬 Type check with mypy
-        run: uv run mypy src/ --ignore-missing-imports || echo "::warning::Type checking found issues (non-blocking)"
+      - name: 🔍 Run type check
+        uses: fulviofreitas/eero-client/.github/actions/python-typecheck@master
+        with:
+          src-path: "src/"
+          fail-on-error: "false"
 
-  # ===========================================================================
-  # 🧪 Test Matrix (After Lint)
-  # ===========================================================================
+  # ============================================================================
+  # 3️⃣ Security Scan (Parallel - depends on Lint)
+  # ============================================================================
+  security:
+    name: 🛡️ Security Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 📦 Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - name: 🐍 Set up Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: 🛡️ Run security scan
+        uses: fulviofreitas/eero-client/.github/actions/security-bandit@master
+        with:
+          src-path: "src/"
+          fail-on-findings: "false"
+
+  # ============================================================================
+  # 3️⃣ Test Matrix (Parallel - depends on Lint)
+  # ============================================================================
   test:
     name: 🧪 Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -98,10 +154,10 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: 📦 Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
@@ -112,11 +168,8 @@ jobs:
       - name: 📚 Install dependencies
         run: uv sync --extra dev
 
-      - name: 🖥️ Run CLI tests
-        run: uv run pytest tests/cli/ -v --tb=short
-
-      - name: 📈 Run all tests with coverage
-        run: uv run pytest tests/ --cov=src/eero_cli --cov-report=xml --cov-report=term-missing
+      - name: 🧪 Run tests with coverage
+        run: uv run pytest tests/ --cov=src/eero_cli --cov-report=xml --cov-report=term-missing -v
 
       - name: 📊 Upload coverage reports
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
@@ -128,239 +181,70 @@ jobs:
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-  # ===========================================================================
-  # 🔒 Security Scan (After Lint, Parallel with Tests)
-  # ===========================================================================
-  # Scans Python source code for common security issues including:
-  #   - Hardcoded passwords/secrets
-  #   - SQL injection vulnerabilities
-  #   - Use of insecure functions (eval, exec, etc.)
-  #   - Weak cryptography usage
-  #   - Shell injection risks
-  # ===========================================================================
-  security:
-    name: 🛡️ Security Scan
+  # ============================================================================
+  # 4️⃣ CI Success Gate (Final - depends on all parallel jobs)
+  # ============================================================================
+  ci-success:
+    name: ✅ CI Success
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: lint
-
-    env:
-      # Bandit configuration (values must be lowercase: all, low, medium, high)
-      BANDIT_CONFIDENCE: "medium"
-      BANDIT_SEVERITY: "medium"
-
-    steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: 📦 Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
-
-      - name: 🐍 Set up Python
-        run: uv python install ${{ env.PYTHON_VERSION }}
-
-      - name: 🔧 Install Bandit
-        run: |
-          uv tool install bandit[toml,sarif]
-          echo "✅ Bandit installed successfully"
-          uvx bandit --version
-
-      - name: 🔍 Run Bandit scan
-        id: bandit
-        run: |
-          echo "🔍 Starting Bandit security scan..."
-          echo "📁 Scanning: src/"
-          echo "📊 Minimum confidence: ${{ env.BANDIT_CONFIDENCE }}"
-          echo "⚠️  Minimum severity: ${{ env.BANDIT_SEVERITY }}"
-          echo "-------------------------------------------"
-          
-          set +e
-          
-          uvx bandit \
-            --recursive \
-            --format sarif \
-            --output bandit-results.sarif \
-            --confidence-level ${{ env.BANDIT_CONFIDENCE }} \
-            --severity-level ${{ env.BANDIT_SEVERITY }} \
-            --exclude "tests/,**/test_*.py,**/*_test.py" \
-            src/
-          
-          BANDIT_EXIT_CODE=$?
-          set -e
-          
-          # Ensure valid SARIF file exists
-          if [ ! -s bandit-results.sarif ]; then
-            echo "Creating empty SARIF file (Bandit produced no output)"
-            cat > bandit-results.sarif << 'EOF'
-          {
-            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
-            "version": "2.1.0",
-            "runs": [{
-              "tool": {
-                "driver": {
-                  "name": "Bandit",
-                  "informationUri": "https://bandit.readthedocs.io/",
-                  "version": "1.9.2"
-                }
-              },
-              "results": []
-            }]
-          }
-          EOF
-          fi
-          
-          # Generate human-readable output for logs
-          echo ""
-          echo "📋 Detailed Results:"
-          echo "-------------------------------------------"
-          uvx bandit \
-            --recursive \
-            --format txt \
-            --confidence-level ${{ env.BANDIT_CONFIDENCE }} \
-            --severity-level ${{ env.BANDIT_SEVERITY }} \
-            --exclude "tests/,**/test_*.py,**/*_test.py" \
-            src/ || true
-          
-          echo "exit_code=$BANDIT_EXIT_CODE" >> $GITHUB_OUTPUT
-          
-          if [ $BANDIT_EXIT_CODE -eq 0 ]; then
-            echo ""
-            echo "✅ No security issues found!"
-          elif [ $BANDIT_EXIT_CODE -eq 1 ]; then
-            echo ""
-            echo "⚠️  Security issues detected!"
-          else
-            echo ""
-            echo "❌ Bandit encountered an error (exit code: $BANDIT_EXIT_CODE)"
-          fi
-        continue-on-error: true
-
-      - name: 📊 Upload SARIF to GitHub Security
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        with:
-          sarif_file: bandit-results.sarif
-          category: "bandit"
-        continue-on-error: true
-
-      - name: 📤 Upload SARIF artifact
-        uses: actions/upload-artifact@v6
-        if: always()
-        with:
-          name: bandit-sarif-report
-          path: bandit-results.sarif
-          retention-days: 30
-
-      - name: 💬 Comment on PR with findings
-        if: github.event_name == 'pull_request' && steps.bandit.outputs.exit_code != '0'
-        uses: actions/github-script@v8
-        with:
-          script: |
-            const fs = require('fs');
-            
-            let sarifData;
-            try {
-              sarifData = JSON.parse(fs.readFileSync('bandit-results.sarif', 'utf8'));
-            } catch (e) {
-              console.log('Could not read SARIF file:', e.message);
-              return;
-            }
-            
-            const results = sarifData.runs?.[0]?.results || [];
-            const totalFindings = results.length;
-            
-            if (totalFindings === 0) {
-              console.log('No findings to report');
-              return;
-            }
-            
-            const severityCounts = { high: 0, medium: 0, low: 0 };
-            
-            results.forEach(result => {
-              const level = result.level || 'warning';
-              if (level === 'error') severityCounts.high++;
-              else if (level === 'warning') severityCounts.medium++;
-              else severityCounts.low++;
-            });
-            
-            const comment = `## 🔒 Security Scan Results
-            
-            Bandit found **${totalFindings}** potential security issue(s) in this PR.
-            
-            | Severity | Count |
-            |----------|-------|
-            | 🔴 High | ${severityCounts.high} |
-            | 🟠 Medium | ${severityCounts.medium} |
-            | 🟡 Low | ${severityCounts.low} |
-            
-            ### 📋 Details
-            
-            Please review the findings in the **Security** tab or check the workflow logs for details.
-            
-            > 💡 **Tip**: You can view detailed findings by going to **Security** → **Code scanning alerts** in this repository.
-            
-            ---
-            <sub>🤖 Generated by Bandit Security Scanner</sub>`;
-            
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number
-            });
-            
-            const botComment = comments.find(c => 
-              c.user.type === 'Bot' && 
-              c.body.includes('🔒 Security Scan Results')
-            );
-            
-            if (botComment) {
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: botComment.id,
-                body: comment
-              });
-              console.log('Updated existing security comment');
-            } else {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: comment
-              });
-              console.log('Created new security comment');
-            }
-
-      - name: ❌ Check for security failures
-        if: steps.bandit.outputs.exit_code == '1'
-        run: |
-          echo "::error::🔒 Security scan found vulnerabilities! Please review the findings."
-          echo ""
-          echo "📌 Next Steps:"
-          echo "  1. Check the Security tab in GitHub for detailed findings"
-          echo "  2. Review the PR comment for a summary"
-          echo "  3. Fix the identified security issues"
-          echo "  4. Re-run this workflow"
-          echo ""
-          exit 1
-
-  # ===========================================================================
-  # ✅ All Checks Pass (Final Gate)
-  # ===========================================================================
-  all-checks-pass:
-    name: ✅ All Checks Pass
-    needs: [lint, type-check, test, security]
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
+    needs: [commitlint, lint, type-check, test, security]
     if: always()
+
     steps:
-      - name: 🎯 Check job status
-        uses: re-actors/alls-green@release/v1
-        with:
-          allowed-failures: type-check
-          jobs: ${{ toJSON(needs) }}
+      - name: 🔍 Check all jobs passed
+        run: |
+          COMMITLINT="${{ needs.commitlint.result }}"
+          LINT="${{ needs.lint.result }}"
+          TYPECHECK="${{ needs.type-check.result }}"
+          TEST="${{ needs.test.result }}"
+          SECURITY="${{ needs.security.result }}"
+
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🧪 CI Pipeline Summary
+
+          | Stage | Job | Status |
+          |:------|:----|:-------|
+          | 1️⃣ | 📝 Commit Lint | ${COMMITLINT} |
+          | 2️⃣ | 🧹 Lint & Format | ${LINT} |
+          | 3️⃣ | 🔍 Type Check | ${TYPECHECK} |
+          | 3️⃣ | 🛡️ Security | ${SECURITY} |
+          | 3️⃣ | 🧪 Tests | ${TEST} |
+
+          EOF
+
+          # Required: commitlint, lint, test
+          # Allowed to fail: type-check, security (informational)
+          if [[ "$COMMITLINT" == "success" && "$LINT" == "success" && "$TEST" == "success" ]]; then
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          > [!NOTE]
+          > ### ✅ All Required Checks Passed
+          > CI pipeline completed successfully. Ready for release!
+
+          ---
+
+          ```
+          1️⃣ 📝 Commit Lint
+                 ↓
+          2️⃣ 🧹 Lint & Format
+                 ↓
+               ┌─┴─┬─────────┐
+          3️⃣   │   │         │
+          🔍 Type 🛡️ Sec  🧪 Tests
+               └─┬─┴─────────┘
+                 ↓
+          4️⃣ ✅ CI Success → 🚀 Release
+          ```
+
+          EOF
+            exit 0
+          else
+            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+
+          > [!CAUTION]
+          > ### ❌ Some Required Checks Failed
+          > Review the failed jobs above and fix any issues before merging.
+
+          EOF
+            exit 1
+          fi
