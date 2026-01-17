@@ -7,4 +7,5 @@ Entry point: eero_cli.main:cli
 
 from .main import cli, main
 
-__all__ = ["cli", "main"]
+__version__ = "1.0.0"
+__all__ = ["cli", "main", "__version__"]
