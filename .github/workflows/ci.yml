@@ -106,7 +106,7 @@ jobs:
         uses: fulviofreitas/eero-client/.github/actions/python-typecheck@master
         with:
           src-path: "src/"
-          fail-on-error: "false"
+          fail-on-error: "true"
 
   # ============================================================================
   # 3️⃣ Security Scan (Parallel - depends on Lint)
@@ -116,6 +116,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: lint
+    continue-on-error: true
 
     steps:
       - name: 📥 Checkout code
@@ -136,7 +137,7 @@ jobs:
         uses: fulviofreitas/eero-client/.github/actions/security-bandit@master
         with:
           src-path: "src/"
-          fail-on-findings: "false"
+          fail-on-findings: "true"
 
   # ============================================================================
   # 3️⃣ Test Matrix (Parallel - depends on Lint)
@@ -195,9 +196,9 @@ jobs:
         run: |
           COMMITLINT="${{ needs.commitlint.result }}"
           LINT="${{ needs.lint.result }}"
-          TYPECHECK="${{ needs.type-check.result }}"
+          TYPECHECK="${{ needs.type-check.outcome }}"
           TEST="${{ needs.test.result }}"
-          SECURITY="${{ needs.security.result }}"
+          SECURITY="${{ needs.security.outcome }}"
 
           cat >> $GITHUB_STEP_SUMMARY << EOF
           ## 🧪 CI Pipeline Summary
