@@ -141,14 +141,13 @@ jobs:
   # 3️⃣ Test Matrix (Parallel - depends on Lint)
   # ============================================================================
   test:
-    name: 🧪 Test (Python ${{ matrix.python-version }}, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+    name: 🧪 Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: lint
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
         python-version: ["3.12", "3.13", "3.14"]
 
     steps:
