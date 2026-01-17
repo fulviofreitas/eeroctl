@@ -7,7 +7,7 @@ name = "eero-cli"
 version = "1.0.0"
 description = "Command-line interface for Eero network management"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = {text = "MIT"}
 authors = [
     {name = "Eero CLI Contributors"},
@@ -18,9 +18,9 @@ classifiers = [
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Home Automation",
     "Topic :: System :: Networking",
     "Environment :: Console",
@@ -56,14 +56,14 @@ where = ["src"]
 
 [tool.black]
 line-length = 100
-target-version = ["py310"]
+target-version = ["py312"]
 
 [tool.isort]
 profile = "black"
 line_length = 100
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 warn_return_any = false
 warn_unused_configs = true
 ignore_missing_imports = true
@@ -73,7 +73,7 @@ no_implicit_optional = false
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "B", "W", "I"]
