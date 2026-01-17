@@ -1,0 +1,71 @@
+# ============================================================================
+# 🚀 Automated Semantic Release
+# ============================================================================
+# Automatically creates releases based on conventional commit messages.
+# Generates changelogs, bumps versions, and creates GitHub releases.
+#
+# Chain: CI → Release
+# Triggers: After CI Pipeline succeeds on master
+# ============================================================================
+
+name: 🚀 Release
+
+on:
+  # Trigger after CI workflow completes successfully
+  workflow_run:
+    workflows: ["🧪 CI Pipeline"]
+    types: [completed]
+    branches: [master]
+  # Allow manual trigger for debugging
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "🧪 Dry-run mode (no actual release)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+# Prevent concurrent releases
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ============================================================================
+  # 🚀 Semantic Release
+  # ============================================================================
+  release:
+    name: 🚀 Semantic Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    # Only run if CI passed (or manual trigger) and not a release commit
+    if: |
+      (github.event_name == 'workflow_dispatch') ||
+      (github.event.workflow_run.conclusion == 'success' &&
+      !contains(github.event.workflow_run.head_commit.message, '[skip ci]') &&
+      !contains(github.event.workflow_run.head_commit.message, 'chore(release)'))
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 🚀 Run semantic-release
+        uses: fulviofreitas/eero-client/.github/actions/semantic-release@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          dry-run: ${{ github.event.inputs.dry_run || 'false' }}
