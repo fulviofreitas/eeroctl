@@ -30,7 +30,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 📦 Install uv
         uses: astral-sh/setup-uv@v7
@@ -65,7 +65,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 📦 Install uv
         uses: astral-sh/setup-uv@v7
@@ -98,7 +98,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: 📦 Install uv
         uses: astral-sh/setup-uv@v7
@@ -151,7 +151,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
