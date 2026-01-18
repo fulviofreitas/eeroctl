@@ -2,7 +2,7 @@
 # 🤖 Auto-Merge Approved PRs
 # ============================================================================
 # Automatically merges pull requests that are approved and pass all checks.
-# Uses the reusable auto-merge action from eero-client.
+# Uses the reusable auto-merge action from eero-api.
 #
 # How it works:
 #   - PRs with the "automerge" label will be merged when ready

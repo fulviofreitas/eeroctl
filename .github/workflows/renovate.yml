@@ -2,18 +2,18 @@
 # 🔄 Renovate - Automated Dependency Updates
 # ============================================================================
 # Runs Renovate to check for dependency updates and create PRs.
-# Uses the centralized renovate action from eero-client.
+# Uses the centralized renovate action from eero-api.
 #
 # Key features:
-# - Tracks eero-client git dependency via custom regex manager
+# - Tracks eero-api git dependency via custom regex manager
 # - Auto-merges minor/patch updates for most dependencies
-# - Requires manual review for eero-client and major updates
+# - Requires manual review for eero-api and major updates
 # - Repository caching for faster subsequent runs
 #
 # Triggers:
 # - Scheduled: Every 6 hours (4 times daily)
 # - Manual: workflow_dispatch
-# - On eero-client release: repository_dispatch
+# - On eero-api release: repository_dispatch
 # ============================================================================
 
 name: 🔄 Renovate
@@ -51,7 +51,7 @@ on:
           - "false"
           - "true"
 
-  # Triggered by eero-client releases
+  # Triggered by eero-api releases
   repository_dispatch:
     types: [eero-api-dependency-update-available]
 
@@ -80,8 +80,8 @@ jobs:
         run: |
           echo "🎯 Trigger: ${{ github.event_name }}"
           if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "📦 eero-client version: ${{ github.event.client_payload.version }}"
-            echo "🔖 eero-client tag: ${{ github.event.client_payload.tag }}"
+            echo "📦 eero-api version: ${{ github.event.client_payload.version }}"
+            echo "🔖 eero-api tag: ${{ github.event.client_payload.tag }}"
           fi
 
       - name: 🔄 Run Renovate

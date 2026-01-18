@@ -2,7 +2,7 @@
 # 📚 Sync Wiki
 # ============================================================================
 # Syncs the wiki/ directory to the GitHub Wiki.
-# Uses the reusable wiki-sync action from eero-client.
+# Uses the reusable wiki-sync action from eero-api.
 # ============================================================================
 
 name: 📚 Sync Wiki
