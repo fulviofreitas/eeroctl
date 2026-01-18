@@ -53,7 +53,7 @@ on:
 
   # Triggered by eero-client releases
   repository_dispatch:
-    types: [eero-client-dependency-update-available]
+    types: [eero-api-dependency-update-available]
 
 # Prevent concurrent runs
 concurrency:
