@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3](https://github.com/fulviofreitas/eeroctl/compare/v1.0.2...v1.0.3) (2026-01-18)
+
+### 🐛 Bug Fixes
+
+* **ci:** use GitHub App for auto-merge to support workflow file changes ([3e7b679](https://github.com/fulviofreitas/eeroctl/commit/3e7b679f3a828f266ad8ce137703ed88ba82fa8b))
+
+### ♻️ Refactoring
+
+* rename eero-client to eero-api in GitHub workflows ([0f84d36](https://github.com/fulviofreitas/eeroctl/commit/0f84d3668429d6e014ae23424c5c74083c923697))
+
 ## [1.0.2](https://github.com/fulviofreitas/eeroctl/compare/v1.0.1...v1.0.2) (2026-01-18)
 
 ### 🐛 Bug Fixes
