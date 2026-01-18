@@ -13,7 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
-from eero_cli.main import cli
+from eeroctl.main import cli
 
 
 class TestAuthGroup:
@@ -53,8 +53,8 @@ class TestAuthLogin:
         assert "--force" in result.output
         assert "--no-keyring" in result.output
 
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_already_authenticated_shows_message(
         self, mock_cookie_file, mock_client_class, runner, tmp_path
     ):
@@ -72,8 +72,8 @@ class TestAuthLogin:
 
         assert "Already authenticated" in result.output
 
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_force_bypasses_existing_auth(
         self, mock_cookie_file, mock_client_class, runner, tmp_path
     ):
@@ -115,8 +115,8 @@ class TestAuthLogout:
         assert result.exit_code == 0
         assert "Logout from your Eero account" in result.output
 
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_logout_when_not_authenticated(
         self, mock_cookie_file, mock_client_class, runner, tmp_path
     ):
@@ -133,8 +133,8 @@ class TestAuthLogout:
 
         assert "Not logged in" in result.output
 
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_logout_success(self, mock_cookie_file, mock_client_class, runner, tmp_path):
         """Test successful logout."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -150,8 +150,8 @@ class TestAuthLogout:
 
         assert "Logged out successfully" in result.output
 
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_logout_failure(self, mock_cookie_file, mock_client_class, runner, tmp_path):
         """Test logout failure."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -184,8 +184,8 @@ class TestAuthClear:
         assert "Clear all stored authentication" in result.output
         assert "--force" in result.output
 
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_clear_prompts_for_confirmation(
         self, mock_cookie_file, mock_client_class, runner, tmp_path
     ):
@@ -202,8 +202,8 @@ class TestAuthClear:
 
         assert "Cancelled" in result.output
 
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_clear_with_force(self, mock_cookie_file, mock_client_class, runner, tmp_path):
         """Test clear with --force skips confirmation."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -247,10 +247,10 @@ class TestAuthStatus:
         assert result.exit_code == 0
         assert "Show current authentication status" in result.output
 
-    @patch("eero_cli.commands.auth._get_session_info")
-    @patch("eero_cli.commands.auth._check_keyring_available")
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_when_not_authenticated(
         self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
     ):
@@ -276,10 +276,10 @@ class TestAuthStatus:
 
         assert "Not Authenticated" in result.output
 
-    @patch("eero_cli.commands.auth._get_session_info")
-    @patch("eero_cli.commands.auth._check_keyring_available")
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_when_authenticated(
         self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
     ):
@@ -325,10 +325,10 @@ class TestAuthStatus:
         assert "Valid" in result.output or "valid" in result.output
         assert "Account" in result.output or "account_123" in result.output
 
-    @patch("eero_cli.commands.auth._get_session_info")
-    @patch("eero_cli.commands.auth._check_keyring_available")
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_json_output(
         self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
     ):
@@ -381,10 +381,10 @@ class TestAuthStatus:
             # Output might have other content, just check it ran
             pass
 
-    @patch("eero_cli.commands.auth._get_session_info")
-    @patch("eero_cli.commands.auth._check_keyring_available")
-    @patch("eero_cli.commands.auth.EeroClient")
-    @patch("eero_cli.commands.auth.get_cookie_file")
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_session_expired(
         self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
     ):

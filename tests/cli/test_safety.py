@@ -13,8 +13,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from eero_cli.exit_codes import ExitCode
-from eero_cli.safety import (
+from eeroctl.exit_codes import ExitCode
+from eeroctl.safety import (
     OPERATION_RISKS,
     OperationRisk,
     SafetyContext,
@@ -181,7 +181,7 @@ class TestRequireConfirmation:
         assert exc_info.value.exit_code == ExitCode.SAFETY_RAIL
         assert "--force" in exc_info.value.message
 
-    @patch("eero_cli.safety.Confirm.ask")
+    @patch("eeroctl.safety.Confirm.ask")
     def test_medium_risk_prompts_user(self, mock_confirm, mock_console):
         """Test MEDIUM risk prompts for Y/N confirmation."""
         mock_confirm.return_value = True
@@ -198,7 +198,7 @@ class TestRequireConfirmation:
         assert result is True
         mock_confirm.assert_called_once()
 
-    @patch("eero_cli.safety.Confirm.ask")
+    @patch("eeroctl.safety.Confirm.ask")
     def test_medium_risk_user_declines(self, mock_confirm, mock_console):
         """Test MEDIUM risk raises when user declines."""
         mock_confirm.return_value = False
@@ -215,7 +215,7 @@ class TestRequireConfirmation:
 
         assert "cancelled" in exc_info.value.message.lower()
 
-    @patch("eero_cli.safety.Prompt.ask")
+    @patch("eeroctl.safety.Prompt.ask")
     def test_high_risk_requires_typed_confirmation(self, mock_prompt, mock_console):
         """Test HIGH risk requires typed confirmation phrase."""
         mock_prompt.return_value = "FACTORYRESET"
@@ -233,7 +233,7 @@ class TestRequireConfirmation:
         assert result is True
         mock_prompt.assert_called_once()
 
-    @patch("eero_cli.safety.Prompt.ask")
+    @patch("eeroctl.safety.Prompt.ask")
     def test_high_risk_wrong_phrase_raises(self, mock_prompt, mock_console):
         """Test HIGH risk raises when phrase doesn't match."""
         mock_prompt.return_value = "wrong"
@@ -251,7 +251,7 @@ class TestRequireConfirmation:
 
         assert "mismatch" in exc_info.value.message.lower()
 
-    @patch("eero_cli.safety.Prompt.ask")
+    @patch("eeroctl.safety.Prompt.ask")
     def test_high_risk_auto_generates_phrase(self, mock_prompt, mock_console):
         """Test HIGH risk auto-generates confirmation phrase if not provided."""
         # Action is "factory reset" -> phrase becomes "FACTORYRESET"

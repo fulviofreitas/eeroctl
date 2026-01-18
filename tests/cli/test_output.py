@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from rich.console import Console
 
-from eero_cli.output import (
+from eeroctl.output import (
     CLIENT_TABLE_COLUMNS,
     EERO_TABLE_COLUMNS,
     NETWORK_TABLE_COLUMNS,

@@ -5,7 +5,7 @@ Tests cover:
 - Exit code descriptions mapping
 """
 
-from eero_cli.exit_codes import EXIT_CODE_DESCRIPTIONS, ExitCode
+from eeroctl.exit_codes import EXIT_CODE_DESCRIPTIONS, ExitCode
 
 
 class TestExitCode:

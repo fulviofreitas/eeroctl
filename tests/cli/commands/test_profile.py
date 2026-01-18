@@ -1,4 +1,4 @@
-"""Unit tests for eero_cli.commands.profile module.
+"""Unit tests for eeroctl.commands.profile module.
 
 Tests cover:
 - profile list command
@@ -11,7 +11,7 @@ Tests cover:
 import pytest
 from click.testing import CliRunner
 
-from eero_cli.main import cli
+from eeroctl.main import cli
 
 
 class TestProfileGroup:

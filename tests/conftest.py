@@ -1,4 +1,4 @@
-"""Pytest configuration and fixtures for eero-cli tests."""
+"""Pytest configuration and fixtures for eeroctl tests."""
 
 import pytest
 from click.testing import CliRunner

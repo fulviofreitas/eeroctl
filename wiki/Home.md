@@ -1,4 +1,4 @@
-# 🌐 Eero CLI Wiki
+# 🌐 eeroctl Wiki
 
 Welcome to the Eero CLI documentation! This wiki provides comprehensive guides for using the command-line interface.
 
@@ -23,8 +23,8 @@ Welcome to the Eero CLI documentation! This wiki provides comprehensive guides f
 
 ```bash
 # Clone and install
-git clone https://github.com/fulviofreitas/eero-cli.git
-cd eero-cli
+git clone https://github.com/fulviofreitas/eeroctl.git
+cd eeroctl
 uv sync
 
 # Login
@@ -38,8 +38,8 @@ uv run eero network list
 
 ```bash
 # Clone and install
-git clone https://github.com/fulviofreitas/eero-cli.git
-cd eero-cli
+git clone https://github.com/fulviofreitas/eeroctl.git
+cd eeroctl
 pip install .
 
 # Login
@@ -60,15 +60,15 @@ eero network list
 
 ## 📦 Dependencies
 
-This CLI uses [eero-client](https://github.com/fulviofreitas/eero-client) for API communication with Eero networks.
+This CLI uses [eero-api](https://github.com/fulviofreitas/eero-api) for API communication with Eero networks.
 
 ---
 
 ## 🔗 External Links
 
-- [GitHub Repository](https://github.com/fulviofreitas/eero-cli)
-- [eero-client Library](https://github.com/fulviofreitas/eero-client)
-- [Issue Tracker](https://github.com/fulviofreitas/eero-cli/issues)
+- [GitHub Repository](https://github.com/fulviofreitas/eeroctl)
+- [eero-api Library](https://github.com/fulviofreitas/eero-api)
+- [Issue Tracker](https://github.com/fulviofreitas/eeroctl/issues)
 
 ---
 

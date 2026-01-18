@@ -1,1 +1,1 @@
-"""Tests for eero-cli."""
+"""Tests for eeroctl."""

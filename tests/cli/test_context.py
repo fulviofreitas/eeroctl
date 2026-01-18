@@ -12,8 +12,8 @@ from unittest.mock import MagicMock
 import click
 import pytest
 
-from eero_cli.context import EeroCliContext, create_cli_context, ensure_cli_context, get_cli_context
-from eero_cli.output import OutputFormat
+from eeroctl.context import EeroCliContext, create_cli_context, ensure_cli_context, get_cli_context
+from eeroctl.output import OutputFormat
 
 # ========================== EeroCliContext Tests ==========================
 

@@ -13,8 +13,8 @@ from unittest.mock import patch
 import pytest
 from click.testing import CliRunner
 
-from eero_cli.context import EeroCliContext
-from eero_cli.main import cli, main
+from eeroctl.context import EeroCliContext
+from eeroctl.main import cli, main
 
 
 class TestMainCLI:
@@ -203,7 +203,7 @@ class TestContextPropagation:
         # Use a simple subcommand that we can inspect
         from click import pass_context
 
-        from eero_cli.context import get_cli_context
+        from eeroctl.context import get_cli_context
 
         @cli.command(name="test-ctx")
         @pass_context
@@ -227,7 +227,7 @@ class TestContextPropagation:
 
         from click import pass_context
 
-        from eero_cli.context import get_cli_context
+        from eeroctl.context import get_cli_context
 
         @cli.command(name="test-debug")
         @pass_context
@@ -248,7 +248,7 @@ class TestContextPropagation:
 
         from click import pass_context
 
-        from eero_cli.context import get_cli_context
+        from eeroctl.context import get_cli_context
 
         @cli.command(name="test-output")
         @pass_context
@@ -269,7 +269,7 @@ class TestContextPropagation:
 
         from click import pass_context
 
-        from eero_cli.context import get_cli_context
+        from eeroctl.context import get_cli_context
 
         @cli.command(name="test-net")
         @pass_context
@@ -293,7 +293,7 @@ class TestPreferredNetworkLoading:
         """Create a CLI runner."""
         return CliRunner()
 
-    @patch("eero_cli.main.get_preferred_network")
+    @patch("eeroctl.main.get_preferred_network")
     def test_loads_preferred_network(self, mock_get_preferred, runner):
         """Test preferred network is loaded when not specified."""
         mock_get_preferred.return_value = "net_preferred"
@@ -302,7 +302,7 @@ class TestPreferredNetworkLoading:
 
         from click import pass_context
 
-        from eero_cli.context import get_cli_context
+        from eeroctl.context import get_cli_context
 
         @cli.command(name="test-pref")
         @pass_context
@@ -318,7 +318,7 @@ class TestPreferredNetworkLoading:
         finally:
             cli.commands.pop("test-pref", None)
 
-    @patch("eero_cli.main.get_preferred_network")
+    @patch("eeroctl.main.get_preferred_network")
     def test_explicit_network_overrides_preferred(self, mock_get_preferred, runner):
         """Test explicit --network-id overrides preferred."""
         mock_get_preferred.return_value = "net_preferred"
@@ -327,7 +327,7 @@ class TestPreferredNetworkLoading:
 
         from click import pass_context
 
-        from eero_cli.context import get_cli_context
+        from eeroctl.context import get_cli_context
 
         @cli.command(name="test-override")
         @pass_context
@@ -355,7 +355,7 @@ class TestMainFunction:
         from importlib import import_module
 
         # Get a fresh reference to the module
-        main_module = import_module("eero_cli.main")
+        main_module = import_module("eeroctl.main")
 
         # We verify that main() calls cli() by checking it's callable
         # and has the expected structure

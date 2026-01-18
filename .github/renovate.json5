@@ -54,7 +54,7 @@
       description: "Track eero-client git dependency version tags",
       fileMatch: ["^pyproject\\.toml$"],
       matchStrings: [
-        "eero-client\\s*@\\s*git\\+https://github\\.com/(?<depName>fulviofreitas/eero-client)\\.git@(?<currentValue>v[\\d.]+)",
+        "eero-client\\s*@\\s*git\\+https://github\\.com/(?<depName>fulviofreitas/eero-api)\\.git@(?<currentValue>v[\\d.]+)",
       ],
       datasourceTemplate: "github-tags",
       versioningTemplate: "semver",
@@ -71,7 +71,7 @@
     // - Full CI test suite pass
     // - Changelog review for breaking changes
     {
-      matchPackageNames: ["fulviofreitas/eero-client"],
+      matchPackageNames: ["fulviofreitas/eero-api"],
       groupName: "eero-client",
       description: "🔴 Core eero API client - requires careful review",
       automerge: false,
@@ -103,8 +103,8 @@
         "- [ ] Check for any deprecated methods",
         "",
         "### Links",
-        "- [eero-client Repository](https://github.com/fulviofreitas/eero-client)",
-        "- [eero-client Releases](https://github.com/fulviofreitas/eero-client/releases)",
+        "- [eero-client Repository](https://github.com/fulviofreitas/eero-api)",
+        "- [eero-client Releases](https://github.com/fulviofreitas/eero-api/releases)",
       ],
     },
 

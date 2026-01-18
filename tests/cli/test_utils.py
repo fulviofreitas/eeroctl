@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from eero_cli.utils import (
+from eeroctl.utils import (
     confirm_action,
     get_config_dir,
     get_config_file,
@@ -55,7 +55,7 @@ class TestGetConfigDir:
 
         config_dir = get_config_dir()
 
-        expected = tmp_path / ".config" / "eero-client"
+        expected = tmp_path / ".config" / "eero-api"
         assert config_dir == expected
 
     def test_windows_path(self, tmp_path, monkeypatch):
@@ -68,7 +68,7 @@ class TestGetConfigDir:
 
         config_dir = get_config_dir()
 
-        expected = tmp_path / "eero-client"
+        expected = tmp_path / "eero-api"
         assert config_dir == expected
 
 
@@ -250,7 +250,7 @@ class TestWithClientDecorator:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
 
-        with patch("eero_cli.utils.EeroClient", return_value=mock_client):
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
             my_command("a", "b", kwarg1="c")
 
         assert received_args == ["a", "b", "c"]
@@ -276,7 +276,7 @@ class TestRunWithClient:
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
 
-        with patch("eero_cli.utils.EeroClient", return_value=mock_client):
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
             await run_with_client(my_func)
 
         assert len(executed) == 1

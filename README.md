@@ -1,6 +1,6 @@
-# 🌐 Eero CLI
+# 🌐 eeroctl
 
-[![CI](https://github.com/fulviofreitas/eero-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/fulviofreitas/eero-cli/actions/workflows/ci.yml)
+[![CI](https://github.com/fulviofreitas/eeroctl/actions/workflows/ci.yml/badge.svg)](https://github.com/fulviofreitas/eeroctl/actions/workflows/ci.yml)
 
 > Manage your Eero mesh Wi-Fi from the terminal ✨
 
@@ -15,8 +15,8 @@
 ## 📦 Install
 
 ```bash
-git clone https://github.com/fulviofreitas/eero-cli.git
-cd eero-cli
+git clone https://github.com/fulviofreitas/eeroctl.git
+cd eeroctl
 uv sync && source .venv/bin/activate
 ```
 
@@ -42,18 +42,18 @@ eero troubleshoot speedtest --force
 
 ## 📖 Documentation
 
-Full documentation lives in the **[Wiki](https://github.com/fulviofreitas/eero-cli/wiki)**:
+Full documentation lives in the **[Wiki](https://github.com/fulviofreitas/eeroctl/wiki)**:
 
 | 📚 Guide | Description |
 |----------|-------------|
-| [CLI Reference](https://github.com/fulviofreitas/eero-cli/wiki/CLI-Reference) | Commands, flags & exit codes |
-| [Usage Examples](https://github.com/fulviofreitas/eero-cli/wiki/Usage-Examples) | Practical examples |
-| [Configuration](https://github.com/fulviofreitas/eero-cli/wiki/Configuration) | Auth storage & env vars |
-| [Troubleshooting](https://github.com/fulviofreitas/eero-cli/wiki/Troubleshooting) | Common issues |
+| [CLI Reference](https://github.com/fulviofreitas/eeroctl/wiki/CLI-Reference) | Commands, flags & exit codes |
+| [Usage Examples](https://github.com/fulviofreitas/eeroctl/wiki/Usage-Examples) | Practical examples |
+| [Configuration](https://github.com/fulviofreitas/eeroctl/wiki/Configuration) | Auth storage & env vars |
+| [Troubleshooting](https://github.com/fulviofreitas/eeroctl/wiki/Troubleshooting) | Common issues |
 
 ## 🔗 Dependencies
 
-Built on [eero-client](https://github.com/fulviofreitas/eero-client) for API communication.
+Built on [eero-api](https://github.com/fulviofreitas/eero-api) for API communication.
 
 ## 📄 License
 

@@ -1,4 +1,4 @@
-"""Unit tests for eero_cli.commands.completion module.
+"""Unit tests for eeroctl.commands.completion module.
 
 Tests cover:
 - completion bash command
@@ -9,7 +9,7 @@ Tests cover:
 import pytest
 from click.testing import CliRunner
 
-from eero_cli.main import cli
+from eeroctl.main import cli
 
 
 class TestCompletionGroup:

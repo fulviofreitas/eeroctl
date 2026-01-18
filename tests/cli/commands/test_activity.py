@@ -1,4 +1,4 @@
-"""Unit tests for eero_cli.commands.activity module.
+"""Unit tests for eeroctl.commands.activity module.
 
 Tests cover:
 - activity summary command
@@ -10,7 +10,7 @@ Tests cover:
 import pytest
 from click.testing import CliRunner
 
-from eero_cli.main import cli
+from eeroctl.main import cli
 
 
 class TestActivityGroup:
@@ -121,7 +121,7 @@ class TestActivityFormatBytes:
 
     def test_format_bytes_values(self):
         """Test _format_bytes formats values correctly."""
-        from eero_cli.commands.activity import _format_bytes
+        from eeroctl.commands.activity import _format_bytes
 
         assert "B" in _format_bytes(500)
         assert "KB" in _format_bytes(2048)
@@ -130,7 +130,7 @@ class TestActivityFormatBytes:
 
     def test_format_bytes_zero(self):
         """Test _format_bytes handles zero."""
-        from eero_cli.commands.activity import _format_bytes
+        from eeroctl.commands.activity import _format_bytes
 
         result = _format_bytes(0)
         assert "0" in result

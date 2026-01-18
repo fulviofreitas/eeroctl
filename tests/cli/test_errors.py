@@ -21,13 +21,13 @@ from eero.exceptions import (
 )
 from rich.console import Console
 
-from eero_cli.errors import (
+from eeroctl.errors import (
     handle_cli_error,
     is_feature_unavailable_error,
     is_not_found_error,
     is_premium_error,
 )
-from eero_cli.exit_codes import ExitCode
+from eeroctl.exit_codes import ExitCode
 
 # ========================== handle_cli_error Tests ==========================
 

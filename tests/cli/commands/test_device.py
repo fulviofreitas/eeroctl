@@ -11,7 +11,7 @@ Tests cover:
 import pytest
 from click.testing import CliRunner
 
-from eero_cli.main import cli
+from eeroctl.main import cli
 
 
 class TestDeviceGroup:
