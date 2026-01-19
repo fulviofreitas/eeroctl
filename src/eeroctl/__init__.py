@@ -8,4 +8,11 @@ Entry point: eeroctl.main:cli
 from .main import cli, main
 
 __version__ = "1.1.1"
-__all__ = ["cli", "main", "__version__"]
+
+
+def get_version() -> str:
+    """Return the current version of eeroctl."""
+    return __version__
+
+
+__all__ = ["cli", "main", "__version__", "get_version"]
