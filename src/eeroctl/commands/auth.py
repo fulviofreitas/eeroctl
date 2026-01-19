@@ -11,6 +11,7 @@ import asyncio
 import json
 import os
 import sys
+from typing import TypedDict
 
 import click
 from eero import EeroClient
@@ -23,6 +24,28 @@ from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..output import OutputFormat
 from ..utils import get_cookie_file
+
+
+class _UserData(TypedDict):
+    """Type definition for user data in account info."""
+
+    id: str | None
+    name: str | None
+    email: str | None
+    phone: str | None
+    role: str | None
+    created_at: str | None
+
+
+class _AccountData(TypedDict):
+    """Type definition for account data."""
+
+    id: str | None
+    name: str | None
+    premium_status: str | None
+    premium_expiry: str | None
+    created_at: str | None
+    users: list[_UserData]
 
 
 @click.group(name="auth")
@@ -308,7 +331,7 @@ def auth_status(ctx: click.Context) -> None:
 
         async with EeroClient(cookie_file=str(cookie_file)) as client:
             is_auth = client.is_authenticated
-            account_data = None
+            account_data: _AccountData | None = None
 
             # Determine session validity based on expiry date, not API call
             # (API call may fail due to network issues, not expired session)
@@ -321,26 +344,27 @@ def auth_status(ctx: click.Context) -> None:
                 try:
                     with cli_ctx.status("Getting account info..."):
                         account = await client.get_account()
-                    account_data = {
-                        "id": account.id,
-                        "name": account.name,
-                        "premium_status": account.premium_status,
-                        "premium_expiry": (
+                    users_list: list[_UserData] = [
+                        _UserData(
+                            id=u.id,
+                            name=u.name,
+                            email=u.email,
+                            phone=u.phone,
+                            role=u.role,
+                            created_at=str(u.created_at) if u.created_at else None,
+                        )
+                        for u in (account.users or [])
+                    ]
+                    account_data = _AccountData(
+                        id=account.id,
+                        name=account.name,
+                        premium_status=account.premium_status,
+                        premium_expiry=(
                             str(account.premium_expiry) if account.premium_expiry else None
                         ),
-                        "created_at": str(account.created_at) if account.created_at else None,
-                        "users": [
-                            {
-                                "id": u.id,
-                                "name": u.name,
-                                "email": u.email,
-                                "phone": u.phone,
-                                "role": u.role,
-                                "created_at": str(u.created_at) if u.created_at else None,
-                            }
-                            for u in (account.users or [])
-                        ],
-                    }
+                        created_at=str(account.created_at) if account.created_at else None,
+                        users=users_list,
+                    )
                 except Exception:
                     # API call failed but session may still be valid per expiry date
                     pass
