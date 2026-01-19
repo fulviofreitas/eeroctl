@@ -1,6 +1,8 @@
 # 🌐 eeroctl
 
 [![CI](https://github.com/fulviofreitas/eeroctl/actions/workflows/ci.yml/badge.svg)](https://github.com/fulviofreitas/eeroctl/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/eeroctl)](https://pypi.org/project/eeroctl/)
+[![Homebrew](https://img.shields.io/badge/homebrew-eeroctl-orange)](https://github.com/fulviofreitas/homebrew-eeroctl)
 
 > Manage your Eero mesh Wi-Fi from the terminal ✨
 
@@ -14,14 +16,28 @@
 
 ## 📦 Install
 
+### Homebrew
+
+```bash
+brew install fulviofreitas/eeroctl/eeroctl
+```
+
+### PyPI
+
+```bash
+pip install eeroctl
+```
+
+<details>
+<summary>From source</summary>
+
 ```bash
 git clone https://github.com/fulviofreitas/eeroctl.git
 cd eeroctl
 uv sync && source .venv/bin/activate
 ```
 
-<details>
-<summary>Using pip instead?</summary>
+Or with pip:
 
 ```bash
 python3 -m venv .venv && source .venv/bin/activate

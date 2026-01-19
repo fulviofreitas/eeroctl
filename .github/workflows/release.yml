@@ -1,11 +1,12 @@
 # ============================================================================
-# 🚀 Automated Semantic Release
+# 🚀 Release + Publish Pipeline
 # ============================================================================
-# Automatically creates releases based on conventional commit messages.
-# Generates changelogs, bumps versions, and creates GitHub releases.
+# Chain: CI → Release → TestPyPI → PyPI (approval) → Homebrew
 #
-# Chain: CI → Release
-# Triggers: After CI Pipeline succeeds on master
+# Automatically creates releases based on conventional commit messages,
+# publishes to PyPI, and updates Homebrew tap.
+#
+# Reusable actions from: fulviofreitas/eero-api/.github/actions/
 # ============================================================================
 
 name: 🚀 Release
@@ -37,6 +38,7 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  id-token: write  # Required for PyPI Trusted Publishing
 
 env:
   PYTHON_VERSION: "3.12"
@@ -54,8 +56,12 @@ jobs:
     if: |
       (github.event_name == 'workflow_dispatch') ||
       (github.event.workflow_run.conclusion == 'success' &&
-      !contains(github.event.workflow_run.head_commit.message, '[skip ci]') &&
-      !contains(github.event.workflow_run.head_commit.message, 'chore(release)'))
+       !contains(github.event.workflow_run.head_commit.message, '[skip ci]') &&
+       !contains(github.event.workflow_run.head_commit.message, 'chore(release)'))
+
+    outputs:
+      released: ${{ steps.release.outputs.released }}
+      version: ${{ steps.release.outputs.version }}
 
     steps:
       - name: 📥 Checkout repository
@@ -65,7 +71,142 @@ jobs:
           persist-credentials: false
 
       - name: 🚀 Run semantic-release
+        id: release
         uses: fulviofreitas/eero-api/.github/actions/semantic-release@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: ${{ github.event.inputs.dry_run || 'false' }}
+
+  # ============================================================================
+  # 📦 Publish to TestPyPI
+  # ============================================================================
+  publish-testpypi:
+    name: 📦 Publish to TestPyPI
+    runs-on: ubuntu-latest
+    needs: release
+    if: |
+      needs.release.outputs.released == 'true' &&
+      github.event.inputs.dry_run != 'true'
+    timeout-minutes: 10
+
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/eeroctl/
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: master
+          fetch-depth: 1
+
+      - name: 🔧 Prepare for PyPI
+        run: |
+          # Replace Git dependency with PyPI version
+          sed -i 's|eero-api @ git+https://github.com/fulviofreitas/eero-api.git@v[0-9.]*|eero-api>=1.3.1|' pyproject.toml
+          echo "📦 Updated pyproject.toml for PyPI compatibility:"
+          grep "eero-api" pyproject.toml
+
+      - name: 📦 Publish to TestPyPI
+        uses: fulviofreitas/eero-api/.github/actions/pypi-publish@master
+        with:
+          version: ${{ needs.release.outputs.version }}
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+  # ============================================================================
+  # 📦 Publish to PyPI (requires approval)
+  # ============================================================================
+  publish-pypi:
+    name: 📦 Publish to PyPI
+    runs-on: ubuntu-latest
+    needs: [release, publish-testpypi]
+    if: |
+      needs.release.outputs.released == 'true' &&
+      github.event.inputs.dry_run != 'true'
+    timeout-minutes: 10
+
+    environment:
+      name: pypi
+      url: https://pypi.org/project/eeroctl/
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v6
+        with:
+          ref: master
+          fetch-depth: 1
+
+      - name: 🔧 Prepare for PyPI
+        run: |
+          # Replace Git dependency with PyPI version
+          sed -i 's|eero-api @ git+https://github.com/fulviofreitas/eero-api.git@v[0-9.]*|eero-api>=1.3.1|' pyproject.toml
+          echo "📦 Updated pyproject.toml for PyPI compatibility:"
+          grep "eero-api" pyproject.toml
+
+      - name: 📦 Publish to PyPI
+        uses: fulviofreitas/eero-api/.github/actions/pypi-publish@master
+        with:
+          version: ${{ needs.release.outputs.version }}
+
+  # ============================================================================
+  # 🍺 Update Homebrew Tap
+  # ============================================================================
+  update-homebrew:
+    name: 🍺 Update Homebrew
+    runs-on: ubuntu-latest
+    needs: [release, publish-pypi]
+    if: |
+      needs.release.outputs.released == 'true' &&
+      github.event.inputs.dry_run != 'true'
+    timeout-minutes: 5
+
+    steps:
+      - name: 🔑 Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          owner: fulviofreitas
+          repositories: homebrew-eeroctl
+
+      - name: 🍺 Trigger formula update
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          repository: fulviofreitas/homebrew-eeroctl
+          event-type: update-formula
+          client-payload: |
+            {
+              "version": "${{ needs.release.outputs.version }}",
+              "package": "eeroctl"
+            }
+
+      - name: 📝 Summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << EOF
+          ## 🍺 Homebrew Update Triggered
+
+          | Property | Value |
+          |:---------|:------|
+          | 📦 Package | \`eeroctl\` |
+          | 🏷️ Version | \`v${{ needs.release.outputs.version }}\` |
+          | 🎯 Repository | \`fulviofreitas/homebrew-eeroctl\` |
+
+          The Homebrew tap will be updated automatically.
+
+          ### 📥 Installation
+
+          \`\`\`bash
+          brew install fulviofreitas/eeroctl/eeroctl
+          \`\`\`
+          EOF
