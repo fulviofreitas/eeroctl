@@ -7,5 +7,5 @@ Entry point: eeroctl.main:cli
 
 from .main import cli, main
 
-__version__ = "1.0.3"
+__version__ = "1.0.4"
 __all__ = ["cli", "main", "__version__"]
