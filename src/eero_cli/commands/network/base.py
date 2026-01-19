@@ -82,7 +82,7 @@ def network_list(ctx: click.Context) -> None:
                     {
                         "id": n.id,
                         "name": n.name,
-                        "status": n.status.name if n.status else None,
+                        "status": n.status or None,
                         "public_ip": n.public_ip,
                         "isp_name": n.isp_name,
                     }
@@ -91,8 +91,7 @@ def network_list(ctx: click.Context) -> None:
                 cli_ctx.render_structured(data, "eero.network.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
                 for n in networks:
-                    # Extract just the enum name (e.g., "ONLINE" from EeroNetworkStatus.ONLINE)
-                    status = n.status.name if n.status else ""
+                    status = n.status or ""
                     # Use print() with fixed-width columns for alignment
                     print(
                         f"{n.id or '':<12}  {n.name or '':<25}  {status:<15}  "
@@ -107,8 +106,7 @@ def network_list(ctx: click.Context) -> None:
                 table.add_column("ISP", style="magenta")
 
                 for n in networks:
-                    # Extract just the enum name (e.g., "ONLINE" from EeroNetworkStatus.ONLINE)
-                    status = n.status.name if n.status else ""
+                    status = n.status or ""
                     if "online" in status.lower() or "connected" in status.lower():
                         status_display = f"[green]{status}[/green]"
                     elif "offline" in status.lower():
