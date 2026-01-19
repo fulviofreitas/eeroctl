@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/fulviofreitas/eeroctl/compare/v1.1.1...v1.2.0) (2026-01-19)
+
+### ✨ Features
+
+* add get_version() helper function ([26c11cf](https://github.com/fulviofreitas/eeroctl/commit/26c11cf28d4a9ad7e674305da5d52b2a427f2f64))
+
 ## [1.1.1](https://github.com/fulviofreitas/eeroctl/compare/v1.1.0...v1.1.1) (2026-01-19)
 
 ### 🐛 Bug Fixes
