@@ -8,6 +8,7 @@ Entry point: eeroctl.main:cli
 from .main import cli, main
 
 __version__ = "1.2.2"
+__version_info__ = tuple(int(x) for x in __version__.split(".")[:3])
 
 
 def get_version() -> str:
@@ -15,4 +16,4 @@ def get_version() -> str:
     return __version__
 
 
-__all__ = ["cli", "main", "__version__", "get_version"]
+__all__ = ["cli", "main", "__version__", "__version_info__", "get_version"]
