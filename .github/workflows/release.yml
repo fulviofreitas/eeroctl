@@ -108,13 +108,6 @@ jobs:
         with:
           python-version: "3.14"
 
-      - name: 🔧 Prepare for PyPI
-        run: |
-          # Replace Git dependency with PyPI version
-          sed -i 's|eero-api @ git+https://github.com/fulviofreitas/eero-api.git@v[0-9.]*|eero-api>=1.3.1|' pyproject.toml
-          echo "📦 Updated pyproject.toml for PyPI compatibility:"
-          grep "eero-api" pyproject.toml
-
       - name: 🏷️ Create dev version
         id: version
         run: |
@@ -181,13 +174,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.14"
-
-      - name: 🔧 Prepare for PyPI
-        run: |
-          # Replace Git dependency with PyPI version
-          sed -i 's|eero-api @ git+https://github.com/fulviofreitas/eero-api.git@v[0-9.]*|eero-api>=1.3.1|' pyproject.toml
-          echo "📦 Updated pyproject.toml for PyPI compatibility:"
-          grep "eero-api" pyproject.toml
 
       - name: 📦 Install build tools
         run: |

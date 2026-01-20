@@ -158,7 +158,7 @@ async def _interactive_login(
     # Start fresh login
     console.print(
         Panel.fit(
-            "Please login to your Eero account.\n" "A verification code will be sent to you.",
+            "Please login to your Eero account.\nA verification code will be sent to you.",
             title="Eero Login",
             border_style="blue",
         )

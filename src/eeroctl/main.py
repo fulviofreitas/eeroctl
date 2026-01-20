@@ -5,9 +5,12 @@ and registers command groups from the commands/ module.
 """
 
 import logging
+import sys
+from importlib.metadata import version
 from typing import Optional
 
 import click
+import eero
 from rich.console import Console
 
 from .commands import (
@@ -24,6 +27,16 @@ from .context import create_cli_context
 from .utils import get_preferred_network
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# ==================== Version Info ====================
+
+
+def _get_version_info() -> str:
+    """Build version string with Python and eero-api versions."""
+    eeroctl_version = version("eeroctl")
+    python_version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    return f"%(prog)s {eeroctl_version}\nPython {python_version}\neero-api {eero.__version__}"
 
 
 # ==================== Main CLI Group ====================
@@ -70,7 +83,7 @@ _LOGGER = logging.getLogger(__name__)
     is_flag=True,
     help="Skip confirmation prompts for disruptive actions.",
 )
-@click.version_option()
+@click.version_option(message=_get_version_info())
 @click.pass_context
 def cli(
     ctx: click.Context,
