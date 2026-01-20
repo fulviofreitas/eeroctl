@@ -7,7 +7,7 @@ Entry point: eeroctl.main:cli
 
 from .main import cli, main
 
-__version__ = "1.2.1"
+__version__ = "1.2.2"
 
 
 def get_version() -> str:

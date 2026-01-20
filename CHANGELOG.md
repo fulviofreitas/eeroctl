@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2](https://github.com/fulviofreitas/eeroctl/compare/v1.2.1...v1.2.2) (2026-01-20)
+
+### 🐛 Bug Fixes
+
+* **ci:** prevent commitlint body-max-line-length failures on Renovate PRs ([422938f](https://github.com/fulviofreitas/eeroctl/commit/422938fd328b794f142b97fd78b0b3ba201b22ea))
+
 ## [1.2.1](https://github.com/fulviofreitas/eeroctl/compare/v1.2.0...v1.2.1) (2026-01-19)
 
 ### 🐛 Bug Fixes
