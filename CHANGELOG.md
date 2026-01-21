@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0](https://github.com/fulviofreitas/eeroctl/compare/v1.6.0...v1.7.0) (2026-01-21)
+
+### ✨ Features
+
+* **formatting:** enrich device show output with detailed panels ([b46dcb0](https://github.com/fulviofreitas/eeroctl/commit/b46dcb04782d42dc3ad670f75645f7d808814ba7))
+* **formatting:** enrich eero show output with detailed panels ([53a39a9](https://github.com/fulviofreitas/eeroctl/commit/53a39a999731111c27d78bafa28cbdf80b05893d))
+* **formatting:** enrich network show output with detailed panels ([caa895b](https://github.com/fulviofreitas/eeroctl/commit/caa895b4e3a71ad3ce7b087197fd8c9735e5a59d))
+* **formatting:** enrich profile show output with detailed panels ([526afa9](https://github.com/fulviofreitas/eeroctl/commit/526afa9f136f71c459f2668a7724ab6db7f719b0))
+
 ## [1.6.0](https://github.com/fulviofreitas/eeroctl/compare/v1.5.0...v1.6.0) (2026-01-21)
 
 ### ✨ Features
