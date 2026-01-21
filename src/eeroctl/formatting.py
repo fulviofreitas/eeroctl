@@ -2353,6 +2353,317 @@ def create_profile_devices_table(devices: List[Dict[str, Any]]) -> Table:
     return table
 
 
+# ==================== Profile Brief View Panels ====================
+
+
+def _profile_basic_panel(profile: Profile, extensive: bool = False) -> Panel:
+    """Build the basic profile info panel.
+
+    Args:
+        profile: Profile object
+        extensive: Whether to show extensive details
+
+    Returns:
+        Rich Panel object
+    """
+    paused_style = "red" if profile.paused else "green"
+
+    lines = [
+        field("Name", profile.name),
+        field("ID", profile.id),
+    ]
+
+    # State
+    state_value = profile.state.value if profile.state else "Unknown"
+    state_style = "green" if state_value == "Active" else "yellow"
+    lines.append(f"[bold]State:[/bold] [{state_style}]{state_value}[/{state_style}]")
+
+    # Paused status
+    lines.append(
+        f"[bold]Paused:[/bold] [{paused_style}]{'Yes' if profile.paused else 'No'}[/{paused_style}]"
+    )
+
+    # Default profile indicator
+    is_default = getattr(profile, "default", False)
+    if is_default:
+        lines.append("[bold]Default:[/bold] [cyan]Yes[/cyan]")
+
+    if extensive:
+        lines.extend(
+            [
+                field("Devices", profile.device_count),
+                field("Connected Devices", profile.connected_device_count),
+                field_bool("Premium Enabled", profile.premium_enabled),
+                field_bool("Schedule Enabled", profile.schedule_enabled),
+            ]
+        )
+    else:
+        lines.append(field_bool("Schedule", profile.schedule_enabled))
+
+        # Content filter summary
+        filter_enabled = bool(profile.content_filter and any(vars(profile.content_filter).values()))
+        lines.append(field_bool("Content Filter", filter_enabled))
+
+    return build_panel(lines, f"Profile: {profile.name}", "blue")
+
+
+def _profile_device_summary_panel(profile: Profile) -> Optional[Panel]:
+    """Build the device summary panel for brief view.
+
+    Args:
+        profile: Profile object
+
+    Returns:
+        Rich Panel object or None if no devices
+    """
+    devices = profile.devices
+    if not devices:
+        return None
+
+    # Count devices by type and connection status
+    total_devices = len(devices)
+    connected_count = sum(1 for d in devices if d.get("connected", False))
+    disconnected_count = total_devices - connected_count
+
+    # Count by device type
+    device_types: Dict[str, int] = {}
+    for device in devices:
+        device_type = device.get("device_type", "unknown")
+        device_types[device_type] = device_types.get(device_type, 0) + 1
+
+    lines = [
+        field("Total Devices", total_devices),
+        f"[bold]Connected:[/bold] [green]{connected_count}[/green]",
+        f"[bold]Disconnected:[/bold] [dim]{disconnected_count}[/dim]",
+    ]
+
+    # Add device type breakdown if there are multiple types
+    if len(device_types) > 1:
+        lines.append("")
+        lines.append("[bold]By Type:[/bold]")
+        # Sort by count descending
+        sorted_types = sorted(device_types.items(), key=lambda x: x[1], reverse=True)
+        for dtype, count in sorted_types[:5]:  # Show top 5 types
+            # Format device type nicely
+            dtype_display = dtype.replace("_", " ").title()
+            lines.append(f"  • {dtype_display}: {count}")
+
+    return build_panel(lines, "Device Summary", "green")
+
+
+def _profile_content_filters_panel(profile: Profile) -> Optional[Panel]:
+    """Build the content filters panel for brief view.
+
+    Args:
+        profile: Profile object
+
+    Returns:
+        Rich Panel object or None if no filters
+    """
+    # Try unified_content_filters first
+    unified_filters = getattr(profile, "unified_content_filters", None)
+    if unified_filters:
+        dns_policies = (
+            unified_filters.get("dns_policies", {})
+            if isinstance(unified_filters, dict)
+            else getattr(unified_filters, "dns_policies", {})
+        )
+
+        if dns_policies:
+            lines = []
+            filter_map = {
+                "block_gaming_content": "Gaming",
+                "block_illegal_content": "Illegal Content",
+                "block_messaging_content": "Messaging",
+                "block_pornographic_content": "Adult Content",
+                "block_social_content": "Social Media",
+                "block_shopping_content": "Shopping",
+                "block_streaming_content": "Streaming",
+                "block_violent_content": "Violent Content",
+                "safe_search_enabled": "Safe Search",
+                "youtube_restricted": "YouTube Restricted",
+            }
+
+            enabled_filters = []
+            for key, label in filter_map.items():
+                value = (
+                    dns_policies.get(key, False)
+                    if isinstance(dns_policies, dict)
+                    else getattr(dns_policies, key, False)
+                )
+                if value:
+                    enabled_filters.append(label)
+
+            if enabled_filters:
+                lines.append("[bold]Blocked Categories:[/bold]")
+                for f in enabled_filters:
+                    lines.append(f"  • [red]{f}[/red]")
+                return build_panel(lines, "Content Filters", "yellow")
+
+    # Fallback to content_filter
+    if profile.content_filter:
+        filter_enabled = any(vars(profile.content_filter).values())
+        if filter_enabled:
+            lines = ["[bold]Active Filters:[/bold]"]
+            for name, value in vars(profile.content_filter).items():
+                if value:
+                    display_name = " ".join(word.capitalize() for word in name.split("_"))
+                    lines.append(f"  • [red]{display_name}[/red]")
+            return build_panel(lines, "Content Filters", "yellow")
+
+    return None
+
+
+def _profile_dns_security_panel(profile: Profile) -> Optional[Panel]:
+    """Build the DNS security panel for brief view.
+
+    Args:
+        profile: Profile object
+
+    Returns:
+        Rich Panel object or None if no DNS policies
+    """
+    premium_dns = getattr(profile, "premium_dns", None)
+    if not premium_dns:
+        return None
+
+    dns_policies = (
+        premium_dns.get("dns_policies", {})
+        if isinstance(premium_dns, dict)
+        else getattr(premium_dns, "dns_policies", {})
+    )
+
+    ad_block = (
+        premium_dns.get("ad_block_settings", {})
+        if isinstance(premium_dns, dict)
+        else getattr(premium_dns, "ad_block_settings", {})
+    )
+
+    lines = []
+
+    # DNS policies
+    policy_map = {
+        "block_pornographic_content": "Block Adult",
+        "block_illegal_content": "Block Illegal",
+        "block_violent_content": "Block Violent",
+        "safe_search_enabled": "Safe Search",
+    }
+
+    for key, label in policy_map.items():
+        value = (
+            dns_policies.get(key, False)
+            if isinstance(dns_policies, dict)
+            else getattr(dns_policies, key, False)
+        )
+        if value:
+            lines.append(f"[bold]{label}:[/bold] [green]Enabled[/green]")
+
+    # Ad blocking
+    ad_block_enabled = (
+        ad_block.get("enabled", False)
+        if isinstance(ad_block, dict)
+        else getattr(ad_block, "enabled", False)
+    )
+    if ad_block_enabled:
+        lines.append("[bold]Ad Block:[/bold] [green]Enabled[/green]")
+
+    # DNS provider
+    dns_provider = (
+        premium_dns.get("dns_provider")
+        if isinstance(premium_dns, dict)
+        else getattr(premium_dns, "dns_provider", None)
+    )
+    if dns_provider:
+        lines.append(field("DNS Provider", dns_provider))
+
+    return build_panel(lines, "DNS Security", "magenta") if lines else None
+
+
+def _profile_blocked_apps_panel(profile: Profile) -> Optional[Panel]:
+    """Build the blocked applications panel.
+
+    Args:
+        profile: Profile object
+
+    Returns:
+        Rich Panel object or None if no blocked apps
+    """
+    premium_dns = getattr(profile, "premium_dns", None)
+    if not premium_dns:
+        return None
+
+    blocked_apps = (
+        premium_dns.get("blocked_applications", [])
+        if isinstance(premium_dns, dict)
+        else getattr(premium_dns, "blocked_applications", [])
+    )
+
+    if not blocked_apps:
+        return None
+
+    lines = ["[bold]Blocked Applications:[/bold]"] + [f"  • {app}" for app in blocked_apps]
+    return build_panel(lines, "Blocked Apps", "red")
+
+
+def _profile_custom_lists_panel(profile: Profile) -> Optional[Panel]:
+    """Build the custom block/allow lists panel for brief view.
+
+    Args:
+        profile: Profile object
+
+    Returns:
+        Rich Panel object or None if no custom lists
+    """
+    block_list = profile.custom_block_list or []
+    allow_list = profile.custom_allow_list or []
+
+    if not block_list and not allow_list:
+        return None
+
+    lines = []
+
+    if block_list:
+        lines.append(f"[bold]Blocked Domains:[/bold] [red]{len(block_list)}[/red]")
+        # Show first few
+        for domain in block_list[:3]:
+            lines.append(f"  • {domain}")
+        if len(block_list) > 3:
+            lines.append(f"  [dim]... and {len(block_list) - 3} more[/dim]")
+
+    if allow_list:
+        if lines:
+            lines.append("")
+        lines.append(f"[bold]Allowed Domains:[/bold] [green]{len(allow_list)}[/green]")
+        for domain in allow_list[:3]:
+            lines.append(f"  • {domain}")
+        if len(allow_list) > 3:
+            lines.append(f"  [dim]... and {len(allow_list) - 3} more[/dim]")
+
+    return build_panel(lines, "Custom Lists", "cyan")
+
+
+def _profile_schedule_panel(profile: Profile) -> Optional[Panel]:
+    """Build the schedule panel.
+
+    Args:
+        profile: Profile object
+
+    Returns:
+        Rich Panel object or None if no schedule
+    """
+    if not profile.schedule_enabled or not profile.schedule_blocks:
+        return None
+
+    lines = [
+        f"[bold]{', '.join(block.days)}:[/bold] {block.start_time} - {block.end_time}"
+        for block in profile.schedule_blocks
+    ]
+    return build_panel(lines, "Schedule", "green")
+
+
+# ==================== Main Profile Details Function ====================
+
+
 def print_profile_details(profile: Profile, detail_level: DetailLevel = "brief") -> None:
     """Print profile information with configurable detail level.
 
@@ -2360,77 +2671,69 @@ def print_profile_details(profile: Profile, detail_level: DetailLevel = "brief")
         profile: Profile object
         detail_level: "brief" or "full"
     """
-    paused_style = "red" if profile.paused else "green"
+    extensive = detail_level == "full"
 
-    # Basic info panel
-    lines = [
-        field("Name", profile.name),
-    ]
-    if detail_level == "full":
-        lines.extend(
-            [
-                field("Devices", profile.device_count),
-                field("Connected Devices", profile.connected_device_count),
-            ]
-        )
+    # Basic info panel (always shown)
+    console.print(_profile_basic_panel(profile, extensive))
+
+    if not extensive:
+        # Brief view panels
+
+        # Device summary
+        summary_panel = _profile_device_summary_panel(profile)
+        if summary_panel:
+            console.print(summary_panel)
+
+        # Content filters
+        filters_panel = _profile_content_filters_panel(profile)
+        if filters_panel:
+            console.print(filters_panel)
+
+        # DNS security
+        dns_panel = _profile_dns_security_panel(profile)
+        if dns_panel:
+            console.print(dns_panel)
+
+        # Blocked apps
+        apps_panel = _profile_blocked_apps_panel(profile)
+        if apps_panel:
+            console.print(apps_panel)
+
+        # Custom lists
+        lists_panel = _profile_custom_lists_panel(profile)
+        if lists_panel:
+            console.print(lists_panel)
+
+        # Devices table
+        if profile.devices:
+            console.print(create_profile_devices_table(profile.devices))
+        else:
+            console.print("[bold yellow]No devices in this profile[/bold yellow]")
+
     else:
-        lines.append(field("State", profile.state.value if profile.state else "Unknown"))
+        # Extensive view panels
 
-    lines.extend(
-        [
-            f"[bold]Paused:[/bold] [{paused_style}]{'Yes' if profile.paused else 'No'}[/{paused_style}]",
-        ]
-    )
+        # Schedule
+        schedule_panel = _profile_schedule_panel(profile)
+        if schedule_panel:
+            console.print(schedule_panel)
 
-    if detail_level == "full":
-        lines.extend(
-            [
-                field_bool("Premium Enabled", profile.premium_enabled),
-                field_bool("Schedule Enabled", profile.schedule_enabled),
-            ]
-        )
-    else:
-        lines.extend(
-            [
-                field_bool("Schedule", profile.schedule_enabled),
-            ]
-        )
-        filter_enabled = bool(profile.content_filter and any(vars(profile.content_filter).values()))
-        lines.append(field_bool("Content Filter", filter_enabled))
+        # Content filter details
+        if profile.content_filter:
+            filter_enabled = any(vars(profile.content_filter).values())
+            if filter_enabled:
+                filter_settings = []
+                for name, value in vars(profile.content_filter).items():
+                    if value:
+                        display_name = " ".join(word.capitalize() for word in name.split("_"))
+                        filter_settings.append(f"[bold]{display_name}:[/bold] Enabled")
+                console.print(build_panel(filter_settings, "Content Filtering", "yellow"))
 
-    console.print(build_panel(lines, f"Profile: {profile.name}", "blue"))
-
-    # Schedule (full only)
-    if detail_level == "full" and profile.schedule_enabled and profile.schedule_blocks:
-        lines = [
-            f"[bold]{', '.join(block.days)}:[/bold] {block.start_time} - {block.end_time}"
-            for block in profile.schedule_blocks
-        ]
-        console.print(build_panel(lines, "Schedule", "green"))
-
-    # Content filter (full only)
-    if detail_level == "full" and profile.content_filter:
-        filter_enabled = any(vars(profile.content_filter).values())
-        if filter_enabled:
-            filter_settings = []
-            for name, value in vars(profile.content_filter).items():
-                if value:
-                    display_name = " ".join(word.capitalize() for word in name.split("_"))
-                    filter_settings.append(f"[bold]{display_name}:[/bold] Enabled")
-            console.print(build_panel(filter_settings, "Content Filtering", "yellow"))
-
-    # Block/Allow lists (full only)
-    if detail_level == "full":
+        # Block/Allow lists (full)
         if profile.custom_block_list:
             console.print(build_panel(profile.custom_block_list, "Blocked Domains", "red"))
         if profile.custom_allow_list:
             console.print(build_panel(profile.custom_allow_list, "Allowed Domains", "green"))
-
-    # Devices table (brief shows devices)
-    if detail_level == "brief" and profile.devices:
-        console.print(create_profile_devices_table(profile.devices))
-    elif detail_level == "brief":
-        console.print("[bold yellow]No devices in this profile[/bold yellow]")
 
 
 # ==================== Miscellaneous Formatting ====================
