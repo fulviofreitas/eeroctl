@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/fulviofreitas/eeroctl/compare/v1.4.0...v1.5.0) (2026-01-21)
+
+### ✨ Features
+
+* **cli:** add display option decorators for debug/quiet/color (Phase 5) ([c1783a5](https://github.com/fulviofreitas/eeroctl/commit/c1783a5a642518704303db0783cf298ceebf8dab))
+* **cli:** add shared option decorators for flexible option placement ([ef9b2df](https://github.com/fulviofreitas/eeroctl/commit/ef9b2df07129c5804a6322e9d105ea08b81ff6e3))
+* **cli:** apply --force option to destructive commands (Phase 4) ([2e12dcb](https://github.com/fulviofreitas/eeroctl/commit/2e12dcbccecb4055f0cea39a31a9d54fe7b83fe5))
+* **cli:** apply --network-id option to network-dependent commands (Phase 3) ([66572b9](https://github.com/fulviofreitas/eeroctl/commit/66572b99c488d4ca7df7918830e688f32e8151b1))
+* **cli:** apply --output option to list/show commands (Phase 2) ([ddb2a2d](https://github.com/fulviofreitas/eeroctl/commit/ddb2a2d1e0d03ff7ec41fe966402ceb8dc347b33))
+
+### 📚 Documentation
+
+* update documentation for flexible option placement (Phase 6) ([164f9b3](https://github.com/fulviofreitas/eeroctl/commit/164f9b3ef0458aed1746b72dc309d6e80d21dda9))
+
 ## [Unreleased]
 
 ### ✨ Features
