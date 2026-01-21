@@ -82,7 +82,9 @@ def profile_list(ctx: click.Context, output: Optional[str], network_id: Optional
                     device_count = (
                         p.device_count
                         if p.device_count is not None
-                        else len(p.devices) if p.devices else 0
+                        else len(p.devices)
+                        if p.devices
+                        else 0
                     )
                     # Use print() with fixed-width columns for alignment
                     print(
@@ -119,7 +121,9 @@ def profile_list(ctx: click.Context, output: Optional[str], network_id: Optional
                     device_count = (
                         p.device_count
                         if p.device_count is not None
-                        else len(p.devices) if p.devices else 0
+                        else len(p.devices)
+                        if p.devices
+                        else 0
                     )
 
                     table.add_row(

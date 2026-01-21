@@ -44,6 +44,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### ♻️ Refactoring
+
+* **formatting:** split God Object `formatting.py` (2,810 lines) into modular package
+  * New package structure: `src/eeroctl/formatting/`
+  * `base.py` - Shared utilities (console, field helpers, status formatters)
+  * `network.py` - Network formatting (659 lines)
+  * `eero.py` - Eero device formatting (591 lines)
+  * `device.py` - Connected device formatting (430 lines)
+  * `profile.py` - Profile formatting (443 lines)
+  * `misc.py` - Speed test and blacklist formatting (87 lines)
+  * Backward compatible via `__init__.py` re-exports
+
+### 🐛 Bug Fixes
+
+* **auth:** add debug logging to exception handlers (resolves Bandit B110 warnings)
+
+### 🔧 Maintenance
+
+* **dev:** add pre-commit hooks configuration (`.pre-commit-config.yaml`)
+
 ### ✨ Features
 
 * **cli:** flexible option placement - options can now appear anywhere in commands

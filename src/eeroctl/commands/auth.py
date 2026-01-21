@@ -9,6 +9,7 @@ Commands:
 
 import asyncio
 import json
+import logging
 import os
 import sys
 from typing import TypedDict
@@ -24,6 +25,8 @@ from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..output import OutputFormat
 from ..utils import get_cookie_file
+
+logger = logging.getLogger(__name__)
 
 
 class _UserData(TypedDict):
@@ -147,10 +150,11 @@ async def _interactive_login(
                                     f"Found {len(networks)} network(s).[/bold green]"
                                 )
                                 return True
-                            except Exception:
+                            except Exception as ex:
+                                logger.debug("Session validation failed: %s", ex)
                                 console.print("[yellow]Existing session invalid.[/yellow]")
-        except Exception:
-            pass
+        except Exception as ex:
+            logger.debug("Failed to check existing session: %s", ex)
 
     # Clear existing auth data
     await client._api.auth.clear_auth_data()
@@ -296,9 +300,9 @@ def _get_session_info() -> dict:
                     expiry = datetime.fromisoformat(expiry_str)
                     session_info["session_expired"] = datetime.now() > expiry
                 except ValueError:
-                    pass
-        except Exception:
-            pass
+                    logger.debug("Failed to parse session expiry date: %s", expiry_str)
+        except Exception as ex:
+            logger.debug("Failed to read cookie file: %s", ex)
 
     return session_info
 
@@ -365,9 +369,9 @@ def auth_status(ctx: click.Context) -> None:
                         created_at=str(account.created_at) if account.created_at else None,
                         users=users_list,
                     )
-                except Exception:
+                except Exception as ex:
                     # API call failed but session may still be valid per expiry date
-                    pass
+                    logger.debug("Session verification API call failed: %s", ex)
 
             # Determine auth method
             auth_method = "keyring" if keyring_available else "cookie"
