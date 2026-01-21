@@ -46,19 +46,19 @@ def format_network_status(status_value: str) -> tuple[str, str]:
     """Format network status into display text and style.
 
     Args:
-        status_value: Raw status string
+        status_value: Clean status string (e.g., "online", "offline", "updating")
 
     Returns:
         Tuple of (display_text, style)
     """
-    status_str = str(status_value).upper()
-    if "ONLINE" in status_str or status_value in ("online", "connected"):
+    status_lower = status_value.lower()
+    if status_lower in ("online", "connected"):
         return "online", "green"
-    elif "OFFLINE" in status_str:
+    elif status_lower == "offline":
         return "offline", "red"
-    elif "UPDATING" in status_str:
+    elif status_lower == "updating":
         return "updating", "yellow"
-    return "unknown", "red"
+    return status_value or "unknown", "dim"
 
 
 def format_device_status(status: EeroDeviceStatus) -> tuple[str, str]:
