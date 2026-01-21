@@ -18,10 +18,10 @@ from eero import EeroClient
 from rich.panel import Panel
 from rich.table import Table
 
-from ..context import EeroCliContext, ensure_cli_context, get_cli_context
+from ..context import EeroCliContext, ensure_cli_context
 from ..errors import is_premium_error
 from ..exit_codes import ExitCode
-from ..options import apply_options, output_option
+from ..options import apply_options, network_option, output_option
 from ..output import OutputFormat
 from ..safety import OperationRisk, SafetyError, confirm_or_fail
 from ..utils import run_with_client
@@ -53,10 +53,11 @@ def profile_group(ctx: click.Context) -> None:
 
 @profile_group.command(name="list")
 @output_option
+@network_option
 @click.pass_context
-def profile_list(ctx: click.Context, output: Optional[str]) -> None:
+def profile_list(ctx: click.Context, output: Optional[str], network_id: Optional[str]) -> None:
     """List all profiles."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -135,15 +136,18 @@ def profile_list(ctx: click.Context, output: Optional[str]) -> None:
 @profile_group.command(name="show")
 @click.argument("profile_id")
 @output_option
+@network_option
 @click.pass_context
-def profile_show(ctx: click.Context, profile_id: str, output: Optional[str]) -> None:
+def profile_show(
+    ctx: click.Context, profile_id: str, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Show details of a specific profile.
 
     \b
     Arguments:
       PROFILE_ID  Profile ID or name
     """
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -183,9 +187,14 @@ def profile_show(ctx: click.Context, profile_id: str, output: Optional[str]) -> 
 @click.argument("profile_id")
 @click.option("--duration", "-d", help="Duration (e.g., 30m, 1h)")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@network_option
 @click.pass_context
 def profile_pause(
-    ctx: click.Context, profile_id: str, duration: Optional[str], force: bool
+    ctx: click.Context,
+    profile_id: str,
+    duration: Optional[str],
+    force: bool,
+    network_id: Optional[str],
 ) -> None:
     """Pause internet access for a profile.
 
@@ -197,22 +206,25 @@ def profile_pause(
     Options:
       --duration, -d  Duration (e.g., 30m, 1h)
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     _set_profile_paused(cli_ctx, profile_id, True, force)
 
 
 @profile_group.command(name="unpause")
 @click.argument("profile_id")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@network_option
 @click.pass_context
-def profile_unpause(ctx: click.Context, profile_id: str, force: bool) -> None:
+def profile_unpause(
+    ctx: click.Context, profile_id: str, force: bool, network_id: Optional[str]
+) -> None:
     """Resume internet access for a profile.
 
     \b
     Arguments:
       PROFILE_ID  Profile ID or name
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     _set_profile_paused(cli_ctx, profile_id, False, force)
 
 
@@ -287,10 +299,13 @@ def apps_group(ctx: click.Context) -> None:
 @apps_group.command(name="list")
 @click.argument("profile_id")
 @output_option
+@network_option
 @click.pass_context
-def apps_list(ctx: click.Context, profile_id: str, output: Optional[str]) -> None:
+def apps_list(
+    ctx: click.Context, profile_id: str, output: Optional[str], network_id: Optional[str]
+) -> None:
     """List blocked applications for a profile."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 
@@ -339,8 +354,9 @@ def apps_list(ctx: click.Context, profile_id: str, output: Optional[str]) -> Non
 @apps_group.command(name="block")
 @click.argument("profile_id")
 @click.argument("apps", nargs=-1, required=True)
+@network_option
 @click.pass_context
-def apps_block(ctx: click.Context, profile_id: str, apps: tuple) -> None:
+def apps_block(ctx: click.Context, profile_id: str, apps: tuple, network_id: Optional[str]) -> None:
     """Block application(s) for a profile.
 
     \b
@@ -352,7 +368,7 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple) -> None:
     Examples:
       eero profile apps block "Kids" tiktok facebook
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -395,8 +411,11 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple) -> None:
 @apps_group.command(name="unblock")
 @click.argument("profile_id")
 @click.argument("apps", nargs=-1, required=True)
+@network_option
 @click.pass_context
-def apps_unblock(ctx: click.Context, profile_id: str, apps: tuple) -> None:
+def apps_unblock(
+    ctx: click.Context, profile_id: str, apps: tuple, network_id: Optional[str]
+) -> None:
     """Unblock application(s) for a profile.
 
     \b
@@ -404,7 +423,7 @@ def apps_unblock(ctx: click.Context, profile_id: str, apps: tuple) -> None:
       PROFILE_ID  Profile ID or name
       APPS        App identifier(s) to unblock
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -464,10 +483,13 @@ def schedule_group(ctx: click.Context) -> None:
 @schedule_group.command(name="show")
 @click.argument("profile_id")
 @output_option
+@network_option
 @click.pass_context
-def schedule_show(ctx: click.Context, profile_id: str, output: Optional[str]) -> None:
+def schedule_show(
+    ctx: click.Context, profile_id: str, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Show schedule for a profile."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 
@@ -520,9 +542,16 @@ def schedule_show(ctx: click.Context, profile_id: str, output: Optional[str]) ->
 @click.option("--end", required=True, help="End time (HH:MM)")
 @click.option("--days", help="Days (comma-separated, e.g., mon,tue,wed)")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@network_option
 @click.pass_context
 def schedule_set(
-    ctx: click.Context, profile_id: str, start: str, end: str, days: Optional[str], force: bool
+    ctx: click.Context,
+    profile_id: str,
+    start: str,
+    end: str,
+    days: Optional[str],
+    force: bool,
+    network_id: Optional[str],
 ) -> None:
     """Set bedtime schedule for a profile.
 
@@ -537,7 +566,7 @@ def schedule_set(
       eero profile schedule set "Kids" --start 21:00 --end 07:00
       eero profile schedule set "Kids" --start 22:00 --end 06:00 --days mon,tue,wed,thu,fri
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
 
     days_list = days.split(",") if days else None
@@ -591,10 +620,13 @@ def schedule_set(
 @schedule_group.command(name="clear")
 @click.argument("profile_id")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@network_option
 @click.pass_context
-def schedule_clear(ctx: click.Context, profile_id: str, force: bool) -> None:
+def schedule_clear(
+    ctx: click.Context, profile_id: str, force: bool, network_id: Optional[str]
+) -> None:
     """Clear all schedules for a profile."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:

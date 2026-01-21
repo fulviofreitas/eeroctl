@@ -19,9 +19,9 @@ from eero.const import EeroDeviceStatus
 from rich.panel import Panel
 from rich.table import Table
 
-from ..context import EeroCliContext, ensure_cli_context, get_cli_context
+from ..context import EeroCliContext, ensure_cli_context
 from ..exit_codes import ExitCode
-from ..options import apply_options, output_option
+from ..options import apply_options, network_option, output_option
 from ..output import OutputFormat
 from ..safety import OperationRisk, SafetyError, confirm_or_fail
 from ..utils import run_with_client
@@ -53,10 +53,11 @@ def device_group(ctx: click.Context) -> None:
 
 @device_group.command(name="list")
 @output_option
+@network_option
 @click.pass_context
-def device_list(ctx: click.Context, output: Optional[str]) -> None:
+def device_list(ctx: click.Context, output: Optional[str], network_id: Optional[str]) -> None:
     """List all connected devices."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -122,15 +123,18 @@ def device_list(ctx: click.Context, output: Optional[str]) -> None:
 @device_group.command(name="show")
 @click.argument("device_id")
 @output_option
+@network_option
 @click.pass_context
-def device_show(ctx: click.Context, device_id: str, output: Optional[str]) -> None:
+def device_show(
+    ctx: click.Context, device_id: str, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Show details of a specific device.
 
     \b
     Arguments:
       DEVICE_ID  Device ID, MAC address, or name
     """
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -177,8 +181,9 @@ def device_show(ctx: click.Context, device_id: str, output: Optional[str]) -> No
 @device_group.command(name="rename")
 @click.argument("device_id")
 @click.option("--name", required=True, help="New nickname for the device")
+@network_option
 @click.pass_context
-def device_rename(ctx: click.Context, device_id: str, name: str) -> None:
+def device_rename(ctx: click.Context, device_id: str, name: str, network_id: Optional[str]) -> None:
     """Rename a device.
 
     \b
@@ -189,7 +194,7 @@ def device_rename(ctx: click.Context, device_id: str, name: str) -> None:
     Options:
       --name TEXT  New nickname (required)
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -230,30 +235,36 @@ def device_rename(ctx: click.Context, device_id: str, name: str) -> None:
 @device_group.command(name="block")
 @click.argument("device_id")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@network_option
 @click.pass_context
-def device_block(ctx: click.Context, device_id: str, force: bool) -> None:
+def device_block(
+    ctx: click.Context, device_id: str, force: bool, network_id: Optional[str]
+) -> None:
     """Block a device from the network.
 
     \b
     Arguments:
       DEVICE_ID  Device ID, MAC address, or name
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     _set_device_blocked(cli_ctx, device_id, True, force)
 
 
 @device_group.command(name="unblock")
 @click.argument("device_id")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@network_option
 @click.pass_context
-def device_unblock(ctx: click.Context, device_id: str, force: bool) -> None:
+def device_unblock(
+    ctx: click.Context, device_id: str, force: bool, network_id: Optional[str]
+) -> None:
     """Unblock a device.
 
     \b
     Arguments:
       DEVICE_ID  Device ID, MAC address, or name
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     _set_device_blocked(cli_ctx, device_id, False, force)
 
 
@@ -335,10 +346,13 @@ def priority_group(ctx: click.Context) -> None:
 @priority_group.command(name="show")
 @click.argument("device_id")
 @output_option
+@network_option
 @click.pass_context
-def priority_show(ctx: click.Context, device_id: str, output: Optional[str]) -> None:
+def priority_show(
+    ctx: click.Context, device_id: str, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Show priority status for a device."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 
@@ -386,15 +400,18 @@ def priority_show(ctx: click.Context, device_id: str, output: Optional[str]) -> 
 @priority_group.command(name="on")
 @click.argument("device_id")
 @click.option("--minutes", "-m", type=int, default=0, help="Duration in minutes (0=indefinite)")
+@network_option
 @click.pass_context
-def priority_on(ctx: click.Context, device_id: str, minutes: int) -> None:
+def priority_on(
+    ctx: click.Context, device_id: str, minutes: int, network_id: Optional[str]
+) -> None:
     """Enable priority for a device.
 
     \b
     Options:
       --minutes, -m  Duration (0=indefinite)
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -435,10 +452,11 @@ def priority_on(ctx: click.Context, device_id: str, minutes: int) -> None:
 
 @priority_group.command(name="off")
 @click.argument("device_id")
+@network_option
 @click.pass_context
-def priority_off(ctx: click.Context, device_id: str) -> None:
+def priority_off(ctx: click.Context, device_id: str, network_id: Optional[str]) -> None:
     """Remove priority from a device."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:

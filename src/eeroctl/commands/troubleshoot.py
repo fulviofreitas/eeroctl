@@ -14,7 +14,8 @@ from eero import EeroClient
 from rich.panel import Panel
 from rich.table import Table
 
-from ..context import ensure_cli_context, get_cli_context
+from ..context import ensure_cli_context
+from ..options import apply_options, network_option, output_option
 from ..utils import with_client
 
 
@@ -40,11 +41,15 @@ def troubleshoot_group(ctx: click.Context) -> None:
 
 
 @troubleshoot_group.command(name="connectivity")
+@output_option
+@network_option
 @click.pass_context
 @with_client
-async def troubleshoot_connectivity(ctx: click.Context, client: EeroClient) -> None:
+async def troubleshoot_connectivity(
+    ctx: click.Context, client: EeroClient, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Check network connectivity status."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     with cli_ctx.status("Checking connectivity..."):
@@ -86,10 +91,17 @@ async def troubleshoot_connectivity(ctx: click.Context, client: EeroClient) -> N
 @troubleshoot_group.command(name="ping")
 @click.option("--target", "-t", required=True, help="Target host or IP")
 @click.option("--from", "from_eero", help="Eero node to ping from (ID or name)")
+@output_option
+@network_option
 @click.pass_context
 @with_client
 async def troubleshoot_ping(
-    ctx: click.Context, client: EeroClient, target: str, from_eero: Optional[str]
+    ctx: click.Context,
+    client: EeroClient,
+    target: str,
+    from_eero: Optional[str],
+    output: Optional[str],
+    network_id: Optional[str],
 ) -> None:
     """Ping a target host.
 
@@ -101,7 +113,7 @@ async def troubleshoot_ping(
       --target, -t  Target host or IP (required)
       --from        Eero node to ping from
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     console.print(
@@ -140,10 +152,17 @@ async def troubleshoot_ping(
 @troubleshoot_group.command(name="trace")
 @click.option("--target", "-t", required=True, help="Target host or IP")
 @click.option("--from", "from_eero", help="Eero node to trace from (ID or name)")
+@output_option
+@network_option
 @click.pass_context
 @with_client
 async def troubleshoot_trace(
-    ctx: click.Context, client: EeroClient, target: str, from_eero: Optional[str]
+    ctx: click.Context,
+    client: EeroClient,
+    target: str,
+    from_eero: Optional[str],
+    output: Optional[str],
+    network_id: Optional[str],
 ) -> None:
     """Traceroute to a target host.
 
@@ -155,7 +174,7 @@ async def troubleshoot_trace(
       --target, -t  Target host or IP (required)
       --from        Eero node to trace from
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     console.print(
@@ -192,15 +211,19 @@ async def troubleshoot_trace(
 
 
 @troubleshoot_group.command(name="doctor")
+@output_option
+@network_option
 @click.pass_context
 @with_client
-async def troubleshoot_doctor(ctx: click.Context, client: EeroClient) -> None:
+async def troubleshoot_doctor(
+    ctx: click.Context, client: EeroClient, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Run diagnostic checks on the network.
 
     Performs a comprehensive health check of your Eero network
     including connectivity, mesh health, and configuration.
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     checks = []

@@ -18,7 +18,7 @@ from rich.table import Table
 from ..context import ensure_cli_context
 from ..errors import is_premium_error
 from ..exit_codes import ExitCode
-from ..options import apply_options, output_option
+from ..options import apply_options, network_option, output_option
 from ..utils import with_client
 
 
@@ -60,11 +60,14 @@ def activity_group(ctx: click.Context) -> None:
 
 @activity_group.command(name="summary")
 @output_option
+@network_option
 @click.pass_context
 @with_client
-async def activity_summary(ctx: click.Context, client: EeroClient, output: Optional[str]) -> None:
+async def activity_summary(
+    ctx: click.Context, client: EeroClient, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Show network activity summary."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     with cli_ctx.status("Getting network activity..."):
@@ -93,11 +96,14 @@ async def activity_summary(ctx: click.Context, client: EeroClient, output: Optio
 
 @activity_group.command(name="clients")
 @output_option
+@network_option
 @click.pass_context
 @with_client
-async def activity_clients(ctx: click.Context, client: EeroClient, output: Optional[str]) -> None:
+async def activity_clients(
+    ctx: click.Context, client: EeroClient, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Show per-client activity data."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     with cli_ctx.status("Getting client activity..."):
@@ -147,10 +153,15 @@ async def activity_clients(ctx: click.Context, client: EeroClient, output: Optio
     help="Time period (default: day)",
 )
 @output_option
+@network_option
 @click.pass_context
 @with_client
 async def activity_history(
-    ctx: click.Context, client: EeroClient, period: str, output: Optional[str]
+    ctx: click.Context,
+    client: EeroClient,
+    period: str,
+    output: Optional[str],
+    network_id: Optional[str],
 ) -> None:
     """Show historical activity data.
 
@@ -158,7 +169,7 @@ async def activity_history(
     Options:
       --period  Time period: hour, day, week, month
     """
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     with cli_ctx.status(f"Getting activity history ({period})..."):
@@ -188,13 +199,14 @@ async def activity_history(
 
 @activity_group.command(name="categories")
 @output_option
+@network_option
 @click.pass_context
 @with_client
 async def activity_categories(
-    ctx: click.Context, client: EeroClient, output: Optional[str]
+    ctx: click.Context, client: EeroClient, output: Optional[str], network_id: Optional[str]
 ) -> None:
     """Show activity grouped by category."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     with cli_ctx.status("Getting activity categories..."):

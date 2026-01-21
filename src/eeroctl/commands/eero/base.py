@@ -15,10 +15,10 @@ from eero import EeroClient
 from eero.exceptions import EeroException, EeroNotFoundException
 from rich.table import Table
 
-from ...context import ensure_cli_context, get_cli_context
+from ...context import ensure_cli_context
 from ...errors import is_not_found_error
 from ...exit_codes import ExitCode
-from ...options import apply_options, output_option
+from ...options import apply_options, network_option, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
 from ...utils import run_with_client
@@ -50,10 +50,11 @@ def eero_group(ctx: click.Context) -> None:
 
 @eero_group.command(name="list")
 @output_option
+@network_option
 @click.pass_context
-def eero_list(ctx: click.Context, output: Optional[str]) -> None:
+def eero_list(ctx: click.Context, output: Optional[str], network_id: Optional[str]) -> None:
     """List all Eero mesh nodes."""
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -110,15 +111,18 @@ def eero_list(ctx: click.Context, output: Optional[str]) -> None:
 @eero_group.command(name="show")
 @click.argument("eero_id")
 @output_option
+@network_option
 @click.pass_context
-def eero_show(ctx: click.Context, eero_id: str, output: Optional[str]) -> None:
+def eero_show(
+    ctx: click.Context, eero_id: str, output: Optional[str], network_id: Optional[str]
+) -> None:
     """Show details of a specific Eero node.
 
     \b
     Arguments:
       EERO_ID  Node ID, serial, or location name
     """
-    cli_ctx = apply_options(ctx, output=output)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -150,8 +154,9 @@ def eero_show(ctx: click.Context, eero_id: str, output: Optional[str]) -> None:
 @eero_group.command(name="reboot")
 @click.argument("eero_id")
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@network_option
 @click.pass_context
-def eero_reboot(ctx: click.Context, eero_id: str, force: bool) -> None:
+def eero_reboot(ctx: click.Context, eero_id: str, force: bool, network_id: Optional[str]) -> None:
     """Reboot an Eero node.
 
     This is a disruptive operation that will temporarily
@@ -161,7 +166,7 @@ def eero_reboot(ctx: click.Context, eero_id: str, force: bool) -> None:
     Arguments:
       EERO_ID  Node ID, serial, or location name
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
