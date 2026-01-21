@@ -21,7 +21,7 @@ from rich.table import Table
 from ..context import EeroCliContext, ensure_cli_context
 from ..errors import is_premium_error
 from ..exit_codes import ExitCode
-from ..options import apply_options, network_option, output_option
+from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import OperationRisk, SafetyError, confirm_or_fail
 from ..utils import run_with_client
@@ -186,14 +186,14 @@ def profile_show(
 @profile_group.command(name="pause")
 @click.argument("profile_id")
 @click.option("--duration", "-d", help="Duration (e.g., 30m, 1h)")
-@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@force_option
 @network_option
 @click.pass_context
 def profile_pause(
     ctx: click.Context,
     profile_id: str,
     duration: Optional[str],
-    force: bool,
+    force: Optional[bool],
     network_id: Optional[str],
 ) -> None:
     """Pause internet access for a profile.
@@ -206,17 +206,17 @@ def profile_pause(
     Options:
       --duration, -d  Duration (e.g., 30m, 1h)
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
-    _set_profile_paused(cli_ctx, profile_id, True, force)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    _set_profile_paused(cli_ctx, profile_id, True)
 
 
 @profile_group.command(name="unpause")
 @click.argument("profile_id")
-@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@force_option
 @network_option
 @click.pass_context
 def profile_unpause(
-    ctx: click.Context, profile_id: str, force: bool, network_id: Optional[str]
+    ctx: click.Context, profile_id: str, force: Optional[bool], network_id: Optional[str]
 ) -> None:
     """Resume internet access for a profile.
 
@@ -224,13 +224,11 @@ def profile_unpause(
     Arguments:
       PROFILE_ID  Profile ID or name
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
-    _set_profile_paused(cli_ctx, profile_id, False, force)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    _set_profile_paused(cli_ctx, profile_id, False)
 
 
-def _set_profile_paused(
-    cli_ctx: EeroCliContext, profile_id: str, paused: bool, force: bool
-) -> None:
+def _set_profile_paused(cli_ctx: EeroCliContext, profile_id: str, paused: bool) -> None:
     """Pause or unpause a profile."""
     console = cli_ctx.console
     action = "pause" if paused else "unpause"
@@ -256,7 +254,7 @@ def _set_profile_paused(
                     action=action,
                     target=target.name,
                     risk=OperationRisk.MEDIUM,
-                    force=force or cli_ctx.force,
+                    force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
                     dry_run=cli_ctx.dry_run,
                     console=cli_ctx.console,
@@ -541,7 +539,7 @@ def schedule_show(
 @click.option("--start", required=True, help="Start time (HH:MM)")
 @click.option("--end", required=True, help="End time (HH:MM)")
 @click.option("--days", help="Days (comma-separated, e.g., mon,tue,wed)")
-@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@force_option
 @network_option
 @click.pass_context
 def schedule_set(
@@ -550,7 +548,7 @@ def schedule_set(
     start: str,
     end: str,
     days: Optional[str],
-    force: bool,
+    force: Optional[bool],
     network_id: Optional[str],
 ) -> None:
     """Set bedtime schedule for a profile.
@@ -566,7 +564,7 @@ def schedule_set(
       eero profile schedule set "Kids" --start 21:00 --end 07:00
       eero profile schedule set "Kids" --start 22:00 --end 06:00 --days mon,tue,wed,thu,fri
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
 
     days_list = days.split(",") if days else None
@@ -592,7 +590,7 @@ def schedule_set(
                     action="set bedtime schedule",
                     target=f"{target.name} ({start} - {end})",
                     risk=OperationRisk.MEDIUM,
-                    force=force or cli_ctx.force,
+                    force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
                     dry_run=cli_ctx.dry_run,
                     console=cli_ctx.console,
@@ -619,14 +617,14 @@ def schedule_set(
 
 @schedule_group.command(name="clear")
 @click.argument("profile_id")
-@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@force_option
 @network_option
 @click.pass_context
 def schedule_clear(
-    ctx: click.Context, profile_id: str, force: bool, network_id: Optional[str]
+    ctx: click.Context, profile_id: str, force: Optional[bool], network_id: Optional[str]
 ) -> None:
     """Clear all schedules for a profile."""
-    cli_ctx = apply_options(ctx, network_id=network_id)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -650,7 +648,7 @@ def schedule_clear(
                     action="clear schedule",
                     target=target.name,
                     risk=OperationRisk.MEDIUM,
-                    force=force or cli_ctx.force,
+                    force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
                     dry_run=cli_ctx.dry_run,
                     console=cli_ctx.console,

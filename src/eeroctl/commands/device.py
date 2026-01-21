@@ -21,7 +21,7 @@ from rich.table import Table
 
 from ..context import EeroCliContext, ensure_cli_context
 from ..exit_codes import ExitCode
-from ..options import apply_options, network_option, output_option
+from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import OperationRisk, SafetyError, confirm_or_fail
 from ..utils import run_with_client
@@ -234,11 +234,11 @@ def device_rename(ctx: click.Context, device_id: str, name: str, network_id: Opt
 
 @device_group.command(name="block")
 @click.argument("device_id")
-@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@force_option
 @network_option
 @click.pass_context
 def device_block(
-    ctx: click.Context, device_id: str, force: bool, network_id: Optional[str]
+    ctx: click.Context, device_id: str, force: Optional[bool], network_id: Optional[str]
 ) -> None:
     """Block a device from the network.
 
@@ -246,17 +246,17 @@ def device_block(
     Arguments:
       DEVICE_ID  Device ID, MAC address, or name
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
-    _set_device_blocked(cli_ctx, device_id, True, force)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    _set_device_blocked(cli_ctx, device_id, True)
 
 
 @device_group.command(name="unblock")
 @click.argument("device_id")
-@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@force_option
 @network_option
 @click.pass_context
 def device_unblock(
-    ctx: click.Context, device_id: str, force: bool, network_id: Optional[str]
+    ctx: click.Context, device_id: str, force: Optional[bool], network_id: Optional[str]
 ) -> None:
     """Unblock a device.
 
@@ -264,13 +264,11 @@ def device_unblock(
     Arguments:
       DEVICE_ID  Device ID, MAC address, or name
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
-    _set_device_blocked(cli_ctx, device_id, False, force)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    _set_device_blocked(cli_ctx, device_id, False)
 
 
-def _set_device_blocked(
-    cli_ctx: EeroCliContext, device_id: str, blocked: bool, force: bool
-) -> None:
+def _set_device_blocked(cli_ctx: EeroCliContext, device_id: str, blocked: bool) -> None:
     """Block or unblock a device."""
     console = cli_ctx.console
     action = "block" if blocked else "unblock"
@@ -303,7 +301,7 @@ def _set_device_blocked(
                     action=action,
                     target=device_name,
                     risk=OperationRisk.MEDIUM,
-                    force=force or cli_ctx.force,
+                    force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
                     dry_run=cli_ctx.dry_run,
                     console=cli_ctx.console,

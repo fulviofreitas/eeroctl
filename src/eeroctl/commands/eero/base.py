@@ -18,7 +18,7 @@ from rich.table import Table
 from ...context import ensure_cli_context
 from ...errors import is_not_found_error
 from ...exit_codes import ExitCode
-from ...options import apply_options, network_option, output_option
+from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
 from ...utils import run_with_client
@@ -153,10 +153,12 @@ def eero_show(
 
 @eero_group.command(name="reboot")
 @click.argument("eero_id")
-@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@force_option
 @network_option
 @click.pass_context
-def eero_reboot(ctx: click.Context, eero_id: str, force: bool, network_id: Optional[str]) -> None:
+def eero_reboot(
+    ctx: click.Context, eero_id: str, force: Optional[bool], network_id: Optional[str]
+) -> None:
     """Reboot an Eero node.
 
     This is a disruptive operation that will temporarily
@@ -166,7 +168,7 @@ def eero_reboot(ctx: click.Context, eero_id: str, force: bool, network_id: Optio
     Arguments:
       EERO_ID  Node ID, serial, or location name
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -188,7 +190,7 @@ def eero_reboot(ctx: click.Context, eero_id: str, force: bool, network_id: Optio
                     action="reboot",
                     target=eero_name,
                     risk=OperationRisk.MEDIUM,
-                    force=force or cli_ctx.force,
+                    force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
                     dry_run=cli_ctx.dry_run,
                     console=cli_ctx.console,

@@ -19,7 +19,7 @@ from rich.table import Table
 
 from ...context import ensure_cli_context, get_cli_context
 from ...exit_codes import ExitCode
-from ...options import apply_options, network_option, output_option
+from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
 from ...utils import run_with_client, set_preferred_network
@@ -206,10 +206,12 @@ def network_show(ctx: click.Context, output: Optional[str], network_id: Optional
 
 @network_group.command(name="rename")
 @click.option("--name", required=True, help="New network name (SSID)")
-@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@force_option
 @network_option
 @click.pass_context
-def network_rename(ctx: click.Context, name: str, force: bool, network_id: Optional[str]) -> None:
+def network_rename(
+    ctx: click.Context, name: str, force: Optional[bool], network_id: Optional[str]
+) -> None:
     """Rename the network (change SSID).
 
     Note: May require network restart to take effect.
@@ -222,7 +224,7 @@ def network_rename(ctx: click.Context, name: str, force: bool, network_id: Optio
     Examples:
       eero network rename --name "My Home WiFi"
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
 
     try:
@@ -230,7 +232,7 @@ def network_rename(ctx: click.Context, name: str, force: bool, network_id: Optio
             action="rename network",
             target=f"to '{name}'",
             risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
+            force=cli_ctx.force,
             non_interactive=cli_ctx.non_interactive,
             dry_run=cli_ctx.dry_run,
         )
