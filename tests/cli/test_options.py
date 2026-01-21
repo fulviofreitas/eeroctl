@@ -19,11 +19,15 @@ from eeroctl.options import (
     all_options,
     apply_options,
     common_options,
+    debug_option,
+    display_options,
     force_option,
     get_effective_value,
     network_option,
+    no_color_option,
     non_interactive_option,
     output_option,
+    quiet_option,
     safety_options,
 )
 
@@ -179,6 +183,36 @@ class TestApplyOptions:
         result = apply_options(click_ctx, non_interactive=True)
 
         assert result.non_interactive is True
+
+    def test_applies_debug_flag(self):
+        """Test apply_options updates debug flag."""
+        click_ctx = MagicMock(spec=click.Context)
+        click_ctx.obj = EeroCliContext(debug=False)
+        click_ctx.parent = None
+
+        result = apply_options(click_ctx, debug=True)
+
+        assert result.debug is True
+
+    def test_applies_quiet_flag(self):
+        """Test apply_options updates quiet flag."""
+        click_ctx = MagicMock(spec=click.Context)
+        click_ctx.obj = EeroCliContext(quiet=False)
+        click_ctx.parent = None
+
+        result = apply_options(click_ctx, quiet=True)
+
+        assert result.quiet is True
+
+    def test_applies_no_color_flag(self):
+        """Test apply_options updates no_color flag."""
+        click_ctx = MagicMock(spec=click.Context)
+        click_ctx.obj = EeroCliContext(no_color=False)
+        click_ctx.parent = None
+
+        result = apply_options(click_ctx, no_color=True)
+
+        assert result.no_color is True
 
     def test_preserves_unset_values(self):
         """Test apply_options preserves values not explicitly set."""
@@ -427,6 +461,148 @@ class TestNonInteractiveOption:
         assert "non_interactive=None" in result.output
 
 
+class TestDebugOption:
+    """Tests for debug_option decorator."""
+
+    def test_adds_debug_flag(self, cli_runner: CliRunner):
+        """Test decorator adds --debug flag."""
+
+        @click.command()
+        @debug_option
+        def cmd(debug):
+            click.echo(f"debug={debug}")
+
+        result = cli_runner.invoke(cmd, ["--debug"])
+
+        assert result.exit_code == 0
+        assert "debug=True" in result.output
+
+    def test_adds_no_debug_flag(self, cli_runner: CliRunner):
+        """Test decorator adds --no-debug flag."""
+
+        @click.command()
+        @debug_option
+        def cmd(debug):
+            click.echo(f"debug={debug}")
+
+        result = cli_runner.invoke(cmd, ["--no-debug"])
+
+        assert result.exit_code == 0
+        assert "debug=False" in result.output
+
+    def test_default_is_none(self, cli_runner: CliRunner):
+        """Test default value is None (for inheritance)."""
+
+        @click.command()
+        @debug_option
+        def cmd(debug):
+            click.echo(f"debug={debug}")
+
+        result = cli_runner.invoke(cmd, [])
+
+        assert result.exit_code == 0
+        assert "debug=None" in result.output
+
+
+class TestQuietOption:
+    """Tests for quiet_option decorator."""
+
+    def test_adds_quiet_flag(self, cli_runner: CliRunner):
+        """Test decorator adds --quiet flag."""
+
+        @click.command()
+        @quiet_option
+        def cmd(quiet):
+            click.echo(f"quiet={quiet}")
+
+        result = cli_runner.invoke(cmd, ["--quiet"])
+
+        assert result.exit_code == 0
+        assert "quiet=True" in result.output
+
+    def test_adds_short_flag(self, cli_runner: CliRunner):
+        """Test decorator adds -q short flag."""
+
+        @click.command()
+        @quiet_option
+        def cmd(quiet):
+            click.echo(f"quiet={quiet}")
+
+        result = cli_runner.invoke(cmd, ["-q"])
+
+        assert result.exit_code == 0
+        assert "quiet=True" in result.output
+
+    def test_adds_no_quiet_flag(self, cli_runner: CliRunner):
+        """Test decorator adds --no-quiet flag."""
+
+        @click.command()
+        @quiet_option
+        def cmd(quiet):
+            click.echo(f"quiet={quiet}")
+
+        result = cli_runner.invoke(cmd, ["--no-quiet"])
+
+        assert result.exit_code == 0
+        assert "quiet=False" in result.output
+
+    def test_default_is_none(self, cli_runner: CliRunner):
+        """Test default value is None (for inheritance)."""
+
+        @click.command()
+        @quiet_option
+        def cmd(quiet):
+            click.echo(f"quiet={quiet}")
+
+        result = cli_runner.invoke(cmd, [])
+
+        assert result.exit_code == 0
+        assert "quiet=None" in result.output
+
+
+class TestNoColorOption:
+    """Tests for no_color_option decorator."""
+
+    def test_adds_no_color_flag(self, cli_runner: CliRunner):
+        """Test decorator adds --no-color flag."""
+
+        @click.command()
+        @no_color_option
+        def cmd(no_color):
+            click.echo(f"no_color={no_color}")
+
+        result = cli_runner.invoke(cmd, ["--no-color"])
+
+        assert result.exit_code == 0
+        assert "no_color=True" in result.output
+
+    def test_adds_color_flag(self, cli_runner: CliRunner):
+        """Test decorator adds --color flag."""
+
+        @click.command()
+        @no_color_option
+        def cmd(no_color):
+            click.echo(f"no_color={no_color}")
+
+        result = cli_runner.invoke(cmd, ["--color"])
+
+        assert result.exit_code == 0
+        assert "no_color=False" in result.output
+
+    def test_default_is_none(self, cli_runner: CliRunner):
+        """Test default value is None (for inheritance)."""
+
+        @click.command()
+        @no_color_option
+        def cmd(no_color):
+            click.echo(f"no_color={no_color}")
+
+        result = cli_runner.invoke(cmd, [])
+
+        assert result.exit_code == 0
+        assert "no_color=None" in result.output
+
+
 # =============================================================================
 # Combined Option Decorator Tests
 # =============================================================================
@@ -496,18 +672,53 @@ class TestCommonOptions:
         assert "network_id=None" in result.output
 
 
+class TestDisplayOptions:
+    """Tests for display_options combined decorator."""
+
+    def test_adds_all_options(self, cli_runner: CliRunner):
+        """Test decorator adds debug, quiet, and no_color."""
+
+        @click.command()
+        @display_options
+        def cmd(debug, quiet, no_color):
+            click.echo(f"debug={debug}, quiet={quiet}, no_color={no_color}")
+
+        result = cli_runner.invoke(cmd, ["--debug", "--quiet", "--no-color"])
+
+        assert result.exit_code == 0
+        assert "debug=True" in result.output
+        assert "quiet=True" in result.output
+        assert "no_color=True" in result.output
+
+    def test_defaults_are_none(self, cli_runner: CliRunner):
+        """Test all defaults are None."""
+
+        @click.command()
+        @display_options
+        def cmd(debug, quiet, no_color):
+            click.echo(f"debug={debug}, quiet={quiet}, no_color={no_color}")
+
+        result = cli_runner.invoke(cmd, [])
+
+        assert result.exit_code == 0
+        assert "debug=None" in result.output
+        assert "quiet=None" in result.output
+        assert "no_color=None" in result.output
+
+
 class TestAllOptions:
     """Tests for all_options combined decorator."""
 
     def test_adds_all_options(self, cli_runner: CliRunner):
-        """Test decorator adds all four options."""
+        """Test decorator adds all seven options."""
 
         @click.command()
         @all_options
-        def cmd(output, network_id, force, non_interactive):
+        def cmd(output, network_id, force, non_interactive, debug, quiet, no_color):
             click.echo(
                 f"output={output}, network_id={network_id}, "
-                f"force={force}, non_interactive={non_interactive}"
+                f"force={force}, non_interactive={non_interactive}, "
+                f"debug={debug}, quiet={quiet}, no_color={no_color}"
             )
 
         result = cli_runner.invoke(
@@ -519,6 +730,9 @@ class TestAllOptions:
                 "net_x",
                 "--force",
                 "--non-interactive",
+                "--debug",
+                "--quiet",
+                "--no-color",
             ],
         )
 
@@ -527,6 +741,32 @@ class TestAllOptions:
         assert "network_id=net_x" in result.output
         assert "force=True" in result.output
         assert "non_interactive=True" in result.output
+        assert "debug=True" in result.output
+        assert "quiet=True" in result.output
+        assert "no_color=True" in result.output
+
+    def test_defaults_are_none(self, cli_runner: CliRunner):
+        """Test all defaults are None."""
+
+        @click.command()
+        @all_options
+        def cmd(output, network_id, force, non_interactive, debug, quiet, no_color):
+            click.echo(
+                f"output={output}, network_id={network_id}, "
+                f"force={force}, non_interactive={non_interactive}, "
+                f"debug={debug}, quiet={quiet}, no_color={no_color}"
+            )
+
+        result = cli_runner.invoke(cmd, [])
+
+        assert result.exit_code == 0
+        assert "output=None" in result.output
+        assert "network_id=None" in result.output
+        assert "force=None" in result.output
+        assert "non_interactive=None" in result.output
+        assert "debug=None" in result.output
+        assert "quiet=None" in result.output
+        assert "no_color=None" in result.output
 
 
 # =============================================================================
