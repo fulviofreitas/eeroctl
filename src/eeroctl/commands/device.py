@@ -11,7 +11,7 @@ Commands:
 
 import asyncio
 import sys
-from typing import Literal
+from typing import Literal, Optional
 
 import click
 from eero import EeroClient
@@ -21,6 +21,7 @@ from rich.table import Table
 
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
+from ..options import apply_options, output_option
 from ..output import OutputFormat
 from ..safety import OperationRisk, SafetyError, confirm_or_fail
 from ..utils import run_with_client
@@ -51,10 +52,11 @@ def device_group(ctx: click.Context) -> None:
 
 
 @device_group.command(name="list")
+@output_option
 @click.pass_context
-def device_list(ctx: click.Context) -> None:
+def device_list(ctx: click.Context, output: Optional[str]) -> None:
     """List all connected devices."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -119,15 +121,16 @@ def device_list(ctx: click.Context) -> None:
 
 @device_group.command(name="show")
 @click.argument("device_id")
+@output_option
 @click.pass_context
-def device_show(ctx: click.Context, device_id: str) -> None:
+def device_show(ctx: click.Context, device_id: str, output: Optional[str]) -> None:
     """Show details of a specific device.
 
     \b
     Arguments:
       DEVICE_ID  Device ID, MAC address, or name
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -331,10 +334,11 @@ def priority_group(ctx: click.Context) -> None:
 
 @priority_group.command(name="show")
 @click.argument("device_id")
+@output_option
 @click.pass_context
-def priority_show(ctx: click.Context, device_id: str) -> None:
+def priority_show(ctx: click.Context, device_id: str, output: Optional[str]) -> None:
     """Show priority status for a device."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 

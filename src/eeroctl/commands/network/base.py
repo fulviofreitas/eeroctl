@@ -10,7 +10,7 @@ Commands:
 
 import asyncio
 import sys
-from typing import Literal
+from typing import Literal, Optional
 
 import click
 from eero import EeroClient
@@ -19,6 +19,7 @@ from rich.table import Table
 
 from ...context import ensure_cli_context, get_cli_context
 from ...exit_codes import ExitCode
+from ...options import apply_options, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
 from ...utils import run_with_client, set_preferred_network
@@ -59,13 +60,14 @@ def network_group(ctx: click.Context) -> None:
 
 
 @network_group.command(name="list")
+@output_option
 @click.pass_context
-def network_list(ctx: click.Context) -> None:
+def network_list(ctx: click.Context, output: Optional[str]) -> None:
     """List all networks.
 
     Shows all networks associated with your account.
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -168,14 +170,15 @@ def network_use(ctx: click.Context, network_id: str) -> None:
 
 
 @network_group.command(name="show")
+@output_option
 @click.pass_context
-def network_show(ctx: click.Context) -> None:
+def network_show(ctx: click.Context, output: Optional[str]) -> None:
     """Show current network details.
 
     Displays comprehensive information about the current network
     including settings, DHCP, and recent speed test results.
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
 
     async def run_cmd() -> None:
         async def get_network(client: EeroClient) -> None:
@@ -251,14 +254,15 @@ def network_rename(ctx: click.Context, name: str, force: bool) -> None:
 
 
 @network_group.command(name="premium")
+@output_option
 @click.pass_context
-def network_premium(ctx: click.Context) -> None:
+def network_premium(ctx: click.Context, output: Optional[str]) -> None:
     """Check Eero Plus subscription status.
 
     Shows whether Eero Plus/Secure is active and which
     features are available.
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 

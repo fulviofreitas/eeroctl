@@ -21,6 +21,7 @@ from rich.table import Table
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..errors import is_premium_error
 from ..exit_codes import ExitCode
+from ..options import apply_options, output_option
 from ..output import OutputFormat
 from ..safety import OperationRisk, SafetyError, confirm_or_fail
 from ..utils import run_with_client
@@ -51,10 +52,11 @@ def profile_group(ctx: click.Context) -> None:
 
 
 @profile_group.command(name="list")
+@output_option
 @click.pass_context
-def profile_list(ctx: click.Context) -> None:
+def profile_list(ctx: click.Context, output: Optional[str]) -> None:
     """List all profiles."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -132,15 +134,16 @@ def profile_list(ctx: click.Context) -> None:
 
 @profile_group.command(name="show")
 @click.argument("profile_id")
+@output_option
 @click.pass_context
-def profile_show(ctx: click.Context, profile_id: str) -> None:
+def profile_show(ctx: click.Context, profile_id: str, output: Optional[str]) -> None:
     """Show details of a specific profile.
 
     \b
     Arguments:
       PROFILE_ID  Profile ID or name
     """
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
@@ -283,10 +286,11 @@ def apps_group(ctx: click.Context) -> None:
 
 @apps_group.command(name="list")
 @click.argument("profile_id")
+@output_option
 @click.pass_context
-def apps_list(ctx: click.Context, profile_id: str) -> None:
+def apps_list(ctx: click.Context, profile_id: str, output: Optional[str]) -> None:
     """List blocked applications for a profile."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 
@@ -459,10 +463,11 @@ def schedule_group(ctx: click.Context) -> None:
 
 @schedule_group.command(name="show")
 @click.argument("profile_id")
+@output_option
 @click.pass_context
-def schedule_show(ctx: click.Context, profile_id: str) -> None:
+def schedule_show(ctx: click.Context, profile_id: str, output: Optional[str]) -> None:
     """Show schedule for a profile."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 
