@@ -1,42 +1,12 @@
 # Pre-commit configuration for eeroctl
 # Install hooks: pre-commit install
 # Run manually: pre-commit run --all-files
+#
+# Note: Uses local hooks with uvx to match CI behavior exactly.
+# CI uses `uvx black`, `uvx isort`, `uvx ruff` for consistency.
 
 repos:
-  # Ruff - Fast Python linter and formatter
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
-    hooks:
-      - id: ruff
-        args: [--fix, --exit-non-zero-on-fix]
-      - id: ruff-format
-
-  # isort - Import sorting
-  - repo: https://github.com/pycqa/isort
-    rev: 5.13.2
-    hooks:
-      - id: isort
-        name: isort (python)
-
-  # Black - Code formatting
-  - repo: https://github.com/psf/black
-    rev: 24.10.0
-    hooks:
-      - id: black
-        language_version: python3.12
-
-  # mypy - Type checking
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.13.0
-    hooks:
-      - id: mypy
-        additional_dependencies:
-          - types-PyYAML
-        args: [--config-file=pyproject.toml]
-        pass_filenames: false
-        entry: mypy src/
-
-  # Basic pre-commit hooks
+  # Basic pre-commit hooks (upstream)
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
@@ -46,3 +16,46 @@ repos:
       - id: check-added-large-files
       - id: check-merge-conflict
       - id: debug-statements
+
+  # Local hooks using uvx (matches CI exactly)
+  - repo: local
+    hooks:
+      # Ruff - Fast Python linter
+      - id: ruff
+        name: ruff
+        entry: uvx ruff check --fix
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # Ruff format
+      - id: ruff-format
+        name: ruff-format
+        entry: uvx ruff format
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # isort - Import sorting
+      - id: isort
+        name: isort
+        entry: uvx isort
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # Black - Code formatting (matches CI uvx black)
+      - id: black
+        name: black
+        entry: uvx black
+        language: system
+        types: [python]
+        pass_filenames: true
+
+      # mypy - Type checking
+      - id: mypy
+        name: mypy
+        entry: uvx mypy src/
+        language: system
+        types: [python]
+        pass_filenames: false
