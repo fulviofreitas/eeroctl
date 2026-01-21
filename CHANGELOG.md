@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/fulviofreitas/eeroctl/compare/v1.5.0...v1.6.0) (2026-01-21)
+
+### ✨ Features
+
+* **cli:** add eeroctl command alias ([58a9503](https://github.com/fulviofreitas/eeroctl/commit/58a9503ecfc7d409a55f6baa79eaf59c2b7039eb))
+
+### 🐛 Bug Fixes
+
+* **cli:** display network status value instead of enum representation ([f4be157](https://github.com/fulviofreitas/eeroctl/commit/f4be157a39af790e317a90a28184f9ee3f5b347a))
+
+### ♻️ Refactoring
+
+* **formatting:** simplify format_network_status for clean values ([f7d51f7](https://github.com/fulviofreitas/eeroctl/commit/f7d51f74bb45989ad747e6bd28e7f18f4edd674b))
+
 ## [1.5.0](https://github.com/fulviofreitas/eeroctl/compare/v1.4.0...v1.5.0) (2026-01-21)
 
 ### ✨ Features
