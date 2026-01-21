@@ -50,6 +50,7 @@ Issues = "https://github.com/fulviofreitas/eeroctl/issues"
 
 [project.scripts]
 eero = "eeroctl.main:cli"
+eeroctl = "eeroctl.main:cli"
 
 [tool.setuptools.packages.find]
 where = ["src"]

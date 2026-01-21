@@ -56,6 +56,8 @@ eero eero list            # Mesh nodes
 eero troubleshoot speedtest --force
 ```
 
+> **Tip:** Both `eero` and `eeroctl` commands are available and work identically.
+
 ## 📖 Documentation
 
 Full documentation lives in the **[Wiki](https://github.com/fulviofreitas/eeroctl/wiki)**:
