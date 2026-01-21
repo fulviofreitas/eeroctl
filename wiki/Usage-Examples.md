@@ -166,23 +166,48 @@ eero troubleshoot restart --all
 
 ---
 
-## Scripting & Automation
+## Flexible Option Placement
 
-**Note:** Global flags like `--output` must be placed before the subcommand.
+Options like `--output`, `--network-id`, and `--force` can be placed **anywhere** in the command line — before or after subcommands.
+
+```bash
+# These are all equivalent:
+eero --output json network show
+eero network show --output json
+eero network --output json show
+
+# Network ID can be placed at the end:
+eero device list --network-id abc123
+eero eero show "Living Room" -n abc123
+
+# Force can be placed after the action:
+eero device block "iPhone" --force
+eero --force device block "iPhone"
+
+# Combine multiple options:
+eero device list --output json --network-id abc123
+```
+
+---
+
+## Scripting & Automation
 
 ```bash
 # JSON output for parsing
-eero --output json network show | jq '.data.name'
+eero network show --output json | jq '.data.name'
 
 # YAML output (human-readable structured format)
-eero --output yaml network list
+eero network list --output yaml
 
 # Non-interactive mode (fails if confirmation needed)
-eero --non-interactive network rename --name "NewSSID"
+eero network rename --name "NewSSID" --non-interactive
 # Exit code 8: safety rail triggered
 
 # Force mode skips confirmations
-eero --force network rename --name "NewSSID"
+eero network rename --name "NewSSID" --force
+
+# Quiet mode for cleaner output
+eero device list --quiet --output json
 ```
 
 ### Bash Script Example

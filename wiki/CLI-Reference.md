@@ -116,14 +116,16 @@ eero
 
 ## 🔧 Global Flags
 
-Global flags must be placed **before** the subcommand:
+Global flags can be placed **anywhere** in the command line — before or after subcommands:
 
 ```bash
-# ✅ Correct - global flag before subcommand
+# All of these work:
 eero --output json network list
-
-# ❌ Wrong - global flag after subcommand
 eero network list --output json
+eero network --output json list
+
+# Combine with subcommand-specific options:
+eero device block "iPhone" --force --network-id abc123
 ```
 
 | Flag                | Short | Description                                        |
@@ -135,6 +137,15 @@ eero network list --output json
 | `--quiet`           | `-q`  | Suppress non-essential output                      |
 | `--no-color`        |       | Disable colored output                             |
 | `--debug`           |       | Enable debug logging                               |
+
+### Option Precedence
+
+When the same option is specified at multiple levels, the **most specific** (closest to the command) takes precedence:
+
+```bash
+# --output json wins (more specific)
+eero --output table device list --output json
+```
 
 ---
 

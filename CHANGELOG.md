@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### ✨ Features
+
+* **cli:** flexible option placement - options can now appear anywhere in commands
+  * `--output/-o` can be placed after subcommands: `eero device list --output json`
+  * `--network-id/-n` works at any level: `eero eero show "Living Room" -n abc123`
+  * `--force/-y` can be placed after subcommands: `eero device block "iPhone" --force`
+  * New display options: `--debug`, `--quiet/-q`, `--no-color` work per-command
+* **cli:** add shared option decorators for reusable option definitions
+  * `output_option`, `network_option`, `force_option`, `non_interactive_option`
+  * `debug_option`, `quiet_option`, `no_color_option`
+  * Combined decorators: `common_options`, `safety_options`, `display_options`, `all_options`
+
+### 🧪 Tests
+
+* add 54 tests for option decorators and `apply_options` helper
+
 ## [1.4.0](https://github.com/fulviofreitas/eeroctl/compare/v1.3.1...v1.4.0) (2026-01-20)
 
 ### ✨ Features
