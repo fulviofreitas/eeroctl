@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 * add 54 tests for option decorators and `apply_options` helper
 
+### 🧹 Maintenance
+
+* remove legacy `eero_cli/` package (orphaned since v1.0.0 rename to eeroctl)
+
 ## [1.4.0](https://github.com/fulviofreitas/eeroctl/compare/v1.3.1...v1.4.0) (2026-01-20)
 
 ### ✨ Features
