@@ -25,6 +25,23 @@ DetailLevel = Literal["brief", "full"]
 # ==================== Status Formatting Helpers ====================
 
 
+def get_network_status_value(network: Network) -> str:
+    """Extract the status value from a network, handling both enum and string types.
+
+    Args:
+        network: Network model instance
+
+    Returns:
+        Status string value (e.g., "online", "offline")
+    """
+    if not network.status:
+        return "unknown"
+    # Handle both enum (has .value) and string types
+    if hasattr(network.status, "value"):
+        return str(network.status.value)
+    return str(network.status)
+
+
 def format_network_status(status_value: str) -> tuple[str, str]:
     """Format network status into display text and style.
 
@@ -164,7 +181,8 @@ def create_network_table(networks: List[Network]) -> Table:
     table.add_column("Created", style="yellow")
 
     for network in networks:
-        display_status, status_style = format_network_status(str(network.status))
+        status_value = get_network_status_value(network)
+        display_status, status_style = format_network_status(status_value)
         table.add_row(
             network.id,
             network.name,
@@ -179,7 +197,8 @@ def create_network_table(networks: List[Network]) -> Table:
 
 def _network_basic_panel(network: Network, extensive: bool = False) -> Panel:
     """Build the basic network info panel."""
-    display_status, status_style = format_network_status(str(network.status))
+    status_value = get_network_status_value(network)
+    display_status, status_style = format_network_status(status_value)
     updated = network.updated_at.strftime("%Y-%m-%d %H:%M:%S") if network.updated_at else "Unknown"
     created = network.created_at.strftime("%Y-%m-%d %H:%M:%S") if network.created_at else "Unknown"
 

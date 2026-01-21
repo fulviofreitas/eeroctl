@@ -19,6 +19,7 @@ from rich.table import Table
 
 from ...context import ensure_cli_context, get_cli_context
 from ...exit_codes import ExitCode
+from ...formatting import get_network_status_value
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
@@ -84,7 +85,7 @@ def network_list(ctx: click.Context, output: Optional[str]) -> None:
                     {
                         "id": n.id,
                         "name": n.name,
-                        "status": n.status or None,
+                        "status": get_network_status_value(n),
                         "public_ip": n.public_ip,
                         "isp_name": n.isp_name,
                     }
@@ -93,7 +94,7 @@ def network_list(ctx: click.Context, output: Optional[str]) -> None:
                 cli_ctx.render_structured(data, "eero.network.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
                 for n in networks:
-                    status = n.status or ""
+                    status = get_network_status_value(n)
                     # Use print() with fixed-width columns for alignment
                     print(
                         f"{n.id or '':<12}  {n.name or '':<25}  {status:<15}  "
@@ -108,7 +109,7 @@ def network_list(ctx: click.Context, output: Optional[str]) -> None:
                 table.add_column("ISP", style="magenta")
 
                 for n in networks:
-                    status = n.status or ""
+                    status = get_network_status_value(n)
                     if "online" in status.lower() or "connected" in status.lower():
                         status_display = f"[green]{status}[/green]"
                     elif "offline" in status.lower():

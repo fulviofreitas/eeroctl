@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ..context import ensure_cli_context
+from ..formatting import get_network_status_value
 from ..options import apply_options, network_option, output_option
 from ..utils import with_client
 
@@ -58,14 +59,14 @@ async def troubleshoot_connectivity(
 
     if cli_ctx.is_structured_output():
         data = {
-            "network_status": str(network.status),
+            "network_status": get_network_status_value(network),
             "public_ip": network.public_ip,
             "isp": network.isp_name,
             "diagnostics": diagnostics,
         }
         cli_ctx.render_structured(data, "eero.troubleshoot.connectivity/v1")
     else:
-        status = str(network.status)
+        status = get_network_status_value(network)
         if "online" in status.lower() or "connected" in status.lower():
             status_display = f"[green]{status}[/green]"
         elif "offline" in status.lower():
@@ -232,7 +233,7 @@ async def troubleshoot_doctor(
         # Check network status
         try:
             network = await client.get_network(cli_ctx.network_id)
-            status = str(network.status)
+            status = get_network_status_value(network)
             if "online" in status.lower() or "connected" in status.lower():
                 checks.append(("Network Status", "pass", status))
             else:
