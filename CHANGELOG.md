@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1](https://github.com/fulviofreitas/eeroctl/compare/v1.7.0...v1.7.1) (2026-01-21)
+
+### 🐛 Bug Fixes
+
+* trigger release ([05294c2](https://github.com/fulviofreitas/eeroctl/commit/05294c2d9da51a92a299a5a86b3ad32900dc8770))
+
+### ♻️ Refactoring
+
+* **formatting:** split God Object into modular package ([a4e082b](https://github.com/fulviofreitas/eeroctl/commit/a4e082bc668c24456fe4d04528f9c55d7b7f4976))
+
 ## [1.7.0](https://github.com/fulviofreitas/eeroctl/compare/v1.6.0...v1.7.0) (2026-01-21)
 
 ### ✨ Features
