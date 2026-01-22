@@ -12,6 +12,7 @@ from eero import EeroClient
 from rich.table import Table
 
 from ...context import get_cli_context
+from ...transformers import extract_data, extract_devices, normalize_device
 from ...utils import run_with_client
 
 
@@ -41,7 +42,15 @@ def dhcp_reservations(ctx: click.Context) -> None:
     async def run_cmd() -> None:
         async def get_reservations(client: EeroClient) -> None:
             with cli_ctx.status("Getting DHCP reservations..."):
-                reservations = await client.get_reservations(cli_ctx.network_id)
+                raw_reservations = await client.get_reservations(cli_ctx.network_id)
+
+            reservations = (
+                extract_data(raw_reservations)
+                if isinstance(raw_reservations, dict)
+                else raw_reservations
+            )
+            if isinstance(reservations, dict):
+                reservations = reservations.get("reservations", [])
 
             if cli_ctx.is_json_output():
                 renderer.render_json(reservations, "eero.network.dhcp.reservations/v1")
@@ -81,18 +90,21 @@ def dhcp_leases(ctx: click.Context) -> None:
         async def get_leases(client: EeroClient) -> None:
             with cli_ctx.status("Getting DHCP leases..."):
                 # Leases come from devices list
-                devices = await client.get_devices(cli_ctx.network_id)
+                raw_devices = await client.get_devices(cli_ctx.network_id)
+
+            devices = extract_devices(raw_devices)
+            normalized = [normalize_device(d) for d in devices]
 
             if cli_ctx.is_json_output():
                 data = [
                     {
-                        "ip": d.ip or d.ipv4,
-                        "mac": d.mac,
-                        "hostname": d.hostname,
-                        "name": d.display_name or d.nickname,
+                        "ip": d.get("ip") or d.get("ipv4"),
+                        "mac": d.get("mac"),
+                        "hostname": d.get("hostname"),
+                        "name": d.get("display_name") or d.get("nickname"),
                     }
-                    for d in devices
-                    if d.ip or d.ipv4
+                    for d in normalized
+                    if d.get("ip") or d.get("ipv4")
                 ]
                 renderer.render_json(data, "eero.network.dhcp.leases/v1")
             else:
@@ -102,13 +114,13 @@ def dhcp_leases(ctx: click.Context) -> None:
                 table.add_column("Hostname", style="cyan")
                 table.add_column("Name", style="blue")
 
-                for d in devices:
-                    if d.ip or d.ipv4:
+                for d in normalized:
+                    if d.get("ip") or d.get("ipv4"):
                         table.add_row(
-                            d.ip or d.ipv4 or "",
-                            d.mac or "",
-                            d.hostname or "",
-                            d.display_name or d.nickname or "",
+                            d.get("ip") or d.get("ipv4") or "",
+                            d.get("mac") or "",
+                            d.get("hostname") or "",
+                            d.get("display_name") or d.get("nickname") or "",
                         )
 
                 console.print(table)

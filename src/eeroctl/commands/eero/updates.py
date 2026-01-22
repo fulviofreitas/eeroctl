@@ -12,6 +12,7 @@ from eero import EeroClient
 from rich.panel import Panel
 
 from ...context import get_cli_context
+from ...transformers import extract_data
 from ...utils import run_with_client
 
 
@@ -39,7 +40,9 @@ def updates_show(ctx: click.Context) -> None:
     async def run_cmd() -> None:
         async def get_updates(client: EeroClient) -> None:
             with cli_ctx.status("Getting update status..."):
-                updates = await client.get_updates(cli_ctx.network_id)
+                raw_updates = await client.get_updates(cli_ctx.network_id)
+
+            updates = extract_data(raw_updates) if isinstance(raw_updates, dict) else {}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(updates, "eero.eero.updates.show/v1")
@@ -48,7 +51,8 @@ def updates_show(ctx: click.Context) -> None:
                 target = updates.get("target_firmware", "N/A")
 
                 content = (
-                    f"[bold]Update Available:[/bold] {'[green]Yes[/green]' if has_update else '[dim]No[/dim]'}\n"
+                    f"[bold]Update Available:[/bold] "
+                    f"{'[green]Yes[/green]' if has_update else '[dim]No[/dim]'}\n"
                     f"[bold]Target Firmware:[/bold] {target}"
                 )
                 console.print(Panel(content, title="Update Status", border_style="blue"))
@@ -68,7 +72,9 @@ def updates_check(ctx: click.Context) -> None:
     async def run_cmd() -> None:
         async def check_updates(client: EeroClient) -> None:
             with cli_ctx.status("Checking for updates..."):
-                updates = await client.get_updates(cli_ctx.network_id)
+                raw_updates = await client.get_updates(cli_ctx.network_id)
+
+            updates = extract_data(raw_updates) if isinstance(raw_updates, dict) else {}
 
             has_update = updates.get("has_update", False)
             if has_update:

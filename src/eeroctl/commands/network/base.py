@@ -19,10 +19,11 @@ from rich.table import Table
 
 from ...context import ensure_cli_context, get_cli_context
 from ...exit_codes import ExitCode
-from ...formatting import get_network_status_value
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...transformers import extract_networks
+from ...transformers.network import extract_network, normalize_network
 from ...utils import run_with_client, set_preferred_network
 
 
@@ -74,31 +75,35 @@ def network_list(ctx: click.Context, output: Optional[str]) -> None:
     async def run_cmd() -> None:
         async def get_networks(client: EeroClient) -> None:
             with cli_ctx.status("Getting networks..."):
-                networks = await client.get_networks()
+                raw_response = await client.get_networks()
 
-            if not networks:
+            # Extract and normalize networks from raw response
+            networks = extract_networks(raw_response)
+            normalized = [normalize_network(n) for n in networks]
+
+            if not normalized:
                 console.print("[yellow]No networks found[/yellow]")
                 return
 
             if cli_ctx.is_structured_output():
                 data = [
                     {
-                        "id": n.id,
-                        "name": n.name,
-                        "status": get_network_status_value(n),
-                        "public_ip": n.public_ip,
-                        "isp_name": n.isp_name,
+                        "id": n.get("id"),
+                        "name": n.get("name"),
+                        "status": n.get("status"),
+                        "public_ip": n.get("public_ip"),
+                        "isp_name": n.get("isp_name"),
                     }
-                    for n in networks
+                    for n in normalized
                 ]
                 cli_ctx.render_structured(data, "eero.network.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
-                for n in networks:
-                    status = get_network_status_value(n)
-                    # Use print() with fixed-width columns for alignment
+                for n in normalized:
+                    status = n.get("status", "unknown")
                     print(
-                        f"{n.id or '':<12}  {n.name or '':<25}  {status:<15}  "
-                        f"{n.public_ip or 'N/A':<15}  {n.isp_name or 'N/A'}"
+                        f"{n.get('id', '') or '':<12}  {n.get('name', '') or '':<25}  "
+                        f"{status:<15}  {n.get('public_ip') or 'N/A':<15}  "
+                        f"{n.get('isp_name') or 'N/A'}"
                     )
             else:
                 table = Table(title="Eero Networks")
@@ -108,8 +113,8 @@ def network_list(ctx: click.Context, output: Optional[str]) -> None:
                 table.add_column("Public IP", style="blue")
                 table.add_column("ISP", style="magenta")
 
-                for n in networks:
-                    status = get_network_status_value(n)
+                for n in normalized:
+                    status = n.get("status", "unknown")
                     if "online" in status.lower() or "connected" in status.lower():
                         status_display = f"[green]{status}[/green]"
                     elif "offline" in status.lower():
@@ -118,11 +123,11 @@ def network_list(ctx: click.Context, output: Optional[str]) -> None:
                         status_display = f"[yellow]{status}[/yellow]"
 
                     table.add_row(
-                        n.id or "",
-                        n.name or "",
+                        n.get("id") or "",
+                        n.get("name") or "",
                         status_display,
-                        n.public_ip or "N/A",
-                        n.isp_name or "N/A",
+                        n.get("public_ip") or "N/A",
+                        n.get("isp_name") or "N/A",
                     )
 
                 console.print(table)
@@ -156,9 +161,11 @@ def network_use(ctx: click.Context, network_id: str) -> None:
 
             try:
                 with cli_ctx.status(f"Verifying network {network_id}..."):
-                    net = await client.get_network(network_id)
+                    raw_response = await client.get_network(network_id)
+                net = normalize_network(extract_network(raw_response))
                 console.print(
-                    f"[bold green]Preferred network set to '{net.name}' ({network_id})[/bold green]"
+                    f"[bold green]Preferred network set to '{net.get('name')}' "
+                    f"({network_id})[/bold green]"
                 )
             except Exception as e:
                 console.print(
@@ -185,13 +192,14 @@ def network_show(ctx: click.Context, output: Optional[str], network_id: Optional
     async def run_cmd() -> None:
         async def get_network(client: EeroClient) -> None:
             with cli_ctx.status("Getting network details..."):
-                network = await client.get_network(cli_ctx.network_id)
+                raw_response = await client.get_network(cli_ctx.network_id)
+
+            network = normalize_network(extract_network(raw_response))
 
             if cli_ctx.is_structured_output():
-                cli_ctx.render_structured(
-                    network.model_dump(mode="json"),
-                    "eero.network.show/v1",
-                )
+                # Remove _raw for structured output
+                output_data = {k: v for k, v in network.items() if k != "_raw"}
+                cli_ctx.render_structured(output_data, "eero.network.show/v1")
             else:
                 from ...formatting import print_network_details
 
@@ -246,7 +254,11 @@ def network_rename(
             with cli_ctx.status(f"Renaming network to '{name}'..."):
                 result = await client.set_network_name(name, cli_ctx.network_id)
 
-            if result:
+            # Check if successful (raw response has meta.code)
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            success = meta.get("code", 0) in (200, 201, 204)
+
+            if success:
                 console.print(f"[bold green]Network renamed to '{name}'[/bold green]")
                 console.print("[dim]Note: Network restart may be required[/dim]")
             else:
@@ -275,8 +287,17 @@ def network_premium(ctx: click.Context, output: Optional[str], network_id: Optio
     async def run_cmd() -> None:
         async def check_premium(client: EeroClient) -> None:
             with cli_ctx.status("Checking premium status..."):
-                premium_data = await client.get_premium_status(cli_ctx.network_id)
-                is_premium = await client.is_premium(cli_ctx.network_id)
+                raw_response = await client.get_premium_status(cli_ctx.network_id)
+
+            # Extract premium data from raw response
+            premium_data = raw_response.get("data", {}) if isinstance(raw_response, dict) else {}
+
+            # Determine if premium is active
+            is_premium = premium_data.get("active", False) or premium_data.get("is_active", False)
+            if not is_premium:
+                # Check for subscription info
+                subscription = premium_data.get("subscription", {})
+                is_premium = subscription.get("status") == "active"
 
             if cli_ctx.is_json_output():
                 renderer.render_json(

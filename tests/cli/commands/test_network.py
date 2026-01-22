@@ -48,29 +48,33 @@ class TestNetworkList:
 
     @pytest.fixture
     def mock_networks(self):
-        """Create mock network objects."""
-        # Create mock status with .value attribute (like an enum)
-        status1 = MagicMock()
-        status1.value = "online"
-
-        status2 = MagicMock()
-        status2.value = "online"
-
-        network1 = MagicMock()
-        network1.id = "net_1"
-        network1.name = "Home Network"
-        network1.status = status1
-        network1.public_ip = "203.0.113.1"
-        network1.isp_name = "Comcast"
-
-        network2 = MagicMock()
-        network2.id = "net_2"
-        network2.name = "Office Network"
-        network2.status = status2
-        network2.public_ip = "203.0.113.2"
-        network2.isp_name = "AT&T"
-
-        return [network1, network2]
+        """Create mock network response (raw API format)."""
+        return {
+            "meta": {"code": 200},
+            "data": {
+                "networks": {
+                    "count": 2,
+                    "data": [
+                        {
+                            "url": "/2.2/networks/net_1",
+                            "name": "Home Network",
+                            "status": {"status": "online"},
+                            "wan_ip": "203.0.113.1",
+                            "public_ip": "203.0.113.1",
+                            "isp": {"name": "Comcast"},
+                        },
+                        {
+                            "url": "/2.2/networks/net_2",
+                            "name": "Office Network",
+                            "status": {"status": "online"},
+                            "wan_ip": "203.0.113.2",
+                            "public_ip": "203.0.113.2",
+                            "isp": {"name": "AT&T"},
+                        },
+                    ],
+                }
+            },
+        }
 
     def test_network_list_help(self, runner):
         """Test network list shows help."""
@@ -99,10 +103,14 @@ class TestNetworkList:
     @patch("eeroctl.commands.network.base.run_with_client")
     def test_network_list_empty(self, mock_run_with_client, runner):
         """Test network list with no networks."""
+        empty_response = {
+            "meta": {"code": 200},
+            "data": {"networks": {"count": 0, "data": []}},
+        }
 
         async def run_func(func):
             mock_client = AsyncMock()
-            mock_client.get_networks = AsyncMock(return_value=[])
+            mock_client.get_networks = AsyncMock(return_value=empty_response)
             await func(mock_client)
 
         mock_run_with_client.side_effect = run_func

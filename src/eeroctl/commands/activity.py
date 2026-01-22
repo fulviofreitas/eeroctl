@@ -19,6 +19,7 @@ from ..context import ensure_cli_context
 from ..errors import is_premium_error
 from ..exit_codes import ExitCode
 from ..options import apply_options, network_option, output_option
+from ..transformers import extract_data
 from ..utils import with_client
 
 
@@ -72,18 +73,20 @@ async def activity_summary(
 
     with cli_ctx.status("Getting network activity..."):
         try:
-            activity_data = await client.get_activity(cli_ctx.network_id)
+            raw_response = await client.get_activity(cli_ctx.network_id)
         except Exception as e:
             if is_premium_error(e):
                 console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
                 sys.exit(ExitCode.PREMIUM_REQUIRED)
             raise
 
+    activity_data = extract_data(raw_response) if isinstance(raw_response, dict) else raw_response
+
     if cli_ctx.is_structured_output():
         cli_ctx.render_structured(activity_data, "eero.activity.summary/v1")
     else:
-        upload = activity_data.get("upload_bytes", 0)
-        download = activity_data.get("download_bytes", 0)
+        upload = activity_data.get("upload_bytes", 0) if isinstance(activity_data, dict) else 0
+        download = activity_data.get("download_bytes", 0) if isinstance(activity_data, dict) else 0
         total = upload + download
 
         content = (
@@ -108,12 +111,16 @@ async def activity_clients(
 
     with cli_ctx.status("Getting client activity..."):
         try:
-            clients_data = await client.get_activity_clients(cli_ctx.network_id)
+            raw_response = await client.get_activity_clients(cli_ctx.network_id)
         except Exception as e:
             if is_premium_error(e):
                 console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
                 sys.exit(ExitCode.PREMIUM_REQUIRED)
             raise
+
+    clients_data = extract_data(raw_response) if isinstance(raw_response, dict) else raw_response
+    if isinstance(clients_data, dict):
+        clients_data = clients_data.get("clients", [])
 
     if cli_ctx.is_structured_output():
         cli_ctx.render_structured(clients_data, "eero.activity.clients/v1")
@@ -174,12 +181,16 @@ async def activity_history(
 
     with cli_ctx.status(f"Getting activity history ({period})..."):
         try:
-            history_data = await client.get_activity_history(cli_ctx.network_id, period)
+            raw_response = await client.get_activity_history(cli_ctx.network_id, period)
         except Exception as e:
             if is_premium_error(e):
                 console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
                 sys.exit(ExitCode.PREMIUM_REQUIRED)
             raise
+
+    history_data = extract_data(raw_response) if isinstance(raw_response, dict) else raw_response
+    if not isinstance(history_data, dict):
+        history_data = {}
 
     if cli_ctx.is_structured_output():
         cli_ctx.render_structured(history_data, "eero.activity.history/v1")
@@ -211,12 +222,16 @@ async def activity_categories(
 
     with cli_ctx.status("Getting activity categories..."):
         try:
-            categories_data = await client.get_activity_categories(cli_ctx.network_id)
+            raw_response = await client.get_activity_categories(cli_ctx.network_id)
         except Exception as e:
             if is_premium_error(e):
                 console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
                 sys.exit(ExitCode.PREMIUM_REQUIRED)
             raise
+
+    categories_data = extract_data(raw_response) if isinstance(raw_response, dict) else raw_response
+    if isinstance(categories_data, dict):
+        categories_data = categories_data.get("categories", [])
 
     if cli_ctx.is_structured_output():
         cli_ctx.render_structured(categories_data, "eero.activity.categories/v1")
