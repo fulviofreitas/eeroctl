@@ -4,12 +4,12 @@ This module provides shared formatting functions, constants, and helpers
 used across all formatting modules.
 """
 
-from typing import Any, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
-from eero.const import EeroDeviceStatus
-from eero.models.network import Network
 from rich.console import Console
 from rich.panel import Panel
+
+from ..const import EeroDeviceStatus
 
 # Create console for rich output
 console = Console()
@@ -21,21 +21,27 @@ DetailLevel = Literal["brief", "full"]
 # ==================== Status Formatting Helpers ====================
 
 
-def get_network_status_value(network: Network) -> str:
-    """Extract the status value from a network, handling both enum and string types.
+def get_network_status_value(network: Union[Dict[str, Any], Any]) -> str:
+    """Extract the status value from a network dict or model.
 
     Args:
-        network: Network model instance
+        network: Network data dict or model instance
 
     Returns:
         Status string value (e.g., "online", "offline")
     """
-    if not network.status:
+    if isinstance(network, dict):
+        status = network.get("status")
+    else:
+        # Legacy model support
+        status = getattr(network, "status", None)
+
+    if not status:
         return "unknown"
     # Handle both enum (has .value) and string types
-    if hasattr(network.status, "value"):
-        return str(network.status.value)
-    return str(network.status)
+    if hasattr(status, "value"):
+        return str(status.value)
+    return str(status)
 
 
 def format_network_status(status_value: str) -> tuple[str, str]:
@@ -57,20 +63,25 @@ def format_network_status(status_value: str) -> tuple[str, str]:
     return status_value or "unknown", "dim"
 
 
-def format_device_status(status: EeroDeviceStatus) -> tuple[str, str]:
+def format_device_status(status: Union[EeroDeviceStatus, str]) -> tuple[str, str]:
     """Format device status into display text and style.
 
     Args:
-        status: Device status enum
+        status: Device status enum or string
 
     Returns:
         Tuple of (display_text, style)
     """
-    if status == EeroDeviceStatus.CONNECTED:
+    if isinstance(status, str):
+        status_lower = status.lower()
+    else:
+        status_lower = status.value if hasattr(status, "value") else str(status).lower()
+
+    if status_lower == "connected":
         return "connected", "green"
-    elif status == EeroDeviceStatus.BLOCKED:
+    elif status_lower == "blocked":
         return "blocked", "red"
-    elif status == EeroDeviceStatus.DISCONNECTED:
+    elif status_lower == "disconnected":
         return "disconnected", "yellow"
     return "unknown", "dim"
 
@@ -148,7 +159,9 @@ def field(label: str, value: Any, default: str = "Unknown") -> str:
 
 def field_bool(label: str, value: Optional[bool]) -> str:
     """Format a boolean field line."""
-    return f"[bold]{label}:[/bold] {format_enabled(bool(value)) if value is not None else '[dim]Unknown[/dim]'}"
+    if value is not None:
+        return f"[bold]{label}:[/bold] {format_enabled(bool(value))}"
+    return f"[bold]{label}:[/bold] [dim]Unknown[/dim]"
 
 
 def field_status(label: str, text: str, style: str) -> str:
