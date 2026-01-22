@@ -15,6 +15,7 @@ from rich.table import Table
 
 from ...context import get_cli_context
 from ...exit_codes import ExitCode
+from ...transformers import extract_list
 from ...utils import run_with_client
 
 
@@ -44,10 +45,13 @@ def forwards_list(ctx: click.Context) -> None:
     async def run_cmd() -> None:
         async def get_forwards(client: EeroClient) -> None:
             with cli_ctx.status("Getting port forwards..."):
-                forwards = await client.get_forwards(cli_ctx.network_id)
+                raw_response = await client.get_forwards(cli_ctx.network_id)
+
+            # Extract forwards list from raw response
+            forwards = extract_list(raw_response, "forwards")
 
             if cli_ctx.is_json_output():
-                renderer.render_json(forwards, "eero.network.forwards.list/v1")
+                renderer.render_json(raw_response, "eero.network.forwards.list/v1")
             else:
                 if not forwards:
                     console.print("[yellow]No port forwards configured[/yellow]")
@@ -90,7 +94,10 @@ def forwards_show(ctx: click.Context, forward_id: str) -> None:
     async def run_cmd() -> None:
         async def get_forward(client: EeroClient) -> None:
             with cli_ctx.status("Getting port forward..."):
-                forwards = await client.get_forwards(cli_ctx.network_id)
+                raw_response = await client.get_forwards(cli_ctx.network_id)
+
+            # Extract forwards list from raw response
+            forwards = extract_list(raw_response, "forwards")
 
             target = None
             for fwd in forwards:

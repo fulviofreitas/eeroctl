@@ -56,9 +56,10 @@ def led_show(ctx: click.Context, eero_id: str) -> None:
                     sys.exit(ExitCode.NOT_FOUND)
 
             eero = normalize_eero(extract_data(raw_eero))
+            eero_id_str = str(eero.get("id") or "")
 
             with cli_ctx.status("Getting LED status..."):
-                raw_led = await client.get_led_status(eero.get("id"), cli_ctx.network_id)
+                raw_led = await client.get_led_status(eero_id_str, cli_ctx.network_id)
 
             led_data = extract_data(raw_led) if isinstance(raw_led, dict) else {}
 
@@ -113,9 +114,10 @@ def _set_led(cli_ctx: EeroCliContext, eero_id: str, enabled: bool) -> None:
                     sys.exit(ExitCode.NOT_FOUND)
 
             eero = normalize_eero(extract_data(raw_eero))
+            eero_id_str = str(eero.get("id") or "")
 
             with cli_ctx.status(f"Turning LED {action}..."):
-                result = await client.set_led(eero.get("id"), enabled, cli_ctx.network_id)
+                result = await client.set_led(eero_id_str, enabled, cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:
@@ -149,9 +151,10 @@ def led_brightness(ctx: click.Context, eero_id: str, value: int) -> None:
                     sys.exit(ExitCode.NOT_FOUND)
 
             eero = normalize_eero(extract_data(raw_eero))
+            eero_id_str = str(eero.get("id") or "")
 
             with cli_ctx.status(f"Setting LED brightness to {value}%..."):
-                result = await client.set_led_brightness(eero.get("id"), value, cli_ctx.network_id)
+                result = await client.set_led_brightness(eero_id_str, value, cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:

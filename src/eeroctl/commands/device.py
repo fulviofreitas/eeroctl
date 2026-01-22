@@ -439,7 +439,8 @@ def priority_on(
 
             duration_str = f" for {minutes} minutes" if minutes > 0 else " (indefinite)"
             with cli_ctx.status(f"Prioritizing device{duration_str}..."):
-                result = await client.prioritize_device(target["id"], minutes, cli_ctx.network_id)
+                # TODO: prioritize_device method not yet implemented in eero-api
+                result = await client.prioritize_device(target["id"], minutes, cli_ctx.network_id)  # type: ignore[attr-defined]
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:
@@ -476,7 +477,8 @@ def priority_off(ctx: click.Context, device_id: str, network_id: Optional[str]) 
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Removing priority..."):
-                result = await client.deprioritize_device(target["id"], cli_ctx.network_id)
+                # TODO: deprioritize_device method not yet implemented in eero-api
+                result = await client.deprioritize_device(target["id"], cli_ctx.network_id)  # type: ignore[attr-defined]
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:

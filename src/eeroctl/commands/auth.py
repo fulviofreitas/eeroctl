@@ -347,28 +347,45 @@ def auth_status(ctx: click.Context) -> None:
             if session_valid:
                 try:
                     with cli_ctx.status("Getting account info..."):
-                        account = await client.get_account()
-                    users_list: list[_UserData] = [
-                        _UserData(
-                            id=u.id,
-                            name=u.name,
-                            email=u.email,
-                            phone=u.phone,
-                            role=u.role,
-                            created_at=str(u.created_at) if u.created_at else None,
+                        raw_account = await client.get_account()
+                    # Extract data from raw response envelope
+                    account = raw_account.get("data", raw_account)
+                    if isinstance(account, dict):
+                        # Extract account ID from URL if not directly available
+                        account_id = account.get("id")
+                        if not account_id and account.get("url"):
+                            account_id = account["url"].rstrip("/").split("/")[-1]
+
+                        users_list: list[_UserData] = [
+                            _UserData(
+                                id=u.get("id"),
+                                name=u.get("name"),
+                                email=u.get("email"),
+                                phone=u.get("phone"),
+                                role=u.get("role"),
+                                created_at=(
+                                    str(u.get("created_at")) if u.get("created_at") else None
+                                ),
+                            )
+                            for u in (account.get("users") or [])
+                            if isinstance(u, dict)
+                        ]
+                        account_data = _AccountData(
+                            id=account_id,
+                            name=account.get("name"),
+                            premium_status=account.get("premium_status"),
+                            premium_expiry=(
+                                str(account.get("premium_expiry"))
+                                if account.get("premium_expiry")
+                                else None
+                            ),
+                            created_at=(
+                                str(account.get("created_at"))
+                                if account.get("created_at")
+                                else None
+                            ),
+                            users=users_list,
                         )
-                        for u in (account.users or [])
-                    ]
-                    account_data = _AccountData(
-                        id=account.id,
-                        name=account.name,
-                        premium_status=account.premium_status,
-                        premium_expiry=(
-                            str(account.premium_expiry) if account.premium_expiry else None
-                        ),
-                        created_at=str(account.created_at) if account.created_at else None,
-                        users=users_list,
-                    )
                 except Exception as ex:
                     # API call failed but session may still be valid per expiry date
                     logger.debug("Session verification API call failed: %s", ex)

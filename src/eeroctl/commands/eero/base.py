@@ -208,8 +208,9 @@ def eero_reboot(
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
+            eero_id_str = str(eero.get("id") or "")
             with cli_ctx.status(f"Rebooting {eero_name}..."):
-                result = await client.reboot_eero(eero.get("id"), cli_ctx.network_id)
+                result = await client.reboot_eero(eero_id_str, cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:

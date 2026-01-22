@@ -387,7 +387,8 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple, network_id: Opt
             for app in apps:
                 with cli_ctx.status(f"Blocking {app}..."):
                     try:
-                        result = await client.add_blocked_application(
+                        # TODO: add_blocked_application method not yet implemented in eero-api
+                        result = await client.add_blocked_application(  # type: ignore[attr-defined]
                             target["id"], app, cli_ctx.network_id
                         )
                         meta = result.get("meta", {}) if isinstance(result, dict) else {}
@@ -440,7 +441,8 @@ def apps_unblock(
             for app in apps:
                 with cli_ctx.status(f"Unblocking {app}..."):
                     try:
-                        result = await client.remove_blocked_application(
+                        # TODO: remove_blocked_application method not yet implemented in eero-api
+                        result = await client.remove_blocked_application(  # type: ignore[attr-defined]
                             target["id"], app, cli_ctx.network_id
                         )
                         meta = result.get("meta", {}) if isinstance(result, dict) else {}

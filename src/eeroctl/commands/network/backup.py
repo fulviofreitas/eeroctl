@@ -140,7 +140,8 @@ def backup_status(ctx: click.Context) -> None:
             with cli_ctx.status("Getting backup status..."):
                 try:
                     status_data = await client.get_backup_status(cli_ctx.network_id)
-                    is_using = await client.is_using_backup(cli_ctx.network_id)
+                    # TODO: is_using_backup method not yet implemented in eero-api
+                    is_using = await client.is_using_backup(cli_ctx.network_id)  # type: ignore[attr-defined]
                 except Exception as e:
                     if is_premium_error(e):
                         console.print("[yellow]Backup network requires Eero Plus[/yellow]")

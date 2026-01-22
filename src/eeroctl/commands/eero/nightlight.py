@@ -60,9 +60,10 @@ def nightlight_show(ctx: click.Context, eero_id: str) -> None:
 
             eero = normalize_eero(extract_data(raw_eero))
 
+            eero_id_str = str(eero.get("id") or "")
             with cli_ctx.status("Getting nightlight settings..."):
                 try:
-                    raw_nl = await client.get_nightlight(eero.get("id"), cli_ctx.network_id)
+                    raw_nl = await client.get_nightlight(eero_id_str, cli_ctx.network_id)
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):
                         console.print(
@@ -131,10 +132,11 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_id: str, enabled: bool) -> Non
 
             eero = normalize_eero(extract_data(raw_eero))
 
+            eero_id_str = str(eero.get("id") or "")
             with cli_ctx.status(f"Turning nightlight {action}..."):
                 try:
                     result = await client.set_nightlight(
-                        eero.get("id"), enabled=enabled, network_id=cli_ctx.network_id
+                        eero_id_str, enabled=enabled, network_id=cli_ctx.network_id
                     )
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):
@@ -177,10 +179,12 @@ def nightlight_brightness(ctx: click.Context, eero_id: str, value: int) -> None:
 
             eero = normalize_eero(extract_data(raw_eero))
 
+            eero_id_str = str(eero.get("id") or "")
             with cli_ctx.status(f"Setting nightlight brightness to {value}%..."):
                 try:
-                    result = await client.set_nightlight_brightness(
-                        eero.get("id"), value, cli_ctx.network_id
+                    # TODO: set_nightlight_brightness method not yet implemented in eero-api
+                    result = await client.set_nightlight_brightness(  # type: ignore[attr-defined]
+                        eero_id_str, value, cli_ctx.network_id
                     )
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):
@@ -224,10 +228,12 @@ def nightlight_schedule(ctx: click.Context, eero_id: str, on_time: str, off_time
 
             eero = normalize_eero(extract_data(raw_eero))
 
+            eero_id_str = str(eero.get("id") or "")
             with cli_ctx.status("Setting nightlight schedule..."):
                 try:
-                    result = await client.set_nightlight_schedule(
-                        eero.get("id"), True, on_time, off_time, cli_ctx.network_id
+                    # TODO: set_nightlight_schedule method not yet implemented in eero-api
+                    result = await client.set_nightlight_schedule(  # type: ignore[attr-defined]
+                        eero_id_str, True, on_time, off_time, cli_ctx.network_id
                     )
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):

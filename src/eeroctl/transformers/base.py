@@ -95,7 +95,7 @@ def safe_get(data: Dict[str, Any], *keys: str, default: Any = None) -> Any:
     Returns:
         The value at the path or the default
     """
-    result = data
+    result: Any = data
     for key in keys:
         if isinstance(result, dict):
             result = result.get(key)
