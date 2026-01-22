@@ -15,9 +15,24 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ..context import ensure_cli_context
-from ..formatting import get_network_status_value
 from ..options import apply_options, network_option, output_option
+from ..transformers import (
+    extract_data,
+    extract_devices,
+    extract_eeros,
+    normalize_device,
+    normalize_eero,
+    normalize_network,
+)
 from ..utils import with_client
+
+
+def _get_network_status(network: dict) -> str:
+    """Extract status from network dict."""
+    status = network.get("status", "unknown")
+    if isinstance(status, dict):
+        status = status.get("status", "unknown")
+    return str(status).lower()
 
 
 @click.group(name="troubleshoot")
@@ -54,19 +69,22 @@ async def troubleshoot_connectivity(
     console = cli_ctx.console
 
     with cli_ctx.status("Checking connectivity..."):
-        network = await client.get_network(cli_ctx.network_id)
-        diagnostics = await client.get_diagnostics(cli_ctx.network_id)
+        raw_network = await client.get_network(cli_ctx.network_id)
+        raw_diagnostics = await client.get_diagnostics(cli_ctx.network_id)
+
+    network = normalize_network(extract_data(raw_network))
+    diagnostics = extract_data(raw_diagnostics) if isinstance(raw_diagnostics, dict) else {}
 
     if cli_ctx.is_structured_output():
         data = {
-            "network_status": get_network_status_value(network),
-            "public_ip": network.public_ip,
-            "isp": network.isp_name,
+            "network_status": network.get("status"),
+            "public_ip": network.get("public_ip"),
+            "isp": network.get("isp_name"),
             "diagnostics": diagnostics,
         }
         cli_ctx.render_structured(data, "eero.troubleshoot.connectivity/v1")
     else:
-        status = get_network_status_value(network)
+        status = network.get("status", "unknown")
         if "online" in status.lower() or "connected" in status.lower():
             status_display = f"[green]{status}[/green]"
         elif "offline" in status.lower():
@@ -76,13 +94,13 @@ async def troubleshoot_connectivity(
 
         content = (
             f"[bold]Status:[/bold] {status_display}\n"
-            f"[bold]Public IP:[/bold] {network.public_ip or 'N/A'}\n"
-            f"[bold]ISP:[/bold] {network.isp_name or 'N/A'}"
+            f"[bold]Public IP:[/bold] {network.get('public_ip') or 'N/A'}\n"
+            f"[bold]ISP:[/bold] {network.get('isp_name') or 'N/A'}"
         )
 
         # Add health info if available
-        health = getattr(network, "health", {})
-        if health:
+        health = network.get("health", {})
+        if health and isinstance(health, dict):
             internet_status = health.get("internet", {}).get("status", "Unknown")
             content += f"\n[bold]Internet Status:[/bold] {internet_status}"
 
@@ -125,7 +143,9 @@ async def troubleshoot_ping(
         console.print(f"[dim]From: {from_eero}[/dim]")
 
     with cli_ctx.status("Running diagnostics..."):
-        diagnostics = await client.get_diagnostics(cli_ctx.network_id)
+        raw_diagnostics = await client.get_diagnostics(cli_ctx.network_id)
+
+    diagnostics = extract_data(raw_diagnostics) if isinstance(raw_diagnostics, dict) else {}
 
     if cli_ctx.is_structured_output():
         cli_ctx.render_structured(
@@ -184,9 +204,10 @@ async def troubleshoot_trace(
     console.print(f"[dim]Target: {target}[/dim]")
 
     with cli_ctx.status("Running diagnostics..."):
-        # diagnostics not currently used but may be needed for full trace support
         _ = await client.get_diagnostics(cli_ctx.network_id)
-        routing = await client.get_routing(cli_ctx.network_id)
+        raw_routing = await client.get_routing(cli_ctx.network_id)
+
+    routing = extract_data(raw_routing) if isinstance(raw_routing, dict) else {}
 
     if cli_ctx.is_structured_output():
         cli_ctx.render_structured(
@@ -232,8 +253,9 @@ async def troubleshoot_doctor(
     with cli_ctx.status("Running diagnostics..."):
         # Check network status
         try:
-            network = await client.get_network(cli_ctx.network_id)
-            status = get_network_status_value(network)
+            raw_network = await client.get_network(cli_ctx.network_id)
+            network = normalize_network(extract_data(raw_network))
+            status = network.get("status", "unknown")
             if "online" in status.lower() or "connected" in status.lower():
                 checks.append(("Network Status", "pass", status))
             else:
@@ -243,9 +265,11 @@ async def troubleshoot_doctor(
 
         # Check eeros
         try:
-            eeros = await client.get_eeros(cli_ctx.network_id)
-            online_count = sum(1 for e in eeros if e.status == "green")
-            total_count = len(eeros)
+            raw_eeros = await client.get_eeros(cli_ctx.network_id)
+            eeros = extract_eeros(raw_eeros)
+            normalized_eeros = [normalize_eero(e) for e in eeros]
+            online_count = sum(1 for e in normalized_eeros if e.get("status") == "green")
+            total_count = len(normalized_eeros)
             if online_count == total_count:
                 checks.append(("Mesh Nodes", "pass", f"{online_count}/{total_count} online"))
             elif online_count > 0:
@@ -257,8 +281,10 @@ async def troubleshoot_doctor(
 
         # Check devices
         try:
-            devices = await client.get_devices(cli_ctx.network_id)
-            connected = sum(1 for d in devices if d.connected)
+            raw_devices = await client.get_devices(cli_ctx.network_id)
+            devices = extract_devices(raw_devices)
+            normalized_devices = [normalize_device(d) for d in devices]
+            connected = sum(1 for d in normalized_devices if d.get("connected"))
             checks.append(("Connected Devices", "info", f"{connected} devices"))
         except Exception as e:
             checks.append(("Connected Devices", "warn", str(e)))
@@ -272,7 +298,10 @@ async def troubleshoot_doctor(
 
         # Check premium status
         try:
-            is_premium = await client.is_premium(cli_ctx.network_id)
+            raw_premium = await client.is_premium(cli_ctx.network_id)
+            is_premium = raw_premium if isinstance(raw_premium, bool) else False
+            if isinstance(raw_premium, dict):
+                is_premium = raw_premium.get("data", {}).get("premium", False)
             checks.append(("Eero Plus", "info", "Active" if is_premium else "Not active"))
         except Exception:
             checks.append(("Eero Plus", "info", "Unknown"))

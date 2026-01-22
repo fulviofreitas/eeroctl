@@ -11,11 +11,10 @@ Commands:
 
 import asyncio
 import sys
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 import click
 from eero import EeroClient
-from eero.const import EeroDeviceStatus
 from rich.panel import Panel
 from rich.table import Table
 
@@ -24,7 +23,32 @@ from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import OperationRisk, SafetyError, confirm_or_fail
+from ..transformers import extract_data, extract_devices, normalize_device
 from ..utils import run_with_client
+
+
+def _find_device(devices: list, device_id: str) -> Optional[Dict[str, Any]]:
+    """Find a device by ID, MAC, or name."""
+    for d in devices:
+        dev = normalize_device(d)
+        if (
+            dev.get("id") == device_id
+            or dev.get("mac") == device_id
+            or dev.get("display_name") == device_id
+            or dev.get("nickname") == device_id
+            or dev.get("hostname") == device_id
+        ):
+            return dev
+    return None
+
+
+def _get_device_status(dev: Dict[str, Any]) -> str:
+    """Get device status string."""
+    if dev.get("connected"):
+        if dev.get("blocked"):
+            return "blocked"
+        return "connected"
+    return "disconnected"
 
 
 @click.group(name="device")
@@ -63,25 +87,30 @@ def device_list(ctx: click.Context, output: Optional[str], network_id: Optional[
     async def run_cmd() -> None:
         async def get_devices(client: EeroClient) -> None:
             with cli_ctx.status("Getting devices..."):
-                devices = await client.get_devices(cli_ctx.network_id)
+                raw_response = await client.get_devices(cli_ctx.network_id)
 
-            if not devices:
+            devices = extract_devices(raw_response)
+            normalized = [normalize_device(d) for d in devices]
+
+            if not normalized:
                 console.print("[yellow]No devices found[/yellow]")
                 return
 
             if cli_ctx.is_structured_output():
-                data = [d.model_dump(mode="json") for d in devices]
-                cli_ctx.render_structured(data, "eero.device.list/v1")
+                cli_ctx.render_structured(normalized, "eero.device.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
-                for d in devices:
-                    name = d.display_name or d.hostname or d.nickname or "Unknown"
-                    status = d.status.value if d.status else "unknown"
-                    device_type = d.device_type or ""
-                    connection = d.connection_type or ""
-                    # Use print() with fixed-width columns for alignment
+                for d in normalized:
+                    name = (
+                        d.get("display_name") or d.get("hostname") or d.get("nickname") or "Unknown"
+                    )
+                    status = _get_device_status(d)
+                    device_type = d.get("device_type") or ""
+                    connection = d.get("connection_type") or ""
                     print(
-                        f"{d.id or '':<14}  {name:<30}  {d.ip or d.ipv4 or '':<15}  "
-                        f"{d.mac or '':<17}  {status:<12}  {device_type:<20}  {connection}"
+                        f"{d.get('id') or '':<14}  {name:<30}  "
+                        f"{d.get('ip') or d.get('ipv4') or '':<15}  "
+                        f"{d.get('mac') or '':<17}  {status:<12}  "
+                        f"{device_type:<20}  {connection}"
                     )
             else:
                 table = Table(title="Connected Devices")
@@ -93,24 +122,26 @@ def device_list(ctx: click.Context, output: Optional[str], network_id: Optional[
                 table.add_column("Type")
                 table.add_column("Connection")
 
-                for d in devices:
-                    name = d.display_name or d.hostname or d.nickname or "Unknown"
-
-                    if d.status == EeroDeviceStatus.CONNECTED:
-                        status = "[green]connected[/green]"
-                    elif d.status == EeroDeviceStatus.BLOCKED:
-                        status = "[red]blocked[/red]"
+                for d in normalized:
+                    name = (
+                        d.get("display_name") or d.get("hostname") or d.get("nickname") or "Unknown"
+                    )
+                    status = _get_device_status(d)
+                    if status == "connected":
+                        status_display = "[green]connected[/green]"
+                    elif status == "blocked":
+                        status_display = "[red]blocked[/red]"
                     else:
-                        status = "[yellow]disconnected[/yellow]"
+                        status_display = "[yellow]disconnected[/yellow]"
 
                     table.add_row(
-                        d.id or "",
+                        d.get("id") or "",
                         name,
-                        d.ip or d.ipv4 or "",
-                        d.mac or "",
-                        status,
-                        d.device_type or "",
-                        d.connection_type or "",
+                        d.get("ip") or d.get("ipv4") or "",
+                        d.get("mac") or "",
+                        status_display,
+                        d.get("device_type") or "",
+                        d.get("connection_type") or "",
                     )
 
                 console.print(table)
@@ -140,31 +171,23 @@ def device_show(
     async def run_cmd() -> None:
         async def get_device(client: EeroClient) -> None:
             with cli_ctx.status("Getting devices..."):
-                devices = await client.get_devices(cli_ctx.network_id)
+                raw_response = await client.get_devices(cli_ctx.network_id)
 
-            # Find device by ID, MAC, or name
-            target = None
-            for d in devices:
-                if (
-                    d.id == device_id
-                    or d.mac == device_id
-                    or d.display_name == device_id
-                    or d.nickname == device_id
-                    or d.hostname == device_id
-                ):
-                    target = d
-                    break
+            devices = extract_devices(raw_response)
+            target = _find_device(devices, device_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             # Get full details
             with cli_ctx.status("Getting device details..."):
-                device = await client.get_device(target.id, cli_ctx.network_id)
+                raw_detail = await client.get_device(target["id"], cli_ctx.network_id)
+
+            device = normalize_device(extract_data(raw_detail))
 
             if cli_ctx.is_structured_output():
-                cli_ctx.render_structured(device.model_dump(mode="json"), "eero.device.show/v1")
+                cli_ctx.render_structured(device, "eero.device.show/v1")
             else:
                 from ..formatting import print_device_details
 
@@ -201,27 +224,21 @@ def device_rename(ctx: click.Context, device_id: str, name: str, network_id: Opt
         async def rename_device(client: EeroClient) -> None:
             # Find device first
             with cli_ctx.status("Finding device..."):
-                devices = await client.get_devices(cli_ctx.network_id)
+                raw_response = await client.get_devices(cli_ctx.network_id)
 
-            target = None
-            for d in devices:
-                if (
-                    d.id == device_id
-                    or d.mac == device_id
-                    or d.display_name == device_id
-                    or d.nickname == device_id
-                ):
-                    target = d
-                    break
+            devices = extract_devices(raw_response)
+            target = _find_device(devices, device_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status(f"Renaming device to '{name}'..."):
-                result = await client.set_device_nickname(target.id, name, cli_ctx.network_id)
+                result = await client.set_device_nickname(target["id"], name, cli_ctx.network_id)
 
-            if result:
+            # Check result
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Device renamed to '{name}'[/bold green]")
             else:
                 console.print("[red]Failed to rename device[/red]")
@@ -277,24 +294,21 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_id: str, blocked: bool) 
         async def toggle_block(client: EeroClient) -> None:
             # Find device first
             with cli_ctx.status("Finding device..."):
-                devices = await client.get_devices(cli_ctx.network_id)
+                raw_response = await client.get_devices(cli_ctx.network_id)
 
-            target = None
-            for d in devices:
-                if (
-                    d.id == device_id
-                    or d.mac == device_id
-                    or d.display_name == device_id
-                    or d.nickname == device_id
-                ):
-                    target = d
-                    break
+            devices = extract_devices(raw_response)
+            target = _find_device(devices, device_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            device_name = target.display_name or target.nickname or target.hostname or device_id
+            device_name = (
+                target.get("display_name")
+                or target.get("nickname")
+                or target.get("hostname")
+                or device_id
+            )
 
             try:
                 confirm_or_fail(
@@ -311,9 +325,10 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_id: str, blocked: bool) 
                 sys.exit(e.exit_code)
 
             with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
-                result = await client.block_device(target.id, blocked, cli_ctx.network_id)
+                result = await client.block_device(target["id"], blocked, cli_ctx.network_id)
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Device {action}ed[/bold green]")
             else:
                 console.print(f"[red]Failed to {action} device[/red]")
@@ -358,25 +373,19 @@ def priority_show(
         async def get_priority(client: EeroClient) -> None:
             # Find device first
             with cli_ctx.status("Finding device..."):
-                devices = await client.get_devices(cli_ctx.network_id)
+                raw_response = await client.get_devices(cli_ctx.network_id)
 
-            target = None
-            for d in devices:
-                if (
-                    d.id == device_id
-                    or d.mac == device_id
-                    or d.display_name == device_id
-                    or d.nickname == device_id
-                ):
-                    target = d
-                    break
+            devices = extract_devices(raw_response)
+            target = _find_device(devices, device_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting priority status..."):
-                priority_data = await client.get_device_priority(target.id, cli_ctx.network_id)
+                raw_priority = await client.get_device_priority(target["id"], cli_ctx.network_id)
+
+            priority_data = extract_data(raw_priority)
 
             if cli_ctx.is_json_output():
                 renderer.render_json(priority_data, "eero.device.priority.show/v1")
@@ -384,7 +393,10 @@ def priority_show(
                 prioritized = priority_data.get("prioritized", False)
                 duration = priority_data.get("duration", 0)
 
-                content = f"[bold]Prioritized:[/bold] {'[green]Yes[/green]' if prioritized else '[dim]No[/dim]'}"
+                content = (
+                    f"[bold]Prioritized:[/bold] "
+                    f"{'[green]Yes[/green]' if prioritized else '[dim]No[/dim]'}"
+                )
                 if prioritized and duration > 0:
                     content += f"\n[bold]Duration:[/bold] {duration} minutes"
 
@@ -416,28 +428,21 @@ def priority_on(
         async def set_priority(client: EeroClient) -> None:
             # Find device first
             with cli_ctx.status("Finding device..."):
-                devices = await client.get_devices(cli_ctx.network_id)
+                raw_response = await client.get_devices(cli_ctx.network_id)
 
-            target = None
-            for d in devices:
-                if (
-                    d.id == device_id
-                    or d.mac == device_id
-                    or d.display_name == device_id
-                    or d.nickname == device_id
-                ):
-                    target = d
-                    break
+            devices = extract_devices(raw_response)
+            target = _find_device(devices, device_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             duration_str = f" for {minutes} minutes" if minutes > 0 else " (indefinite)"
             with cli_ctx.status(f"Prioritizing device{duration_str}..."):
-                result = await client.prioritize_device(target.id, minutes, cli_ctx.network_id)
+                result = await client.prioritize_device(target["id"], minutes, cli_ctx.network_id)
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Device prioritized{duration_str}[/bold green]")
             else:
                 console.print("[red]Failed to prioritize device[/red]")
@@ -461,27 +466,20 @@ def priority_off(ctx: click.Context, device_id: str, network_id: Optional[str]) 
         async def remove_priority(client: EeroClient) -> None:
             # Find device first
             with cli_ctx.status("Finding device..."):
-                devices = await client.get_devices(cli_ctx.network_id)
+                raw_response = await client.get_devices(cli_ctx.network_id)
 
-            target = None
-            for d in devices:
-                if (
-                    d.id == device_id
-                    or d.mac == device_id
-                    or d.display_name == device_id
-                    or d.nickname == device_id
-                ):
-                    target = d
-                    break
+            devices = extract_devices(raw_response)
+            target = _find_device(devices, device_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Device '{device_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Removing priority..."):
-                result = await client.deprioritize_device(target.id, cli_ctx.network_id)
+                result = await client.deprioritize_device(target["id"], cli_ctx.network_id)
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print("[bold green]Priority removed[/bold green]")
             else:
                 console.print("[red]Failed to remove priority[/red]")

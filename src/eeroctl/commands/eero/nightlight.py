@@ -19,6 +19,7 @@ from rich.panel import Panel
 from ...context import EeroCliContext, get_cli_context
 from ...errors import is_feature_unavailable_error
 from ...exit_codes import ExitCode
+from ...transformers import extract_data, normalize_eero
 from ...utils import run_with_client
 
 
@@ -52,14 +53,16 @@ def nightlight_show(ctx: click.Context, eero_id: str) -> None:
             # Resolve eero first (by ID, serial, location, or MAC)
             with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
                 try:
-                    eero = await client.get_eero(eero_id, cli_ctx.network_id)
+                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
                 except EeroNotFoundException:
                     console.print(f"[red]Eero '{eero_id}' not found[/red]")
                     sys.exit(ExitCode.NOT_FOUND)
 
+            eero = normalize_eero(extract_data(raw_eero))
+
             with cli_ctx.status("Getting nightlight settings..."):
                 try:
-                    nl_data = await client.get_nightlight(eero.eero_id, cli_ctx.network_id)
+                    raw_nl = await client.get_nightlight(eero.get("id"), cli_ctx.network_id)
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):
                         console.print(
@@ -67,6 +70,8 @@ def nightlight_show(ctx: click.Context, eero_id: str) -> None:
                         )
                         sys.exit(ExitCode.FEATURE_UNAVAILABLE)
                     raise
+
+            nl_data = extract_data(raw_nl) if isinstance(raw_nl, dict) else {}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(nl_data, "eero.eero.nightlight.show/v1")
@@ -119,15 +124,17 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_id: str, enabled: bool) -> Non
             # Resolve eero first (by ID, serial, location, or MAC)
             with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
                 try:
-                    eero = await client.get_eero(eero_id, cli_ctx.network_id)
+                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
                 except EeroNotFoundException:
                     console.print(f"[red]Eero '{eero_id}' not found[/red]")
                     sys.exit(ExitCode.NOT_FOUND)
 
+            eero = normalize_eero(extract_data(raw_eero))
+
             with cli_ctx.status(f"Turning nightlight {action}..."):
                 try:
                     result = await client.set_nightlight(
-                        eero.eero_id, enabled=enabled, network_id=cli_ctx.network_id
+                        eero.get("id"), enabled=enabled, network_id=cli_ctx.network_id
                     )
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):
@@ -137,7 +144,8 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_id: str, enabled: bool) -> Non
                         sys.exit(ExitCode.FEATURE_UNAVAILABLE)
                     raise
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Nightlight turned {action}[/bold green]")
             else:
                 console.print(f"[red]Failed to turn nightlight {action}[/red]")
@@ -162,15 +170,17 @@ def nightlight_brightness(ctx: click.Context, eero_id: str, value: int) -> None:
             # Resolve eero first (by ID, serial, location, or MAC)
             with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
                 try:
-                    eero = await client.get_eero(eero_id, cli_ctx.network_id)
+                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
                 except EeroNotFoundException:
                     console.print(f"[red]Eero '{eero_id}' not found[/red]")
                     sys.exit(ExitCode.NOT_FOUND)
 
+            eero = normalize_eero(extract_data(raw_eero))
+
             with cli_ctx.status(f"Setting nightlight brightness to {value}%..."):
                 try:
                     result = await client.set_nightlight_brightness(
-                        eero.eero_id, value, cli_ctx.network_id
+                        eero.get("id"), value, cli_ctx.network_id
                     )
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):
@@ -180,7 +190,8 @@ def nightlight_brightness(ctx: click.Context, eero_id: str, value: int) -> None:
                         sys.exit(ExitCode.FEATURE_UNAVAILABLE)
                     raise
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Nightlight brightness set to {value}%[/bold green]")
             else:
                 console.print("[red]Failed to set nightlight brightness[/red]")
@@ -206,15 +217,17 @@ def nightlight_schedule(ctx: click.Context, eero_id: str, on_time: str, off_time
             # Resolve eero first (by ID, serial, location, or MAC)
             with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
                 try:
-                    eero = await client.get_eero(eero_id, cli_ctx.network_id)
+                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
                 except EeroNotFoundException:
                     console.print(f"[red]Eero '{eero_id}' not found[/red]")
                     sys.exit(ExitCode.NOT_FOUND)
 
+            eero = normalize_eero(extract_data(raw_eero))
+
             with cli_ctx.status("Setting nightlight schedule..."):
                 try:
                     result = await client.set_nightlight_schedule(
-                        eero.eero_id, True, on_time, off_time, cli_ctx.network_id
+                        eero.get("id"), True, on_time, off_time, cli_ctx.network_id
                     )
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):
@@ -224,7 +237,8 @@ def nightlight_schedule(ctx: click.Context, eero_id: str, on_time: str, off_time
                         sys.exit(ExitCode.FEATURE_UNAVAILABLE)
                     raise
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Schedule set: {on_time} - {off_time}[/bold green]")
             else:
                 console.print("[red]Failed to set schedule[/red]")

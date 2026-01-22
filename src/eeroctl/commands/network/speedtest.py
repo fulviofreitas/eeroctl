@@ -12,6 +12,7 @@ from eero import EeroClient
 from rich.panel import Panel
 
 from ...context import get_cli_context
+from ...transformers import extract_data, normalize_network
 from ...utils import run_with_client
 
 
@@ -39,7 +40,9 @@ def speedtest_run(ctx: click.Context) -> None:
     async def run_cmd() -> None:
         async def run_test(client: EeroClient) -> None:
             with cli_ctx.status("Running speed test (this may take a minute)..."):
-                result = await client.run_speed_test(cli_ctx.network_id)
+                raw_result = await client.run_speed_test(cli_ctx.network_id)
+
+            result = extract_data(raw_result) if isinstance(raw_result, dict) else {}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(result, "eero.network.speedtest.run/v1")
@@ -71,9 +74,11 @@ def speedtest_show(ctx: click.Context) -> None:
     async def run_cmd() -> None:
         async def get_results(client: EeroClient) -> None:
             with cli_ctx.status("Getting speed test results..."):
-                network = await client.get_network(cli_ctx.network_id)
+                raw_network = await client.get_network(cli_ctx.network_id)
 
-            speed_test = network.speed_test
+            network = normalize_network(extract_data(raw_network))
+            speed_test = network.get("speed_test")
+
             if not speed_test:
                 console.print("[yellow]No speed test results available[/yellow]")
                 return

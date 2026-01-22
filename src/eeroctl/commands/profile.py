@@ -11,7 +11,7 @@ Commands:
 
 import asyncio
 import sys
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional
 
 import click
 from eero import EeroClient
@@ -24,7 +24,17 @@ from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import OperationRisk, SafetyError, confirm_or_fail
+from ..transformers import extract_data, extract_profiles, normalize_profile
 from ..utils import run_with_client
+
+
+def _find_profile(profiles: list, profile_id: str) -> Optional[Dict[str, Any]]:
+    """Find a profile by ID or name."""
+    for p in profiles:
+        prof = normalize_profile(p)
+        if prof.get("id") == profile_id or prof.get("name") == profile_id:
+            return prof
+    return None
 
 
 @click.group(name="profile")
@@ -63,30 +73,26 @@ def profile_list(ctx: click.Context, output: Optional[str], network_id: Optional
     async def run_cmd() -> None:
         async def get_profiles(client: EeroClient) -> None:
             with cli_ctx.status("Getting profiles..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            if not profiles:
+            profiles = extract_profiles(raw_response)
+            normalized = [normalize_profile(p) for p in profiles]
+
+            if not normalized:
                 console.print("[yellow]No profiles found[/yellow]")
                 return
 
             if cli_ctx.is_structured_output():
-                data = [p.model_dump(mode="json") for p in profiles]
-                cli_ctx.render_structured(data, "eero.profile.list/v1")
+                cli_ctx.render_structured(normalized, "eero.profile.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
-                for p in profiles:
-                    status = "paused" if p.paused else "active"
-                    schedule = "enabled" if p.schedule_enabled else "-"
-                    default = "yes" if p.default else "-"
-                    premium = "yes" if p.premium_enabled else "-"
-                    # Use device_count if available, otherwise count devices list
-                    device_count = (
-                        p.device_count
-                        if p.device_count is not None
-                        else len(p.devices) if p.devices else 0
-                    )
-                    # Use print() with fixed-width columns for alignment
+                for p in normalized:
+                    status = "paused" if p.get("paused") else "active"
+                    schedule = "enabled" if p.get("schedule_enabled") else "-"
+                    default = "yes" if p.get("default") else "-"
+                    premium = "yes" if p.get("premium_enabled") else "-"
+                    device_count = p.get("device_count", 0)
                     print(
-                        f"{p.id or '':<14}  {p.name:<20}  {status:<8}  "
+                        f"{p.get('id') or '':<14}  {p.get('name') or '':<20}  {status:<8}  "
                         f"{schedule:<10}  {default:<8}  {premium:<8}  {device_count}"
                     )
             else:
@@ -99,31 +105,26 @@ def profile_list(ctx: click.Context, output: Optional[str], network_id: Optional
                 table.add_column("Premium")
                 table.add_column("Devices", justify="right")
 
-                for p in profiles:
-                    # Status: Paused or Active
-                    if p.paused:
+                for p in normalized:
+                    if p.get("paused"):
                         status = "[red]Paused[/red]"
                     else:
                         status = "[green]Active[/green]"
-
-                    # Schedule: Enabled or -
-                    schedule = "[blue]Enabled[/blue]" if p.schedule_enabled else "[dim]-[/dim]"
-
-                    # Default profile indicator
-                    default = "[yellow]★[/yellow]" if p.default else "[dim]-[/dim]"
-
-                    # Premium features indicator
-                    premium = "[magenta]✓[/magenta]" if p.premium_enabled else "[dim]-[/dim]"
-
-                    # Device count - use device_count if available, otherwise count devices list
-                    device_count = (
-                        p.device_count
-                        if p.device_count is not None
-                        else len(p.devices) if p.devices else 0
+                    schedule = (
+                        "[blue]Enabled[/blue]" if p.get("schedule_enabled") else "[dim]-[/dim]"
                     )
+                    default = "[yellow]★[/yellow]" if p.get("default") else "[dim]-[/dim]"
+                    premium = "[magenta]✓[/magenta]" if p.get("premium_enabled") else "[dim]-[/dim]"
+                    device_count = p.get("device_count", 0)
 
                     table.add_row(
-                        p.id or "", p.name, status, schedule, default, premium, str(device_count)
+                        p.get("id") or "",
+                        p.get("name") or "",
+                        status,
+                        schedule,
+                        default,
+                        premium,
+                        str(device_count),
                     )
 
                 console.print(table)
@@ -153,23 +154,22 @@ def profile_show(
     async def run_cmd() -> None:
         async def get_profile(client: EeroClient) -> None:
             with cli_ctx.status("Getting profiles..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            target = None
-            for p in profiles:
-                if p.id == profile_id or p.name == profile_id:
-                    target = p
-                    break
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting profile details..."):
-                profile = await client.get_profile(target.id, cli_ctx.network_id)
+                raw_detail = await client.get_profile(target["id"], cli_ctx.network_id)
+
+            profile = normalize_profile(extract_data(raw_detail))
 
             if cli_ctx.is_structured_output():
-                cli_ctx.render_structured(profile.model_dump(mode="json"), "eero.profile.show/v1")
+                cli_ctx.render_structured(profile, "eero.profile.show/v1")
             else:
                 from ..formatting import print_profile_details
 
@@ -237,22 +237,19 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_id: str, paused: bool) 
         async def toggle_pause(client: EeroClient) -> None:
             # Find profile first
             with cli_ctx.status("Finding profile..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            target = None
-            for p in profiles:
-                if p.id == profile_id or p.name == profile_id:
-                    target = p
-                    break
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
                 confirm_or_fail(
                     action=action,
-                    target=target.name,
+                    target=target.get("name") or profile_id,
                     risk=OperationRisk.MEDIUM,
                     force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
@@ -264,9 +261,10 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_id: str, paused: bool) 
                 sys.exit(e.exit_code)
 
             with cli_ctx.status(f"{action.capitalize()}ing profile..."):
-                result = await client.pause_profile(target.id, paused, cli_ctx.network_id)
+                result = await client.pause_profile(target["id"], paused, cli_ctx.network_id)
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Profile {action}d[/bold green]")
             else:
                 console.print(f"[red]Failed to {action} profile[/red]")
@@ -311,30 +309,34 @@ def apps_list(
         async def get_apps(client: EeroClient) -> None:
             # Find profile first
             with cli_ctx.status("Finding profile..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            target = None
-            for p in profiles:
-                if p.id == profile_id or p.name == profile_id:
-                    target = p
-                    break
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting blocked apps..."):
                 try:
-                    apps = await client.get_blocked_applications(target.id, cli_ctx.network_id)
+                    raw_apps = await client.get_blocked_applications(
+                        target["id"], cli_ctx.network_id
+                    )
                 except Exception as e:
                     if is_premium_error(e):
                         console.print("[yellow]This feature requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
 
+            apps = extract_data(raw_apps) if isinstance(raw_apps, dict) else raw_apps
+            if isinstance(apps, dict):
+                apps = apps.get("applications", [])
+
             if cli_ctx.is_json_output():
                 renderer.render_json(
-                    {"profile": target.name, "blocked_apps": apps}, "eero.profile.apps.list/v1"
+                    {"profile": target.get("name"), "blocked_apps": apps},
+                    "eero.profile.apps.list/v1",
                 )
             else:
                 if not apps:
@@ -373,15 +375,12 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple, network_id: Opt
         async def block_apps(client: EeroClient) -> None:
             # Find profile first
             with cli_ctx.status("Finding profile..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            target = None
-            for p in profiles:
-                if p.id == profile_id or p.name == profile_id:
-                    target = p
-                    break
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
@@ -389,9 +388,10 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple, network_id: Opt
                 with cli_ctx.status(f"Blocking {app}..."):
                     try:
                         result = await client.add_blocked_application(
-                            target.id, app, cli_ctx.network_id
+                            target["id"], app, cli_ctx.network_id
                         )
-                        if result:
+                        meta = result.get("meta", {}) if isinstance(result, dict) else {}
+                        if meta.get("code") == 200 or result:
                             console.print(f"[green]✓[/green] {app} blocked")
                         else:
                             console.print(f"[red]✗[/red] Failed to block {app}")
@@ -428,15 +428,12 @@ def apps_unblock(
         async def unblock_apps(client: EeroClient) -> None:
             # Find profile first
             with cli_ctx.status("Finding profile..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            target = None
-            for p in profiles:
-                if p.id == profile_id or p.name == profile_id:
-                    target = p
-                    break
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
@@ -444,9 +441,10 @@ def apps_unblock(
                 with cli_ctx.status(f"Unblocking {app}..."):
                     try:
                         result = await client.remove_blocked_application(
-                            target.id, app, cli_ctx.network_id
+                            target["id"], app, cli_ctx.network_id
                         )
-                        if result:
+                        meta = result.get("meta", {}) if isinstance(result, dict) else {}
+                        if meta.get("code") == 200 or result:
                             console.print(f"[green]✓[/green] {app} unblocked")
                         else:
                             console.print(f"[red]✗[/red] Failed to unblock {app}")
@@ -495,20 +493,19 @@ def schedule_show(
         async def get_schedule(client: EeroClient) -> None:
             # Find profile first
             with cli_ctx.status("Finding profile..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            target = None
-            for p in profiles:
-                if p.id == profile_id or p.name == profile_id:
-                    target = p
-                    break
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting schedule..."):
-                schedule_data = await client.get_profile_schedule(target.id, cli_ctx.network_id)
+                raw_schedule = await client.get_profile_schedule(target["id"], cli_ctx.network_id)
+
+            schedule_data = extract_data(raw_schedule) if isinstance(raw_schedule, dict) else {}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(schedule_data, "eero.profile.schedule.show/v1")
@@ -573,22 +570,19 @@ def schedule_set(
         async def set_schedule(client: EeroClient) -> None:
             # Find profile first
             with cli_ctx.status("Finding profile..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            target = None
-            for p in profiles:
-                if p.id == profile_id or p.name == profile_id:
-                    target = p
-                    break
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
                 confirm_or_fail(
                     action="set bedtime schedule",
-                    target=f"{target.name} ({start} - {end})",
+                    target=f"{target.get('name') or profile_id} ({start} - {end})",
                     risk=OperationRisk.MEDIUM,
                     force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
@@ -601,10 +595,11 @@ def schedule_set(
 
             with cli_ctx.status("Setting schedule..."):
                 result = await client.enable_bedtime(
-                    target.id, start, end, days_list, cli_ctx.network_id
+                    target["id"], start, end, days_list, cli_ctx.network_id
                 )
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Schedule set: {start} - {end}[/bold green]")
             else:
                 console.print("[red]Failed to set schedule[/red]")
@@ -631,22 +626,19 @@ def schedule_clear(
         async def clear_schedule(client: EeroClient) -> None:
             # Find profile first
             with cli_ctx.status("Finding profile..."):
-                profiles = await client.get_profiles(cli_ctx.network_id)
+                raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            target = None
-            for p in profiles:
-                if p.id == profile_id or p.name == profile_id:
-                    target = p
-                    break
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_id)
 
-            if not target or not target.id:
+            if not target or not target.get("id"):
                 console.print(f"[red]Profile '{profile_id}' not found[/red]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
                 confirm_or_fail(
                     action="clear schedule",
-                    target=target.name,
+                    target=target.get("name") or profile_id,
                     risk=OperationRisk.MEDIUM,
                     force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
@@ -658,9 +650,10 @@ def schedule_clear(
                 sys.exit(e.exit_code)
 
             with cli_ctx.status("Clearing schedule..."):
-                result = await client.clear_profile_schedule(target.id, cli_ctx.network_id)
+                result = await client.clear_profile_schedule(target["id"], cli_ctx.network_id)
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print("[bold green]Schedule cleared[/bold green]")
             else:
                 console.print("[red]Failed to clear schedule[/red]")

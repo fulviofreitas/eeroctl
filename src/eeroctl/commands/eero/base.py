@@ -21,6 +21,7 @@ from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...transformers import extract_data, extract_eeros, normalize_eero
 from ...utils import run_with_client
 
 
@@ -60,23 +61,26 @@ def eero_list(ctx: click.Context, output: Optional[str], network_id: Optional[st
     async def run_cmd() -> None:
         async def get_eeros(client: EeroClient) -> None:
             with cli_ctx.status("Getting Eero devices..."):
-                eeros = await client.get_eeros(cli_ctx.network_id)
+                raw_response = await client.get_eeros(cli_ctx.network_id)
 
-            if not eeros:
+            eeros = extract_eeros(raw_response)
+            normalized = [normalize_eero(e) for e in eeros]
+
+            if not normalized:
                 console.print("[yellow]No Eero devices found[/yellow]")
                 return
 
             if cli_ctx.is_structured_output():
-                data = [e.model_dump(mode="json") for e in eeros]
-                cli_ctx.render_structured(data, "eero.eero.list/v1")
+                cli_ctx.render_structured(normalized, "eero.eero.list/v1")
             elif cli_ctx.output_format == OutputFormat.LIST:
-                for e in eeros:
-                    role = "Gateway" if e.gateway else "Leaf"
-                    # Use print() with fixed-width columns for alignment
+                for e in normalized:
+                    role = "Gateway" if e.get("is_gateway") else "Leaf"
+                    name = e.get("name") or e.get("location") or ""
                     print(
-                        f"{e.eero_id or '':<14}  {str(e.location) if e.location else '':<20}  "
-                        f"{e.model or '':<15}  {e.ip_address or '':<15}  {e.status or '':<10}  "
-                        f"{role:<8}  {e.connection_type or ''}"
+                        f"{e.get('id') or '':<14}  {name:<20}  "
+                        f"{e.get('model') or '':<15}  {e.get('ip_address') or '':<15}  "
+                        f"{e.get('status') or '':<10}  {role:<8}  "
+                        f"{e.get('connection_type') or ''}"
                     )
             else:
                 table = Table(title="Eero Devices")
@@ -88,17 +92,19 @@ def eero_list(ctx: click.Context, output: Optional[str], network_id: Optional[st
                 table.add_column("Role")
                 table.add_column("Connection", style="magenta")
 
-                for e in eeros:
-                    status_color = "green" if e.status == "green" else "red"
-                    role = "Gateway" if e.gateway else "Leaf"
+                for e in normalized:
+                    status = e.get("status", "unknown")
+                    status_color = "green" if status == "green" else "red"
+                    role = "Gateway" if e.get("is_gateway") else "Leaf"
+                    name = e.get("name") or e.get("location") or ""
                     table.add_row(
-                        e.eero_id or "",
-                        str(e.location) if e.location else "",
-                        e.model or "",
-                        e.ip_address or "",
-                        f"[{status_color}]{e.status}[/{status_color}]",
+                        e.get("id") or "",
+                        name,
+                        e.get("model") or "",
+                        e.get("ip_address") or "",
+                        f"[{status_color}]{status}[/{status_color}]",
                         role,
-                        e.connection_type or "",
+                        e.get("connection_type") or "",
                     )
 
                 console.print(table)
@@ -129,15 +135,17 @@ def eero_show(
         async def get_eero(client: EeroClient) -> None:
             with cli_ctx.status(f"Getting Eero '{eero_id}'..."):
                 try:
-                    eero = await client.get_eero(eero_id, cli_ctx.network_id)
+                    raw_response = await client.get_eero(eero_id, cli_ctx.network_id)
                 except (EeroNotFoundException, EeroException) as e:
                     if is_not_found_error(e):
                         console.print(f"[red]Eero '{eero_id}' not found[/red]")
                         sys.exit(ExitCode.NOT_FOUND)
                     raise
 
+            eero = normalize_eero(extract_data(raw_response))
+
             if cli_ctx.is_structured_output():
-                cli_ctx.render_structured(eero.model_dump(mode="json"), "eero.eero.show/v1")
+                cli_ctx.render_structured(eero, "eero.eero.show/v1")
             else:
                 from ...formatting import print_eero_details
 
@@ -176,14 +184,15 @@ def eero_reboot(
             # First resolve the eero to get its name
             with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
                 try:
-                    eero = await client.get_eero(eero_id, cli_ctx.network_id)
+                    raw_response = await client.get_eero(eero_id, cli_ctx.network_id)
                 except (EeroNotFoundException, EeroException) as e:
                     if is_not_found_error(e):
                         console.print(f"[red]Eero '{eero_id}' not found[/red]")
                         sys.exit(ExitCode.NOT_FOUND)
                     raise
 
-            eero_name = str(eero.location) if eero.location else eero.serial or eero_id
+            eero = normalize_eero(extract_data(raw_response))
+            eero_name = eero.get("name") or eero.get("location") or eero.get("serial") or eero_id
 
             try:
                 confirm_or_fail(
@@ -200,9 +209,10 @@ def eero_reboot(
                 sys.exit(e.exit_code)
 
             with cli_ctx.status(f"Rebooting {eero_name}..."):
-                result = await client.reboot_eero(eero.eero_id, cli_ctx.network_id)
+                result = await client.reboot_eero(eero.get("id"), cli_ctx.network_id)
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Reboot initiated for {eero_name}[/bold green]")
             else:
                 console.print(f"[red]Failed to reboot {eero_name}[/red]")

@@ -18,6 +18,7 @@ from rich.panel import Panel
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...transformers import extract_data, normalize_network
 from ...utils import run_with_client
 
 
@@ -53,21 +54,23 @@ def guest_show(ctx: click.Context) -> None:
     async def run_cmd() -> None:
         async def get_guest(client: EeroClient) -> None:
             with cli_ctx.status("Getting guest network settings..."):
-                network = await client.get_network(cli_ctx.network_id)
+                raw_network = await client.get_network(cli_ctx.network_id)
+
+            network = normalize_network(extract_data(raw_network))
 
             if cli_ctx.is_json_output():
                 data = {
-                    "enabled": network.guest_network_enabled,
-                    "name": network.guest_network_name,
-                    "password": "********" if network.guest_network_password else None,
+                    "enabled": network.get("guest_network_enabled"),
+                    "name": network.get("guest_network_name"),
+                    "password": "********" if network.get("guest_network_password") else None,
                 }
                 renderer.render_json(data, "eero.network.guest.show/v1")
             else:
-                enabled = network.guest_network_enabled
+                enabled = network.get("guest_network_enabled")
                 content = (
                     f"[bold]Enabled:[/bold] {'[green]Yes[/green]' if enabled else '[dim]No[/dim]'}\n"
-                    f"[bold]Name:[/bold] {network.guest_network_name or 'N/A'}\n"
-                    f"[bold]Password:[/bold] {'********' if network.guest_network_password else 'N/A'}"
+                    f"[bold]Name:[/bold] {network.get('guest_network_name') or 'N/A'}\n"
+                    f"[bold]Password:[/bold] {'********' if network.get('guest_network_password') else 'N/A'}"
                 )
                 console.print(Panel(content, title="Guest Network", border_style="blue"))
 
@@ -151,7 +154,8 @@ def _set_guest_network(
                     network_id=cli_ctx.network_id,
                 )
 
-            if result:
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
                 console.print(f"[bold green]Guest network {action}d[/bold green]")
             else:
                 console.print(f"[red]Failed to {action} guest network[/red]")
