@@ -24,7 +24,13 @@ from rich.table import Table
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..output import OutputFormat
-from ..utils import get_cookie_file, get_use_keyring, set_use_keyring
+from ..utils import (
+    get_config_file,
+    get_cookie_file,
+    get_use_keyring,
+    set_preferred_network,
+    set_use_keyring,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -200,6 +206,28 @@ async def _interactive_login(
                 result = await client.verify(verification_code)
                 if result:
                     console.print("[bold green]Login successful![/bold green]")
+
+                    # Get networks and save preferred network to config
+                    try:
+                        networks_response = await client.get_networks()
+                        data = networks_response.get("data", {})
+                        networks = []
+                        if isinstance(data, list):
+                            networks = data
+                        elif isinstance(data, dict):
+                            networks = data.get("networks") or data.get("data") or []
+
+                        if networks and len(networks) > 0:
+                            first_network = networks[0]
+                            net_id = first_network.get("id")
+                            if not net_id and first_network.get("url"):
+                                net_id = first_network["url"].rstrip("/").split("/")[-1]
+                            if net_id:
+                                set_preferred_network(net_id)
+                                logger.debug("Saved preferred network: %s", net_id)
+                    except Exception as ex:
+                        logger.debug("Could not get networks for preferred: %s", ex)
+
                     return True
             except EeroException as ex:
                 console.print(f"[bold red]Error:[/bold red] {ex}")
@@ -283,7 +311,17 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
             use_keyring=use_keyring,
         ) as client:
             await client._api.auth.clear_auth_data()
-            console.print("[bold green]Authentication data cleared[/bold green]")
+
+        # Also delete config.json (contains preferences)
+        config_file = get_config_file()
+        if config_file.exists():
+            try:
+                config_file.unlink()
+                logger.debug("Deleted config file: %s", config_file)
+            except Exception as ex:
+                logger.debug("Failed to delete config file: %s", ex)
+
+        console.print("[bold green]Authentication data cleared[/bold green]")
 
     asyncio.run(run())
 
