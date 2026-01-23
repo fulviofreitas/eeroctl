@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.9.0](https://github.com/fulviofreitas/eeroctl/compare/v2.8.2...v2.9.0) (2026-01-23)
+
+### ✨ Features
+
+* add upstream DNS and location info to network show ([2c6618a](https://github.com/fulviofreitas/eeroctl/commit/2c6618a42921db5a3cf37ce62d6a6f07b2e91299))
+* case-insensitive device lookup by name, MAC, or ID ([bef42e1](https://github.com/fulviofreitas/eeroctl/commit/bef42e14aab70ed7bb83403614089fb0f016a04d))
+* case-insensitive profile lookup by name or ID ([70a5374](https://github.com/fulviofreitas/eeroctl/commit/70a5374b641a0f1ff8c4b8bce112b8fd2fb73f27))
+* enrich eero show with connection, ports, wifi, and clients info ([91b4cde](https://github.com/fulviofreitas/eeroctl/commit/91b4cdefef534fedb5f6696a0a062240f33efc1c))
+* expand config.json with default_output and auth_method ([8eae461](https://github.com/fulviofreitas/eeroctl/commit/8eae461ae91cc0b41726e1f7f3af4873f19f7b6c))
+* support eero lookup by name, serial, or ID ([2bb1a92](https://github.com/fulviofreitas/eeroctl/commit/2bb1a926d07da9bfbf078f31f4eda77c4d2c7485))
+
+### 🐛 Bug Fixes
+
+* align list output fields exactly with table panel output ([e26da43](https://github.com/fulviofreitas/eeroctl/commit/e26da4376b21fa7e539bb622bcd4cdc461662f37))
+* show commands list output now shows curated fields ([ba0eea3](https://github.com/fulviofreitas/eeroctl/commit/ba0eea392cd79eeb4edb27f4f8b308341b86c763))
+* show commands now render correctly with --output list ([85af139](https://github.com/fulviofreitas/eeroctl/commit/85af139e4060ad5ee9a8f5a3a19d690a5fca20b5))
+
+### ♻️ Refactoring
+
+* change config directory from eero-api to eeroctl ([715f768](https://github.com/fulviofreitas/eeroctl/commit/715f7688ea4654b184e981d73d6522d444e2e0ab))
+* single source of truth for show output fields ([e232324](https://github.com/fulviofreitas/eeroctl/commit/e232324891cd9c557ea7a497a03c0fc301d55133))
+
 ## [2.8.2](https://github.com/fulviofreitas/eeroctl/compare/v2.8.1...v2.8.2) (2026-01-23)
 
 ### 🐛 Bug Fixes
