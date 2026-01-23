@@ -146,7 +146,8 @@ async def _interactive_login(
         try:
             with open(cookie_file, "r") as f:
                 cookies = json.load(f)
-                if cookies.get("user_token") and cookies.get("session_id"):
+                # Check for session_id (current) - user_token was used in older versions
+                if cookies.get("session_id"):
                     console.print(
                         Panel.fit(
                             "An existing authentication session was found.",
@@ -346,7 +347,8 @@ def _get_session_info() -> dict:
                 data = json.load(f)
             session_info["session_expiry"] = data.get("session_expiry")
             session_info["preferred_network_id"] = data.get("preferred_network_id")
-            session_info["has_token"] = bool(data.get("user_token"))
+            # Check for session_id (current) or user_token (legacy) to determine if authenticated
+            session_info["has_token"] = bool(data.get("session_id") or data.get("user_token"))
 
             # Check if session is expired based on expiry date
             expiry_str = data.get("session_expiry")
