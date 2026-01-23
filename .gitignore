@@ -148,8 +148,5 @@ cython_debug/
 .DS_Store
 Thumbs.db
 
-# uv
-uv.lock
-
 # Cursor
 .cursor/
