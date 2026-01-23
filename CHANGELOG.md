@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.4.0](https://github.com/fulviofreitas/eeroctl/compare/v2.3.0...v2.4.0) (2026-01-23)
+
+### ✨ Features
+
+* **deps:** update eero-api to 2.1.4 ([d0a9bb4](https://github.com/fulviofreitas/eeroctl/commit/d0a9bb4e194804188e5c5991f1cb4833f0a62d7b))
+
 ## [2.3.0](https://github.com/fulviofreitas/eeroctl/compare/v2.2.1...v2.3.0) (2026-01-23)
 
 ### ✨ Features
