@@ -28,12 +28,22 @@ from ..transformers import extract_data, extract_profiles, normalize_profile
 from ..utils import run_with_client
 
 
-def _find_profile(profiles: list, profile_id: str) -> Optional[Dict[str, Any]]:
-    """Find a profile by ID or name."""
+def _find_profile(profiles: list, identifier: str) -> Optional[Dict[str, Any]]:
+    """Find a profile by ID or name (case-insensitive for names)."""
+    identifier_lower = identifier.lower()
+
     for p in profiles:
         prof = normalize_profile(p)
-        if prof.get("id") == profile_id or prof.get("name") == profile_id:
+
+        # Exact match for ID
+        if prof.get("id") == identifier:
             return prof
+
+        # Case-insensitive match for name
+        name = prof.get("name") or ""
+        if name.lower() == identifier_lower:
+            return prof
+
     return None
 
 
@@ -135,32 +145,33 @@ def profile_list(ctx: click.Context, output: Optional[str], network_id: Optional
 
 
 @profile_group.command(name="show")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @output_option
 @network_option
 @click.pass_context
 def profile_show(
-    ctx: click.Context, profile_id: str, output: Optional[str], network_id: Optional[str]
+    ctx: click.Context, profile_identifier: str, output: Optional[str], network_id: Optional[str]
 ) -> None:
     """Show details of a specific profile.
 
     \b
     Arguments:
-      PROFILE_ID  Profile ID or name
+      PROFILE_IDENTIFIER  Profile ID or name
     """
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
         async def get_profile(client: EeroClient) -> None:
-            with cli_ctx.status("Getting profiles..."):
+            with cli_ctx.status("Finding profile..."):
                 raw_response = await client.get_profiles(cli_ctx.network_id)
 
             profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_id)
+            target = _find_profile(profiles, profile_identifier)
 
             if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_id}' not found[/red]")
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting profile details..."):
@@ -184,14 +195,14 @@ def profile_show(
 
 
 @profile_group.command(name="pause")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @click.option("--duration", "-d", help="Duration (e.g., 30m, 1h)")
 @force_option
 @network_option
 @click.pass_context
 def profile_pause(
     ctx: click.Context,
-    profile_id: str,
+    profile_identifier: str,
     duration: Optional[str],
     force: Optional[bool],
     network_id: Optional[str],
@@ -200,35 +211,35 @@ def profile_pause(
 
     \b
     Arguments:
-      PROFILE_ID  Profile ID or name
+      PROFILE_IDENTIFIER  Profile ID or name
 
     \b
     Options:
       --duration, -d  Duration (e.g., 30m, 1h)
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    _set_profile_paused(cli_ctx, profile_id, True)
+    _set_profile_paused(cli_ctx, profile_identifier, True)
 
 
 @profile_group.command(name="unpause")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @force_option
 @network_option
 @click.pass_context
 def profile_unpause(
-    ctx: click.Context, profile_id: str, force: Optional[bool], network_id: Optional[str]
+    ctx: click.Context, profile_identifier: str, force: Optional[bool], network_id: Optional[str]
 ) -> None:
     """Resume internet access for a profile.
 
     \b
     Arguments:
-      PROFILE_ID  Profile ID or name
+      PROFILE_IDENTIFIER  Profile ID or name
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    _set_profile_paused(cli_ctx, profile_id, False)
+    _set_profile_paused(cli_ctx, profile_identifier, False)
 
 
-def _set_profile_paused(cli_ctx: EeroCliContext, profile_id: str, paused: bool) -> None:
+def _set_profile_paused(cli_ctx: EeroCliContext, profile_identifier: str, paused: bool) -> None:
     """Pause or unpause a profile."""
     console = cli_ctx.console
     action = "pause" if paused else "unpause"
@@ -240,16 +251,17 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_id: str, paused: bool) 
                 raw_response = await client.get_profiles(cli_ctx.network_id)
 
             profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_id)
+            target = _find_profile(profiles, profile_identifier)
 
             if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_id}' not found[/red]")
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
                 confirm_or_fail(
                     action=action,
-                    target=target.get("name") or profile_id,
+                    target=target.get("name") or profile_identifier,
                     risk=OperationRisk.MEDIUM,
                     force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
@@ -293,12 +305,12 @@ def apps_group(ctx: click.Context) -> None:
 
 
 @apps_group.command(name="list")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @output_option
 @network_option
 @click.pass_context
 def apps_list(
-    ctx: click.Context, profile_id: str, output: Optional[str], network_id: Optional[str]
+    ctx: click.Context, profile_identifier: str, output: Optional[str], network_id: Optional[str]
 ) -> None:
     """List blocked applications for a profile."""
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
@@ -312,10 +324,11 @@ def apps_list(
                 raw_response = await client.get_profiles(cli_ctx.network_id)
 
             profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_id)
+            target = _find_profile(profiles, profile_identifier)
 
             if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_id}' not found[/red]")
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting blocked apps..."):
@@ -352,17 +365,19 @@ def apps_list(
 
 
 @apps_group.command(name="block")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @click.argument("apps", nargs=-1, required=True)
 @network_option
 @click.pass_context
-def apps_block(ctx: click.Context, profile_id: str, apps: tuple, network_id: Optional[str]) -> None:
+def apps_block(
+    ctx: click.Context, profile_identifier: str, apps: tuple, network_id: Optional[str]
+) -> None:
     """Block application(s) for a profile.
 
     \b
     Arguments:
-      PROFILE_ID  Profile ID or name
-      APPS        App identifier(s) to block
+      PROFILE_IDENTIFIER  Profile ID or name
+      APPS                App identifier(s) to block
 
     \b
     Examples:
@@ -378,10 +393,11 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple, network_id: Opt
                 raw_response = await client.get_profiles(cli_ctx.network_id)
 
             profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_id)
+            target = _find_profile(profiles, profile_identifier)
 
             if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_id}' not found[/red]")
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             for app in apps:
@@ -408,19 +424,19 @@ def apps_block(ctx: click.Context, profile_id: str, apps: tuple, network_id: Opt
 
 
 @apps_group.command(name="unblock")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @click.argument("apps", nargs=-1, required=True)
 @network_option
 @click.pass_context
 def apps_unblock(
-    ctx: click.Context, profile_id: str, apps: tuple, network_id: Optional[str]
+    ctx: click.Context, profile_identifier: str, apps: tuple, network_id: Optional[str]
 ) -> None:
     """Unblock application(s) for a profile.
 
     \b
     Arguments:
-      PROFILE_ID  Profile ID or name
-      APPS        App identifier(s) to unblock
+      PROFILE_IDENTIFIER  Profile ID or name
+      APPS                App identifier(s) to unblock
     """
     cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
@@ -432,10 +448,11 @@ def apps_unblock(
                 raw_response = await client.get_profiles(cli_ctx.network_id)
 
             profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_id)
+            target = _find_profile(profiles, profile_identifier)
 
             if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_id}' not found[/red]")
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             for app in apps:
@@ -479,12 +496,12 @@ def schedule_group(ctx: click.Context) -> None:
 
 
 @schedule_group.command(name="show")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @output_option
 @network_option
 @click.pass_context
 def schedule_show(
-    ctx: click.Context, profile_id: str, output: Optional[str], network_id: Optional[str]
+    ctx: click.Context, profile_identifier: str, output: Optional[str], network_id: Optional[str]
 ) -> None:
     """Show schedule for a profile."""
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
@@ -498,10 +515,11 @@ def schedule_show(
                 raw_response = await client.get_profiles(cli_ctx.network_id)
 
             profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_id)
+            target = _find_profile(profiles, profile_identifier)
 
             if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_id}' not found[/red]")
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting schedule..."):
@@ -534,7 +552,7 @@ def schedule_show(
 
 
 @schedule_group.command(name="set")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @click.option("--start", required=True, help="Start time (HH:MM)")
 @click.option("--end", required=True, help="End time (HH:MM)")
 @click.option("--days", help="Days (comma-separated, e.g., mon,tue,wed)")
@@ -543,7 +561,7 @@ def schedule_show(
 @click.pass_context
 def schedule_set(
     ctx: click.Context,
-    profile_id: str,
+    profile_identifier: str,
     start: str,
     end: str,
     days: Optional[str],
@@ -575,16 +593,17 @@ def schedule_set(
                 raw_response = await client.get_profiles(cli_ctx.network_id)
 
             profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_id)
+            target = _find_profile(profiles, profile_identifier)
 
             if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_id}' not found[/red]")
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
                 confirm_or_fail(
                     action="set bedtime schedule",
-                    target=f"{target.get('name') or profile_id} ({start} - {end})",
+                    target=f"{target.get('name') or profile_identifier} ({start} - {end})",
                     risk=OperationRisk.MEDIUM,
                     force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
@@ -613,12 +632,12 @@ def schedule_set(
 
 
 @schedule_group.command(name="clear")
-@click.argument("profile_id")
+@click.argument("profile_identifier")
 @force_option
 @network_option
 @click.pass_context
 def schedule_clear(
-    ctx: click.Context, profile_id: str, force: Optional[bool], network_id: Optional[str]
+    ctx: click.Context, profile_identifier: str, force: Optional[bool], network_id: Optional[str]
 ) -> None:
     """Clear all schedules for a profile."""
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
@@ -631,16 +650,17 @@ def schedule_clear(
                 raw_response = await client.get_profiles(cli_ctx.network_id)
 
             profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_id)
+            target = _find_profile(profiles, profile_identifier)
 
             if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_id}' not found[/red]")
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
                 confirm_or_fail(
                     action="clear schedule",
-                    target=target.get("name") or profile_id,
+                    target=target.get("name") or profile_identifier,
                     risk=OperationRisk.MEDIUM,
                     force=cli_ctx.force,
                     non_interactive=cli_ctx.non_interactive,
