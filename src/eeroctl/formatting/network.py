@@ -323,6 +323,85 @@ def _network_guest_panel(network: Dict[str, Any]) -> Panel:
     return build_panel(lines, "Guest Network", "magenta")
 
 
+# ==================== List Output Data ====================
+
+
+def get_network_list_data(network: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
+    """Get curated network data for list output.
+
+    Returns the same fields shown in the table output, as a flat dictionary.
+
+    Args:
+        network: Network dict or model object
+
+    Returns:
+        Dictionary with curated fields for list output
+    """
+    # Normalize to dict if needed
+    if isinstance(network, dict):
+        net = normalize_network(network) if "_raw" not in network else network
+    else:
+        if hasattr(network, "model_dump"):
+            net = normalize_network(network.model_dump())
+        else:
+            net = normalize_network(vars(network))
+
+    data = {
+        "Name": net.get("name"),
+        "Status": net.get("status"),
+        "Public IP": net.get("public_ip"),
+        "ISP": net.get("isp_name"),
+        "Created": format_datetime(net.get("created_at"), include_time=False),
+        "Updated": format_datetime(net.get("updated_at")),
+        "Owner": net.get("owner"),
+        "Network Type": net.get("network_customer_type"),
+        "Gateway Type": net.get("gateway"),
+        "WAN Type": net.get("wan_type"),
+        "Gateway IP": net.get("gateway_ip"),
+        "Guest Network": "Enabled" if net.get("guest_network_enabled") else "Disabled",
+        "Guest Network Name": net.get("guest_network_name"),
+    }
+
+    # DHCP info
+    dhcp = net.get("dhcp", {})
+    if dhcp:
+        data["DHCP Subnet"] = dhcp.get("subnet_mask")
+        data["DHCP Lease Time"] = f"{dhcp.get('lease_time_seconds', 86400) // 3600} hours"
+
+    # DNS info
+    dns = net.get("dns", {})
+    if dns:
+        data["DNS Mode"] = dns.get("mode")
+        parent = dns.get("parent", {})
+        if parent:
+            parent_ips = parent.get("ips", [])
+            if parent_ips:
+                data["Upstream DNS"] = ", ".join(parent_ips)
+
+    # Location info
+    geo_ip = net.get("geo_ip", {})
+    if geo_ip:
+        city = geo_ip.get("city")
+        region = geo_ip.get("region")
+        country = geo_ip.get("country_code")
+        if city or region:
+            location_parts = [p for p in [city, region, country] if p]
+            data["Location"] = ", ".join(location_parts)
+        data["Timezone"] = geo_ip.get("timezone")
+
+    # Speed test
+    speed = net.get("speed_test", {})
+    if speed:
+        down = speed.get("down", {}).get("value")
+        up = speed.get("up", {}).get("value")
+        if down:
+            data["Download Speed"] = f"{down} Mbps"
+        if up:
+            data["Upload Speed"] = f"{up} Mbps"
+
+    return data
+
+
 # ==================== Main Network Details Function ====================
 
 

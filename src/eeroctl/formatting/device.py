@@ -207,6 +207,76 @@ def _device_timing_panel(device: Dict[str, Any]) -> Optional[Panel]:
     return build_panel(lines, "Activity", "yellow")
 
 
+# ==================== List Output Data ====================
+
+
+def get_device_list_data(device: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
+    """Get curated device data for list output.
+
+    Returns the same fields shown in the table output, as a flat dictionary.
+
+    Args:
+        device: Device dict or model object
+
+    Returns:
+        Dictionary with curated fields for list output
+    """
+    # Normalize to dict if needed
+    if isinstance(device, dict):
+        dev = normalize_device(device) if "_raw" not in device else device
+    else:
+        if hasattr(device, "model_dump"):
+            dev = normalize_device(device.model_dump())
+        else:
+            dev = normalize_device(vars(device))
+
+    # Determine status
+    if dev.get("connected"):
+        if dev.get("blocked"):
+            status = "blocked"
+        else:
+            status = "connected"
+    else:
+        status = "disconnected"
+
+    device_name = dev.get("display_name") or dev.get("hostname") or dev.get("nickname") or "Unknown"
+
+    data = {
+        "Name": device_name,
+        "Nickname": dev.get("nickname"),
+        "Status": status,
+        "IP Address": dev.get("ip") or dev.get("ipv4"),
+        "MAC Address": dev.get("mac"),
+        "Device Type": dev.get("device_type"),
+        "Manufacturer": dev.get("manufacturer"),
+        "Connection Type": dev.get("connection_type"),
+        "Connected Eero": dev.get("source_location"),
+        "Blocked": "Yes" if dev.get("blocked") else "No",
+        "Paused": "Yes" if dev.get("paused") else "No",
+    }
+
+    # Add activity times if available
+    last_active = dev.get("last_active")
+    if last_active:
+        data["Last Active"] = format_datetime(last_active)
+
+    first_active = dev.get("first_active")
+    if first_active:
+        data["First Seen"] = format_datetime(first_active)
+
+    # Add connectivity info
+    connectivity = dev.get("connectivity", {})
+    if connectivity and isinstance(connectivity, dict):
+        if connectivity.get("signal"):
+            data["Signal"] = f"{connectivity.get('signal')} dBm"
+        if connectivity.get("frequency"):
+            freq = connectivity.get("frequency")
+            band = "5 GHz" if freq > 3000 else "2.4 GHz"
+            data["Frequency"] = f"{freq} MHz ({band})"
+
+    return data
+
+
 # ==================== Main Device Details Function ====================
 
 

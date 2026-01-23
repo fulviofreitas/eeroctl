@@ -158,6 +158,52 @@ def _profile_custom_lists_panel(profile: Dict[str, Any]) -> Optional[Panel]:
     return build_panel(lines, "Custom Lists", "yellow")
 
 
+# ==================== List Output Data ====================
+
+
+def get_profile_list_data(profile: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
+    """Get curated profile data for list output.
+
+    Returns the same fields shown in the table output, as a flat dictionary.
+
+    Args:
+        profile: Profile dict or model object
+
+    Returns:
+        Dictionary with curated fields for list output
+    """
+    # Normalize to dict if needed
+    if isinstance(profile, dict):
+        p = normalize_profile(profile) if "_raw" not in profile else profile
+    else:
+        if hasattr(profile, "model_dump"):
+            p = normalize_profile(profile.model_dump())
+        else:
+            p = normalize_profile(vars(profile))
+
+    data = {
+        "Name": p.get("name"),
+        "Paused": "Yes" if p.get("paused") else "No",
+        "Default": "Yes" if p.get("default") else "No",
+        "Devices": p.get("device_count", 0),
+        "Connected Devices": p.get("connected_device_count", 0),
+        "Schedule Enabled": "Yes" if p.get("schedule_enabled") else "No",
+        "State": p.get("state"),
+    }
+
+    # Content filter
+    content_filter = p.get("content_filter", {})
+    if content_filter:
+        data["Safe Search"] = "Enabled" if content_filter.get("safe_search_enabled") else "Disabled"
+
+    # Count blocked apps
+    blocked_apps = p.get("blocked_applications", [])
+    if blocked_apps:
+        data["Blocked Apps"] = len(blocked_apps)
+
+    return data
+
+
 # ==================== Main Profile Details Function ====================
 
 

@@ -286,6 +286,78 @@ def _eero_clients_panel(eero: Dict[str, Any]) -> Optional[Panel]:
 # ==================== Main Eero Details Function ====================
 
 
+def get_eero_list_data(eero: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
+    """Get curated eero data for list output.
+
+    Returns the same fields shown in the table output, as a flat dictionary.
+
+    Args:
+        eero: Eero dict or model object
+
+    Returns:
+        Dictionary with curated fields for list output
+    """
+    # Normalize to dict if needed
+    if isinstance(eero, dict):
+        e = normalize_eero(eero) if "_raw" not in eero else eero
+    else:
+        if hasattr(eero, "model_dump"):
+            e = normalize_eero(eero.model_dump())
+        else:
+            e = normalize_eero(vars(eero))
+
+    name = e.get("name") or e.get("location") or "Unknown"
+    role = "Gateway" if e.get("is_gateway") else "Leaf"
+
+    data = {
+        "Name": name,
+        "Model": e.get("model"),
+        "Model Number": e.get("model_number"),
+        "Serial": e.get("serial"),
+        "Status": e.get("status"),
+        "Role": role,
+        "Wired": "Yes" if e.get("wired") else "No",
+        "Firmware": e.get("os_version"),
+        "IP Address": e.get("ip_address"),
+        "MAC Address": e.get("mac_address"),
+        "Connection Type": e.get("connection_type"),
+        "State": e.get("state"),
+        "Total Clients": e.get("connected_clients_count", 0),
+        "Wireless Clients": e.get("connected_wireless_clients_count", 0),
+        "Wired Clients": e.get("connected_wired_clients_count", 0),
+        "LED": "On" if e.get("led_on") else "Off",
+        "LED Brightness": f"{e.get('led_brightness', 0)}%",
+        "Nightlight": "On" if e.get("nightlight_enabled") else "Off",
+        "Mesh Quality": f"{e.get('mesh_quality_bars', 0)}/5",
+    }
+
+    # Add timestamps
+    last_heartbeat = e.get("last_heartbeat")
+    if last_heartbeat:
+        if hasattr(last_heartbeat, "strftime"):
+            data["Last Heartbeat"] = last_heartbeat.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            data["Last Heartbeat"] = str(last_heartbeat)[:19]
+
+    joined = e.get("joined")
+    if joined:
+        if hasattr(joined, "strftime"):
+            data["Joined"] = joined.strftime("%Y-%m-%d")
+        else:
+            data["Joined"] = str(joined)[:10]
+
+    last_reboot = e.get("last_reboot")
+    if last_reboot:
+        data["Last Reboot"] = str(last_reboot)[:19].replace("T", " ")
+
+    # Add bands
+    bands = e.get("bands", [])
+    if bands:
+        data["WiFi Bands"] = ", ".join(str(b) for b in bands)
+
+    return data
+
+
 def print_eero_details(
     eero: Union[Dict[str, Any], Any], detail_level: DetailLevel = "brief"
 ) -> None:

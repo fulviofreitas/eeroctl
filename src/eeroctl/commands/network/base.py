@@ -218,9 +218,12 @@ def network_show(ctx: click.Context, output: Optional[str], network_id: Optional
                 output_data = {k: v for k, v in network.items() if k != "_raw"}
                 cli_ctx.render_structured(output_data, "eero.network.show/v1")
             elif cli_ctx.is_list_output():
-                # Simple key-value output for list format
-                output_data = {k: v for k, v in network.items() if k != "_raw"}
-                cli_ctx.renderer.render_text(output_data, "eero.network.show/v1")
+                # Curated key-value output matching table fields
+                from ...formatting.network import get_network_list_data
+
+                list_data = get_network_list_data(network)
+                for key, value in list_data.items():
+                    print(f"{key}: {value if value is not None else '-'}")
             else:
                 from ...formatting import print_network_details
 

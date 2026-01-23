@@ -182,8 +182,12 @@ def profile_show(
             if cli_ctx.is_structured_output():
                 cli_ctx.render_structured(profile, "eero.profile.show/v1")
             elif cli_ctx.is_list_output():
-                # Simple key-value output for list format
-                cli_ctx.renderer.render_text(profile, "eero.profile.show/v1")
+                # Curated key-value output matching table fields
+                from ..formatting.profile import get_profile_list_data
+
+                list_data = get_profile_list_data(profile)
+                for key, value in list_data.items():
+                    print(f"{key}: {value if value is not None else '-'}")
             else:
                 from ..formatting import print_profile_details
 
