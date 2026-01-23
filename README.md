@@ -1,9 +1,24 @@
-# 🌐 eeroctl
+<div align="center">
 
-[![PyPI](https://img.shields.io/pypi/v/eeroctl.svg)](https://pypi.org/project/eeroctl/)
-[![Homebrew](https://img.shields.io/badge/homebrew-eeroctl-orange)](https://github.com/fulviofreitas/homebrew-eeroctl)
+# ⌨️ eeroctl
 
-> Manage your Eero mesh Wi-Fi from the terminal ✨
+**Manage your Eero mesh Wi-Fi from the terminal**
+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-3776ab?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
+[![PyPI](https://img.shields.io/pypi/v/eeroctl?style=for-the-badge&logo=pypi&logoColor=white)](https://pypi.org/project/eeroctl/)
+[![Homebrew](https://img.shields.io/badge/homebrew-eeroctl-FBB040?style=for-the-badge&logo=homebrew&logoColor=white)](https://github.com/fulviofreitas/homebrew-eeroctl)
+[![License](https://img.shields.io/badge/license-MIT-22c55e?style=for-the-badge)](LICENSE)
+
+---
+
+_A powerful command-line interface for Eero mesh network management._  
+_Intuitive commands, multiple output formats, and shell completion._
+
+[Get Started](#-quick-start) · [Documentation](#-documentation) · [Install](#-install) · [License](#-license)
+
+</div>
+
+---
 
 ## ⚡ Features
 
