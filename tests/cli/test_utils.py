@@ -55,7 +55,7 @@ class TestGetConfigDir:
 
         config_dir = get_config_dir()
 
-        expected = tmp_path / ".config" / "eero-api"
+        expected = tmp_path / ".config" / "eeroctl"
         assert config_dir == expected
 
     def test_windows_path(self, tmp_path, monkeypatch):
@@ -68,7 +68,7 @@ class TestGetConfigDir:
 
         config_dir = get_config_dir()
 
-        expected = tmp_path / "eero-api"
+        expected = tmp_path / "eeroctl"
         assert config_dir == expected
 
 

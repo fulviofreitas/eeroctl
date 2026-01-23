@@ -28,7 +28,7 @@ For systems without keyring support or headless environments:
 eero auth login --no-keyring
 ```
 
-Credentials are stored in `~/.config/eero-api/cookies.json`.
+Credentials are stored in `~/.config/eeroctl/cookies.json`.
 
 ---
 
@@ -36,8 +36,8 @@ Credentials are stored in `~/.config/eero-api/cookies.json`.
 
 | File | Location | Purpose |
 |------|----------|---------|
-| Credentials | `~/.config/eero-api/cookies.json` | Session token storage |
-| Settings | `~/.config/eero-api/config.json` | User preferences |
+| Credentials | `~/.config/eeroctl/cookies.json` | Session token storage |
+| Settings | `~/.config/eeroctl/config.json` | User preferences |
 
 ### Custom Config Location
 

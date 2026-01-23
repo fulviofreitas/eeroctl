@@ -86,9 +86,9 @@ def get_config_dir() -> Path:
         Path to the configuration directory
     """
     if os.name == "nt":  # Windows
-        config_dir = Path(os.environ["APPDATA"]) / "eero-api"
+        config_dir = Path(os.environ["APPDATA"]) / "eeroctl"
     else:
-        config_dir = Path.home() / ".config" / "eero-api"
+        config_dir = Path.home() / ".config" / "eeroctl"
 
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
