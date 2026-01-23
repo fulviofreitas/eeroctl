@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1](https://github.com/fulviofreitas/eeroctl/compare/v2.2.0...v2.2.1) (2026-01-23)
+
+### 🐛 Bug Fixes
+
+* store and respect use_keyring preference across all commands ([cfc96e0](https://github.com/fulviofreitas/eeroctl/commit/cfc96e0b98c3769d001331982bcb6c299aa70f1e))
+
 ## [2.2.0](https://github.com/fulviofreitas/eeroctl/compare/v2.1.0...v2.2.0) (2026-01-23)
 
 ### ✨ Features
