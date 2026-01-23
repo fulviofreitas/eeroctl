@@ -52,8 +52,12 @@ def with_client(func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
     def wrapper(*args, **kwargs):
         async def run():
             cookie_file = get_cookie_file()
+            use_keyring = get_use_keyring()
             try:
-                async with EeroClient(cookie_file=str(cookie_file)) as client:
+                async with EeroClient(
+                    cookie_file=str(cookie_file),
+                    use_keyring=use_keyring,
+                ) as client:
                     return await func(*args, client=client, **kwargs)
             except EeroAuthenticationException:
                 console.print("[bold red]Not authenticated[/bold red]")
@@ -152,16 +156,68 @@ def get_preferred_network() -> Optional[str]:
         return None
 
 
+def set_use_keyring(use_keyring: bool) -> None:
+    """Set the use_keyring preference in the configuration.
+
+    Args:
+        use_keyring: Whether to use keyring for credential storage
+    """
+    config_file = get_config_file()
+    config = {}
+
+    if config_file.exists():
+        try:
+            with open(config_file, "r") as f:
+                config = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    config["use_keyring"] = use_keyring
+
+    try:
+        with open(config_file, "w") as f:
+            json.dump(config, f, indent=2)
+    except IOError as e:
+        console.print(f"[bold red]Error saving config: {e}[/bold red]")
+
+
+def get_use_keyring() -> bool:
+    """Get the use_keyring preference from the configuration.
+
+    Returns:
+        True if keyring should be used, False otherwise.
+        Defaults to True if not set.
+    """
+    config_file = get_config_file()
+
+    if not config_file.exists():
+        return True  # Default to using keyring
+
+    try:
+        with open(config_file, "r") as f:
+            config = json.load(f)
+        # Default to True if not explicitly set
+        return config.get("use_keyring", True)
+    except (json.JSONDecodeError, IOError):
+        return True
+
+
 async def run_with_client(func):
     """Run a function with an EeroClient instance.
+
+    Respects the use_keyring preference saved during login.
 
     Args:
         func: Async function that takes an EeroClient as argument
     """
     cookie_file = get_cookie_file()
+    use_keyring = get_use_keyring()
 
     try:
-        async with EeroClient(cookie_file=str(cookie_file)) as client:
+        async with EeroClient(
+            cookie_file=str(cookie_file),
+            use_keyring=use_keyring,
+        ) as client:
             await func(client)
     except EeroAuthenticationException:
         console.print("[bold red]Not authenticated[/bold red]")

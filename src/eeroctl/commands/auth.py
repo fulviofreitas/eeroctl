@@ -24,7 +24,7 @@ from rich.table import Table
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..output import OutputFormat
-from ..utils import get_cookie_file
+from ..utils import get_cookie_file, get_use_keyring, set_use_keyring
 
 logger = logging.getLogger(__name__)
 
@@ -86,14 +86,20 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
     Examples:
       eero auth login           # Start login flow
       eero auth login --force   # Force new login
+      eero auth login --no-keyring  # Use file storage only
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
+    # Determine use_keyring setting:
+    # - If --no-keyring is specified, use False
+    # - Otherwise, use the saved preference (defaults to True)
+    use_keyring = not no_keyring if no_keyring else get_use_keyring()
+
     async def run() -> None:
         async with EeroClient(
             cookie_file=str(get_cookie_file()),
-            use_keyring=not no_keyring,
+            use_keyring=use_keyring,
         ) as client:
             if client.is_authenticated and not force:
                 # Validate session is actually working, not just locally present
@@ -109,6 +115,9 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
                     console.print("[yellow]Session expired. Starting new login...[/yellow]")
 
             await _interactive_login(client, force, console, cli_ctx)
+
+            # Save the use_keyring preference for future commands
+            set_use_keyring(use_keyring)
 
     try:
         asyncio.run(run())
@@ -216,9 +225,13 @@ def auth_logout(ctx: click.Context) -> None:
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+    use_keyring = get_use_keyring()
 
     async def run() -> None:
-        async with EeroClient(cookie_file=str(get_cookie_file())) as client:
+        async with EeroClient(
+            cookie_file=str(get_cookie_file()),
+            use_keyring=use_keyring,
+        ) as client:
             if not client.is_authenticated:
                 console.print("[yellow]Not logged in[/yellow]")
                 return
@@ -248,6 +261,7 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+    use_keyring = get_use_keyring()
 
     if not force and not cli_ctx.non_interactive:
         confirmed = Confirm.ask(
@@ -264,7 +278,10 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
         sys.exit(ExitCode.SAFETY_RAIL)
 
     async def run() -> None:
-        async with EeroClient(cookie_file=str(get_cookie_file())) as client:
+        async with EeroClient(
+            cookie_file=str(get_cookie_file()),
+            use_keyring=use_keyring,
+        ) as client:
             await client._api.auth.clear_auth_data()
             console.print("[bold green]Authentication data cleared[/bold green]")
 
@@ -327,13 +344,17 @@ def auth_status(ctx: click.Context) -> None:
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+    use_keyring = get_use_keyring()
 
     async def run() -> None:
         cookie_file = get_cookie_file()
         session_info = _get_session_info()
         keyring_available = _check_keyring_available()
 
-        async with EeroClient(cookie_file=str(cookie_file)) as client:
+        async with EeroClient(
+            cookie_file=str(cookie_file),
+            use_keyring=use_keyring,
+        ) as client:
             is_auth = client.is_authenticated
             account_data: _AccountData | None = None
 
