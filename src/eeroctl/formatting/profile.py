@@ -161,10 +161,58 @@ def _profile_custom_lists_panel(profile: Dict[str, Any]) -> Optional[Panel]:
 # ==================== List Output Data ====================
 
 
+def _normalize_profile_data(profile: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
+    """Normalize profile data to a consistent dict format."""
+    if isinstance(profile, dict):
+        return normalize_profile(profile) if "_raw" not in profile else profile
+    if hasattr(profile, "model_dump"):
+        return normalize_profile(profile.model_dump())
+    return normalize_profile(vars(profile))
+
+
+def get_profile_show_fields(profile: Union[Dict[str, Any], Any]) -> List[tuple]:
+    """Get the canonical list of fields to display for profile show.
+
+    This is the SINGLE SOURCE OF TRUTH for profile show output fields.
+    Both table (rich panels) and list (text) output use this.
+
+    Args:
+        profile: Profile dict or model object
+
+    Returns:
+        List of (label, value) tuples
+    """
+    p = _normalize_profile_data(profile)
+
+    fields = [
+        # Basic info
+        ("Name", p.get("name")),
+        ("Paused", "Yes" if p.get("paused") else "No"),
+        ("Default", "Yes" if p.get("default") else "No"),
+        ("Devices", p.get("device_count", 0)),
+        ("Connected Devices", p.get("connected_device_count", 0)),
+        ("Schedule Enabled", "Yes" if p.get("schedule_enabled") else "No"),
+        ("State", p.get("state")),
+    ]
+
+    # Content filter
+    content_filter = p.get("content_filter", {})
+    if content_filter:
+        safe_search = "Enabled" if content_filter.get("safe_search_enabled") else "Disabled"
+        fields.append(("Safe Search", safe_search))
+
+    # Blocked apps count
+    blocked_apps = p.get("blocked_applications", [])
+    if blocked_apps:
+        fields.append(("Blocked Apps", len(blocked_apps)))
+
+    return fields
+
+
 def get_profile_list_data(profile: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
     """Get curated profile data for list output.
 
-    Returns the same fields shown in the table output, as a flat dictionary.
+    Uses get_profile_show_fields() as the single source of truth.
 
     Args:
         profile: Profile dict or model object
@@ -172,36 +220,7 @@ def get_profile_list_data(profile: Union[Dict[str, Any], Any]) -> Dict[str, Any]
     Returns:
         Dictionary with curated fields for list output
     """
-    # Normalize to dict if needed
-    if isinstance(profile, dict):
-        p = normalize_profile(profile) if "_raw" not in profile else profile
-    else:
-        if hasattr(profile, "model_dump"):
-            p = normalize_profile(profile.model_dump())
-        else:
-            p = normalize_profile(vars(profile))
-
-    data = {
-        "Name": p.get("name"),
-        "Paused": "Yes" if p.get("paused") else "No",
-        "Default": "Yes" if p.get("default") else "No",
-        "Devices": p.get("device_count", 0),
-        "Connected Devices": p.get("connected_device_count", 0),
-        "Schedule Enabled": "Yes" if p.get("schedule_enabled") else "No",
-        "State": p.get("state"),
-    }
-
-    # Content filter
-    content_filter = p.get("content_filter", {})
-    if content_filter:
-        data["Safe Search"] = "Enabled" if content_filter.get("safe_search_enabled") else "Disabled"
-
-    # Count blocked apps
-    blocked_apps = p.get("blocked_applications", [])
-    if blocked_apps:
-        data["Blocked Apps"] = len(blocked_apps)
-
-    return data
+    return {label: value for label, value in get_profile_show_fields(profile)}
 
 
 # ==================== Main Profile Details Function ====================

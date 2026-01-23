@@ -326,57 +326,64 @@ def _network_guest_panel(network: Dict[str, Any]) -> Panel:
 # ==================== List Output Data ====================
 
 
-def get_network_list_data(network: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
-    """Get curated network data for list output.
+def _normalize_network_data(network: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
+    """Normalize network data to a consistent dict format."""
+    if isinstance(network, dict):
+        return normalize_network(network) if "_raw" not in network else network
+    if hasattr(network, "model_dump"):
+        return normalize_network(network.model_dump())
+    return normalize_network(vars(network))
 
-    Returns the same fields shown in the table output, as a flat dictionary.
+
+def get_network_show_fields(network: Union[Dict[str, Any], Any]) -> List[tuple]:
+    """Get the canonical list of fields to display for network show.
+
+    This is the SINGLE SOURCE OF TRUTH for network show output fields.
+    Both table (rich panels) and list (text) output use this.
 
     Args:
         network: Network dict or model object
 
     Returns:
-        Dictionary with curated fields for list output
+        List of (label, value) tuples
     """
-    # Normalize to dict if needed
-    if isinstance(network, dict):
-        net = normalize_network(network) if "_raw" not in network else network
-    else:
-        if hasattr(network, "model_dump"):
-            net = normalize_network(network.model_dump())
-        else:
-            net = normalize_network(vars(network))
+    net = _normalize_network_data(network)
 
-    data = {
-        "Name": net.get("name"),
-        "Status": net.get("status"),
-        "Public IP": net.get("public_ip"),
-        "ISP": net.get("isp_name"),
-        "Created": format_datetime(net.get("created_at"), include_time=False),
-        "Updated": format_datetime(net.get("updated_at")),
-        "Owner": net.get("owner"),
-        "Network Type": net.get("network_customer_type"),
-        "Gateway Type": net.get("gateway"),
-        "WAN Type": net.get("wan_type"),
-        "Gateway IP": net.get("gateway_ip"),
-        "Guest Network": "Enabled" if net.get("guest_network_enabled") else "Disabled",
-        "Guest Network Name": net.get("guest_network_name"),
-    }
+    fields = [
+        # Basic info
+        ("Name", net.get("name")),
+        ("Status", net.get("status")),
+        ("Public IP", net.get("public_ip")),
+        ("ISP", net.get("isp_name")),
+        ("Created", format_datetime(net.get("created_at"), include_time=False)),
+        ("Updated", format_datetime(net.get("updated_at"))),
+        ("Owner", net.get("owner")),
+        ("Network Type", net.get("network_customer_type")),
+        # Connection
+        ("Gateway Type", net.get("gateway")),
+        ("WAN Type", net.get("wan_type")),
+        ("Gateway IP", net.get("gateway_ip")),
+        # Guest network
+        ("Guest Network", "Enabled" if net.get("guest_network_enabled") else "Disabled"),
+        ("Guest Network Name", net.get("guest_network_name")),
+    ]
 
     # DHCP info
     dhcp = net.get("dhcp", {})
     if dhcp:
-        data["DHCP Subnet"] = dhcp.get("subnet_mask")
-        data["DHCP Lease Time"] = f"{dhcp.get('lease_time_seconds', 86400) // 3600} hours"
+        fields.append(("DHCP Subnet", dhcp.get("subnet_mask")))
+        lease_hours = dhcp.get("lease_time_seconds", 86400) // 3600
+        fields.append(("DHCP Lease Time", f"{lease_hours} hours"))
 
     # DNS info
     dns = net.get("dns", {})
     if dns:
-        data["DNS Mode"] = dns.get("mode")
+        fields.append(("DNS Mode", dns.get("mode")))
         parent = dns.get("parent", {})
         if parent:
             parent_ips = parent.get("ips", [])
             if parent_ips:
-                data["Upstream DNS"] = ", ".join(parent_ips)
+                fields.append(("Upstream DNS", ", ".join(parent_ips)))
 
     # Location info
     geo_ip = net.get("geo_ip", {})
@@ -386,8 +393,9 @@ def get_network_list_data(network: Union[Dict[str, Any], Any]) -> Dict[str, Any]
         country = geo_ip.get("country_code")
         if city or region:
             location_parts = [p for p in [city, region, country] if p]
-            data["Location"] = ", ".join(location_parts)
-        data["Timezone"] = geo_ip.get("timezone")
+            fields.append(("Location", ", ".join(location_parts)))
+        if geo_ip.get("timezone"):
+            fields.append(("Timezone", geo_ip.get("timezone")))
 
     # Speed test
     speed = net.get("speed_test", {})
@@ -395,11 +403,25 @@ def get_network_list_data(network: Union[Dict[str, Any], Any]) -> Dict[str, Any]
         down = speed.get("down", {}).get("value")
         up = speed.get("up", {}).get("value")
         if down:
-            data["Download Speed"] = f"{down} Mbps"
+            fields.append(("Download Speed", f"{down} Mbps"))
         if up:
-            data["Upload Speed"] = f"{up} Mbps"
+            fields.append(("Upload Speed", f"{up} Mbps"))
 
-    return data
+    return fields
+
+
+def get_network_list_data(network: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
+    """Get curated network data for list output.
+
+    Uses get_network_show_fields() as the single source of truth.
+
+    Args:
+        network: Network dict or model object
+
+    Returns:
+        Dictionary with curated fields for list output
+    """
+    return {label: value for label, value in get_network_show_fields(network)}
 
 
 # ==================== Main Network Details Function ====================

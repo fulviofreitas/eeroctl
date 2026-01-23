@@ -286,10 +286,85 @@ def _eero_clients_panel(eero: Dict[str, Any]) -> Optional[Panel]:
 # ==================== Main Eero Details Function ====================
 
 
+def _normalize_eero_data(eero: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
+    """Normalize eero data to a consistent dict format."""
+    if isinstance(eero, dict):
+        return normalize_eero(eero) if "_raw" not in eero else eero
+    if hasattr(eero, "model_dump"):
+        return normalize_eero(eero.model_dump())
+    return normalize_eero(vars(eero))
+
+
+def _format_timestamp(value: Any, include_time: bool = True) -> str:
+    """Format a timestamp value."""
+    if value is None:
+        return "-"
+    if hasattr(value, "strftime"):
+        if include_time:
+            return value.strftime("%Y-%m-%d %H:%M:%S")
+        return value.strftime("%Y-%m-%d")
+    s = str(value)
+    if include_time:
+        return s[:19].replace("T", " ")
+    return s[:10]
+
+
+def get_eero_show_fields(eero: Union[Dict[str, Any], Any]) -> List[tuple]:
+    """Get the canonical list of fields to display for eero show.
+
+    This is the SINGLE SOURCE OF TRUTH for eero show output fields.
+    Both table (rich panels) and list (text) output use this.
+
+    Args:
+        eero: Eero dict or model object
+
+    Returns:
+        List of (label, value) tuples
+    """
+    e = _normalize_eero_data(eero)
+
+    name = e.get("name") or e.get("location") or "Unknown"
+    role = "Gateway" if e.get("is_gateway") else "Leaf"
+
+    fields = [
+        # Basic info
+        ("Name", name),
+        ("Model", e.get("model")),
+        ("Model Number", e.get("model_number")),
+        ("Serial", e.get("serial")),
+        ("Status", e.get("status")),
+        ("Role", role),
+        ("Wired", "Yes" if e.get("wired") else "No"),
+        ("Firmware", e.get("os_version")),
+        # Connection
+        ("IP Address", e.get("ip_address")),
+        ("MAC Address", e.get("mac_address")),
+        ("Connection Type", e.get("connection_type")),
+        ("State", e.get("state")),
+        ("Last Heartbeat", _format_timestamp(e.get("last_heartbeat"))),
+        ("Joined", _format_timestamp(e.get("joined"), include_time=False)),
+        ("Last Reboot", _format_timestamp(e.get("last_reboot"))),
+        # Clients
+        ("Total Clients", e.get("connected_clients_count", 0)),
+        ("Wireless Clients", e.get("connected_wireless_clients_count", 0)),
+        ("Wired Clients", e.get("connected_wired_clients_count", 0)),
+        # LED/Nightlight
+        ("LED", "On" if e.get("led_on") else "Off"),
+        ("LED Brightness", f"{e.get('led_brightness', 0)}%"),
+        ("Nightlight", "On" if e.get("nightlight_enabled") else "Off"),
+        # Performance
+        ("Mesh Quality", f"{e.get('mesh_quality_bars', 0)}/5"),
+        # WiFi
+        ("WiFi Bands", ", ".join(str(b) for b in e.get("bands", []))),
+    ]
+
+    return fields
+
+
 def get_eero_list_data(eero: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
     """Get curated eero data for list output.
 
-    Returns the same fields shown in the table output, as a flat dictionary.
+    Uses get_eero_show_fields() as the single source of truth.
 
     Args:
         eero: Eero dict or model object
@@ -297,65 +372,7 @@ def get_eero_list_data(eero: Union[Dict[str, Any], Any]) -> Dict[str, Any]:
     Returns:
         Dictionary with curated fields for list output
     """
-    # Normalize to dict if needed
-    if isinstance(eero, dict):
-        e = normalize_eero(eero) if "_raw" not in eero else eero
-    else:
-        if hasattr(eero, "model_dump"):
-            e = normalize_eero(eero.model_dump())
-        else:
-            e = normalize_eero(vars(eero))
-
-    name = e.get("name") or e.get("location") or "Unknown"
-    role = "Gateway" if e.get("is_gateway") else "Leaf"
-
-    data = {
-        "Name": name,
-        "Model": e.get("model"),
-        "Model Number": e.get("model_number"),
-        "Serial": e.get("serial"),
-        "Status": e.get("status"),
-        "Role": role,
-        "Wired": "Yes" if e.get("wired") else "No",
-        "Firmware": e.get("os_version"),
-        "IP Address": e.get("ip_address"),
-        "MAC Address": e.get("mac_address"),
-        "Connection Type": e.get("connection_type"),
-        "State": e.get("state"),
-        "Total Clients": e.get("connected_clients_count", 0),
-        "Wireless Clients": e.get("connected_wireless_clients_count", 0),
-        "Wired Clients": e.get("connected_wired_clients_count", 0),
-        "LED": "On" if e.get("led_on") else "Off",
-        "LED Brightness": f"{e.get('led_brightness', 0)}%",
-        "Nightlight": "On" if e.get("nightlight_enabled") else "Off",
-        "Mesh Quality": f"{e.get('mesh_quality_bars', 0)}/5",
-    }
-
-    # Add timestamps
-    last_heartbeat = e.get("last_heartbeat")
-    if last_heartbeat:
-        if hasattr(last_heartbeat, "strftime"):
-            data["Last Heartbeat"] = last_heartbeat.strftime("%Y-%m-%d %H:%M:%S")
-        else:
-            data["Last Heartbeat"] = str(last_heartbeat)[:19]
-
-    joined = e.get("joined")
-    if joined:
-        if hasattr(joined, "strftime"):
-            data["Joined"] = joined.strftime("%Y-%m-%d")
-        else:
-            data["Joined"] = str(joined)[:10]
-
-    last_reboot = e.get("last_reboot")
-    if last_reboot:
-        data["Last Reboot"] = str(last_reboot)[:19].replace("T", " ")
-
-    # Add bands
-    bands = e.get("bands", [])
-    if bands:
-        data["WiFi Bands"] = ", ".join(str(b) for b in bands)
-
-    return data
+    return {label: value for label, value in get_eero_show_fields(eero)}
 
 
 def print_eero_details(
