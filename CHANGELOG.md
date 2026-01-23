@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/fulviofreitas/eeroctl/compare/v1.8.0...v2.0.0) (2026-01-23)
+
+### ⚠ BREAKING CHANGES
+
+* migrate to eero-api v2.0.0 raw response architecture
+* All command modules now use raw API responses
+with the transformation layer.
+
+Updated commands:
+- device.py: Uses extract_devices, normalize_device
+- eero/base.py: Uses extract_eeros, normalize_eero
+- eero/led.py, nightlight.py, updates.py: Dict access for eero data
+- profile.py: Uses extract_profiles, normalize_profile
+- activity.py: Uses extract_data for activity responses
+- troubleshoot.py: Uses transformers for network/device data
+- network/guest.py, speedtest.py, dhcp.py: Dict access patterns
+
+Updated transformers/__init__.py:
+- Added safe_get and normalize_network to __all__
+
+All 383 tests passing.
+* Updates eeroctl to work with eero-api v2.0.0 which
+returns raw JSON responses instead of Pydantic models.
+
+Changes:
+- Add transformers package with base utilities and entity transformers
+  - base.py: extract_data, extract_list, extract_id_from_url, safe_get
+  - network.py, device.py, eero.py, profile.py: entity-specific transforms
+- Update const.py with local enum definitions (moved from eero-api)
+- Update formatting modules to use dict access instead of model attrs
+- Update network commands to use new transformation layer
+- Update tests to use raw API response fixtures
+
+This change is part of Phase 2 of the raw-response-migration-plan.
+
+### ✨ Features
+
+* add transformation layer for eero-api raw responses ([4d27530](https://github.com/fulviofreitas/eeroctl/commit/4d27530bae1851f1a304a71f24ef19336944d05d))
+* **ci:** standardize renovate workflow with reusable actions ([0093415](https://github.com/fulviofreitas/eeroctl/commit/0093415fe6a31b3b90c465dc7f6a7a72d676cbaa))
+* complete Phase 2 - update all commands for raw responses ([c071d17](https://github.com/fulviofreitas/eeroctl/commit/c071d1708307f0f0dccbb809a06c6be0f4428b87))
+* migrate to eero-api v2.0.0 raw response architecture ([cfffccc](https://github.com/fulviofreitas/eeroctl/commit/cfffccc9a939d9ea86bec8d09fffbf91d6079b94))
+* **renovate:** treat eero-api as feature release for minor version bumps ([2c35b83](https://github.com/fulviofreitas/eeroctl/commit/2c35b83d925855dbeca1fdd86c8a7a1d8ea63307))
+
+### 🐛 Bug Fixes
+
+* **renovate:** ensure consistent config matching all Python managers ([d29cfa4](https://github.com/fulviofreitas/eeroctl/commit/d29cfa42337767cfcc99c97dc02192bdb0917217))
+* **renovate:** restore critical and needs-review labels for eero packages ([96b7a15](https://github.com/fulviofreitas/eeroctl/commit/96b7a157df4295c15b3ed5e9f5d1abdef899ea78))
+* **renovate:** wait for PyPI indexing before running Renovate ([d8792c4](https://github.com/fulviofreitas/eeroctl/commit/d8792c4d307f588129ae29c6af6bb10362abc336))
+* resolve mypy type errors for raw response migration ([b7830c5](https://github.com/fulviofreitas/eeroctl/commit/b7830c5c13b8626ba146d24e51c2a32f93f5b7b0))
+* update test_status_json_output mock to use raw response ([fd72340](https://github.com/fulviofreitas/eeroctl/commit/fd72340dce8817fd8a3e1bedb201cc944425e556))
+
 ## [1.8.0](https://github.com/fulviofreitas/eeroctl/compare/v1.7.1...v1.8.0) (2026-01-21)
 
 ### ✨ Features
