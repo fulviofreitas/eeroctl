@@ -8,7 +8,7 @@ Commands:
 
 import asyncio
 import sys
-from typing import Literal, Optional
+from typing import Any, Dict, Literal, Optional, Tuple
 
 import click
 from eero import EeroClient
@@ -16,13 +16,65 @@ from eero.exceptions import EeroException, EeroNotFoundException
 from rich.table import Table
 
 from ...context import ensure_cli_context
-from ...errors import is_not_found_error
 from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
 from ...transformers import extract_data, extract_eeros, normalize_eero
 from ...utils import run_with_client
+
+
+async def resolve_eero_identifier(
+    client: EeroClient,
+    identifier: str,
+    network_id: Optional[str],
+) -> Tuple[Optional[str], Optional[Dict[str, Any]]]:
+    """Resolve an eero identifier (ID, serial, or name) to the actual eero ID.
+
+    Args:
+        client: EeroClient instance
+        identifier: Eero ID, serial number, or name/location
+        network_id: Network ID to search in
+
+    Returns:
+        Tuple of (resolved_id, normalized_eero_data) or (None, None) if not found
+    """
+    # First, check if identifier looks like a numeric ID
+    if identifier.isdigit():
+        # Try direct lookup by ID first
+        try:
+            raw_response = await client.get_eero(identifier, network_id)
+            eero_data = normalize_eero(extract_data(raw_response))
+            return identifier, eero_data
+        except (EeroNotFoundException, EeroException):
+            # Not a valid ID, continue to search by other fields
+            pass
+
+    # Fetch all eeros and search by name, location, or serial
+    raw_eeros = await client.get_eeros(network_id)
+    eeros = extract_eeros(raw_eeros)
+    normalized = [normalize_eero(e) for e in eeros]
+
+    identifier_lower = identifier.lower()
+
+    for eero in normalized:
+        # Match by serial (case-insensitive)
+        serial = eero.get("serial") or ""
+        if serial.lower() == identifier_lower:
+            return eero.get("id"), eero
+
+        # Match by name (case-insensitive)
+        name = eero.get("name") or ""
+        if name.lower() == identifier_lower:
+            return eero.get("id"), eero
+
+        # Match by location (case-insensitive)
+        location = eero.get("location") or ""
+        if location.lower() == identifier_lower:
+            return eero.get("id"), eero
+
+    # No match found
+    return None, None
 
 
 @click.group(name="eero")
@@ -115,34 +167,33 @@ def eero_list(ctx: click.Context, output: Optional[str], network_id: Optional[st
 
 
 @eero_group.command(name="show")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @output_option
 @network_option
 @click.pass_context
 def eero_show(
-    ctx: click.Context, eero_id: str, output: Optional[str], network_id: Optional[str]
+    ctx: click.Context, eero_identifier: str, output: Optional[str], network_id: Optional[str]
 ) -> None:
     """Show details of a specific Eero node.
 
     \b
     Arguments:
-      EERO_ID  Node ID, serial, or location name
+      EERO_IDENTIFIER  Node ID, serial number, or name/location
     """
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
         async def get_eero(client: EeroClient) -> None:
-            with cli_ctx.status(f"Getting Eero '{eero_id}'..."):
-                try:
-                    raw_response = await client.get_eero(eero_id, cli_ctx.network_id)
-                except (EeroNotFoundException, EeroException) as e:
-                    if is_not_found_error(e):
-                        console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                        sys.exit(ExitCode.NOT_FOUND)
-                    raise
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_response))
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
 
             if cli_ctx.is_structured_output():
                 cli_ctx.render_structured(eero, "eero.eero.show/v1")
@@ -160,12 +211,12 @@ def eero_show(
 
 
 @eero_group.command(name="reboot")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @force_option
 @network_option
 @click.pass_context
 def eero_reboot(
-    ctx: click.Context, eero_id: str, force: Optional[bool], network_id: Optional[str]
+    ctx: click.Context, eero_identifier: str, force: Optional[bool], network_id: Optional[str]
 ) -> None:
     """Reboot an Eero node.
 
@@ -174,25 +225,27 @@ def eero_reboot(
 
     \b
     Arguments:
-      EERO_ID  Node ID, serial, or location name
+      EERO_IDENTIFIER  Node ID, serial number, or name/location
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
         async def reboot_eero(client: EeroClient) -> None:
-            # First resolve the eero to get its name
-            with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
-                try:
-                    raw_response = await client.get_eero(eero_id, cli_ctx.network_id)
-                except (EeroNotFoundException, EeroException) as e:
-                    if is_not_found_error(e):
-                        console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                        sys.exit(ExitCode.NOT_FOUND)
-                    raise
+            # Resolve the eero identifier to get its ID and name
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_response))
-            eero_name = eero.get("name") or eero.get("location") or eero.get("serial") or eero_id
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            eero_name = (
+                eero.get("name") or eero.get("location") or eero.get("serial") or eero_identifier
+            )
 
             try:
                 confirm_or_fail(
@@ -208,9 +261,8 @@ def eero_reboot(
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            eero_id_str = str(eero.get("id") or "")
             with cli_ctx.status(f"Rebooting {eero_name}..."):
-                result = await client.reboot_eero(eero_id_str, cli_ctx.network_id)
+                result = await client.reboot_eero(resolved_id, cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:

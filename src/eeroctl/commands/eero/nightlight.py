@@ -13,14 +13,14 @@ import sys
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroNotFoundException
 from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
 from ...errors import is_feature_unavailable_error
 from ...exit_codes import ExitCode
-from ...transformers import extract_data, normalize_eero
+from ...transformers import extract_data
 from ...utils import run_with_client
+from .base import resolve_eero_identifier
 
 
 @click.group(name="nightlight")
@@ -40,9 +40,9 @@ def nightlight_group(ctx: click.Context) -> None:
 
 
 @nightlight_group.command(name="show")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.pass_context
-def nightlight_show(ctx: click.Context, eero_id: str) -> None:
+def nightlight_show(ctx: click.Context, eero_identifier: str) -> None:
     """Show nightlight settings."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
@@ -50,17 +50,18 @@ def nightlight_show(ctx: click.Context, eero_id: str) -> None:
 
     async def run_cmd() -> None:
         async def get_nightlight(client: EeroClient) -> None:
-            # Resolve eero first (by ID, serial, location, or MAC)
-            with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
-                try:
-                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
-                except EeroNotFoundException:
-                    console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                    sys.exit(ExitCode.NOT_FOUND)
+            # Resolve eero by ID, serial, or name
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_eero))
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
 
-            eero_id_str = str(eero.get("id") or "")
+            eero_id_str = str(resolved_id)
             with cli_ctx.status("Getting nightlight settings..."):
                 try:
                     raw_nl = await client.get_nightlight(eero_id_str, cli_ctx.network_id)
@@ -98,41 +99,42 @@ def nightlight_show(ctx: click.Context, eero_id: str) -> None:
 
 
 @nightlight_group.command(name="on")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.pass_context
-def nightlight_on(ctx: click.Context, eero_id: str) -> None:
+def nightlight_on(ctx: click.Context, eero_identifier: str) -> None:
     """Turn nightlight on."""
     cli_ctx = get_cli_context(ctx)
-    _set_nightlight(cli_ctx, eero_id, True)
+    _set_nightlight(cli_ctx, eero_identifier, True)
 
 
 @nightlight_group.command(name="off")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.pass_context
-def nightlight_off(ctx: click.Context, eero_id: str) -> None:
+def nightlight_off(ctx: click.Context, eero_identifier: str) -> None:
     """Turn nightlight off."""
     cli_ctx = get_cli_context(ctx)
-    _set_nightlight(cli_ctx, eero_id, False)
+    _set_nightlight(cli_ctx, eero_identifier, False)
 
 
-def _set_nightlight(cli_ctx: EeroCliContext, eero_id: str, enabled: bool) -> None:
+def _set_nightlight(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool) -> None:
     """Set nightlight state."""
     console = cli_ctx.console
     action = "on" if enabled else "off"
 
     async def run_cmd() -> None:
         async def set_nl(client: EeroClient) -> None:
-            # Resolve eero first (by ID, serial, location, or MAC)
-            with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
-                try:
-                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
-                except EeroNotFoundException:
-                    console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                    sys.exit(ExitCode.NOT_FOUND)
+            # Resolve eero by ID, serial, or name
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_eero))
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
 
-            eero_id_str = str(eero.get("id") or "")
+            eero_id_str = str(resolved_id)
             with cli_ctx.status(f"Turning nightlight {action}..."):
                 try:
                     result = await client.set_nightlight(
@@ -159,27 +161,28 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_id: str, enabled: bool) -> Non
 
 
 @nightlight_group.command(name="brightness")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.argument("value", type=click.IntRange(0, 100))
 @click.pass_context
-def nightlight_brightness(ctx: click.Context, eero_id: str, value: int) -> None:
+def nightlight_brightness(ctx: click.Context, eero_identifier: str, value: int) -> None:
     """Set nightlight brightness (0-100)."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
         async def set_brightness(client: EeroClient) -> None:
-            # Resolve eero first (by ID, serial, location, or MAC)
-            with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
-                try:
-                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
-                except EeroNotFoundException:
-                    console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                    sys.exit(ExitCode.NOT_FOUND)
+            # Resolve eero by ID, serial, or name
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_eero))
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
 
-            eero_id_str = str(eero.get("id") or "")
+            eero_id_str = str(resolved_id)
             with cli_ctx.status(f"Setting nightlight brightness to {value}%..."):
                 try:
                     # TODO: set_nightlight_brightness method not yet implemented in eero-api
@@ -207,28 +210,31 @@ def nightlight_brightness(ctx: click.Context, eero_id: str, value: int) -> None:
 
 
 @nightlight_group.command(name="schedule")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.option("--on-time", required=True, help="Time to turn on (HH:MM)")
 @click.option("--off-time", required=True, help="Time to turn off (HH:MM)")
 @click.pass_context
-def nightlight_schedule(ctx: click.Context, eero_id: str, on_time: str, off_time: str) -> None:
+def nightlight_schedule(
+    ctx: click.Context, eero_identifier: str, on_time: str, off_time: str
+) -> None:
     """Set nightlight schedule."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
         async def set_schedule(client: EeroClient) -> None:
-            # Resolve eero first (by ID, serial, location, or MAC)
-            with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
-                try:
-                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
-                except EeroNotFoundException:
-                    console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                    sys.exit(ExitCode.NOT_FOUND)
+            # Resolve eero by ID, serial, or name
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_eero))
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
 
-            eero_id_str = str(eero.get("id") or "")
+            eero_id_str = str(resolved_id)
             with cli_ctx.status("Setting nightlight schedule..."):
                 try:
                     # TODO: set_nightlight_schedule method not yet implemented in eero-api

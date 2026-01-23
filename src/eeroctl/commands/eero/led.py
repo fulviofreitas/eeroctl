@@ -12,13 +12,13 @@ import sys
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroNotFoundException
 from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
-from ...transformers import extract_data, normalize_eero
+from ...transformers import extract_data
 from ...utils import run_with_client
+from .base import resolve_eero_identifier
 
 
 @click.group(name="led")
@@ -37,9 +37,9 @@ def led_group(ctx: click.Context) -> None:
 
 
 @led_group.command(name="show")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.pass_context
-def led_show(ctx: click.Context, eero_id: str) -> None:
+def led_show(ctx: click.Context, eero_identifier: str) -> None:
     """Show LED status for an Eero node."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
@@ -47,16 +47,18 @@ def led_show(ctx: click.Context, eero_id: str) -> None:
 
     async def run_cmd() -> None:
         async def get_led(client: EeroClient) -> None:
-            # Resolve eero first (by ID, serial, location, or MAC)
-            with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
-                try:
-                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
-                except EeroNotFoundException:
-                    console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                    sys.exit(ExitCode.NOT_FOUND)
+            # Resolve eero by ID, serial, or name
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_eero))
-            eero_id_str = str(eero.get("id") or "")
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            eero_id_str = str(resolved_id)
 
             with cli_ctx.status("Getting LED status..."):
                 raw_led = await client.get_led_status(eero_id_str, cli_ctx.network_id)
@@ -81,40 +83,42 @@ def led_show(ctx: click.Context, eero_id: str) -> None:
 
 
 @led_group.command(name="on")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.pass_context
-def led_on(ctx: click.Context, eero_id: str) -> None:
+def led_on(ctx: click.Context, eero_identifier: str) -> None:
     """Turn LED on."""
     cli_ctx = get_cli_context(ctx)
-    _set_led(cli_ctx, eero_id, True)
+    _set_led(cli_ctx, eero_identifier, True)
 
 
 @led_group.command(name="off")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.pass_context
-def led_off(ctx: click.Context, eero_id: str) -> None:
+def led_off(ctx: click.Context, eero_identifier: str) -> None:
     """Turn LED off."""
     cli_ctx = get_cli_context(ctx)
-    _set_led(cli_ctx, eero_id, False)
+    _set_led(cli_ctx, eero_identifier, False)
 
 
-def _set_led(cli_ctx: EeroCliContext, eero_id: str, enabled: bool) -> None:
+def _set_led(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool) -> None:
     """Set LED state."""
     console = cli_ctx.console
     action = "on" if enabled else "off"
 
     async def run_cmd() -> None:
         async def set_led(client: EeroClient) -> None:
-            # Resolve eero first (by ID, serial, location, or MAC)
-            with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
-                try:
-                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
-                except EeroNotFoundException:
-                    console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                    sys.exit(ExitCode.NOT_FOUND)
+            # Resolve eero by ID, serial, or name
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_eero))
-            eero_id_str = str(eero.get("id") or "")
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            eero_id_str = str(resolved_id)
 
             with cli_ctx.status(f"Turning LED {action}..."):
                 result = await client.set_led(eero_id_str, enabled, cli_ctx.network_id)
@@ -132,26 +136,28 @@ def _set_led(cli_ctx: EeroCliContext, eero_id: str, enabled: bool) -> None:
 
 
 @led_group.command(name="brightness")
-@click.argument("eero_id")
+@click.argument("eero_identifier")
 @click.argument("value", type=click.IntRange(0, 100))
 @click.pass_context
-def led_brightness(ctx: click.Context, eero_id: str, value: int) -> None:
+def led_brightness(ctx: click.Context, eero_identifier: str, value: int) -> None:
     """Set LED brightness (0-100)."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
     async def run_cmd() -> None:
         async def set_brightness(client: EeroClient) -> None:
-            # Resolve eero first (by ID, serial, location, or MAC)
-            with cli_ctx.status(f"Finding Eero '{eero_id}'..."):
-                try:
-                    raw_eero = await client.get_eero(eero_id, cli_ctx.network_id)
-                except EeroNotFoundException:
-                    console.print(f"[red]Eero '{eero_id}' not found[/red]")
-                    sys.exit(ExitCode.NOT_FOUND)
+            # Resolve eero by ID, serial, or name
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
 
-            eero = normalize_eero(extract_data(raw_eero))
-            eero_id_str = str(eero.get("id") or "")
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            eero_id_str = str(resolved_id)
 
             with cli_ctx.status(f"Setting LED brightness to {value}%..."):
                 result = await client.set_led_brightness(eero_id_str, value, cli_ctx.network_id)
