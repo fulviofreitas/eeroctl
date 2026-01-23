@@ -76,3 +76,13 @@ Built on [eero-api](https://github.com/fulviofreitas/eero-api) for API communica
 ## 📄 License
 
 MIT — see [LICENSE](LICENSE)
+
+---
+
+<div align="center">
+
+## 📊 Repository Metrics
+
+![Repository Metrics](./metrics.repository.svg)
+
+</div>
