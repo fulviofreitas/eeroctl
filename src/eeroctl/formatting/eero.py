@@ -157,6 +157,132 @@ def _eero_performance_panel(eero: Dict[str, Any]) -> Optional[Panel]:
     return build_panel(lines, "Performance", "green") if lines else None
 
 
+def _eero_connection_panel(eero: Dict[str, Any]) -> Panel:
+    """Build the connection/network panel."""
+    lines = [
+        field("IP Address", eero.get("ip_address")),
+        field("MAC Address", eero.get("mac_address")),
+        field("Connection Type", eero.get("connection_type")),
+        field("State", eero.get("state")),
+    ]
+
+    # Add timestamps if available
+    last_heartbeat = eero.get("last_heartbeat")
+    if last_heartbeat:
+        if hasattr(last_heartbeat, "strftime"):
+            lines.append(field("Last Heartbeat", last_heartbeat.strftime("%Y-%m-%d %H:%M:%S")))
+        else:
+            lines.append(field("Last Heartbeat", str(last_heartbeat)[:19]))
+
+    joined = eero.get("joined")
+    if joined:
+        if hasattr(joined, "strftime"):
+            lines.append(field("Joined", joined.strftime("%Y-%m-%d")))
+        else:
+            lines.append(field("Joined", str(joined)[:10]))
+
+    last_reboot = eero.get("last_reboot")
+    if last_reboot:
+        lines.append(field("Last Reboot", str(last_reboot)[:19].replace("T", " ")))
+
+    return build_panel(lines, "Connection", "green")
+
+
+def _eero_ethernet_panel(eero: Dict[str, Any]) -> Optional[Panel]:
+    """Build the ethernet ports panel."""
+    raw = eero.get("_raw", {})
+    ethernet_status = raw.get("ethernet_status") or eero.get("ethernet_status")
+
+    if not ethernet_status or not isinstance(ethernet_status, dict):
+        return None
+
+    statuses = ethernet_status.get("statuses", [])
+    if not statuses:
+        return None
+
+    lines = []
+
+    for port in statuses:
+        port_name = port.get("port_name", "?")
+        has_carrier = port.get("hasCarrier", False)
+        speed = port.get("speed", "Unknown")
+
+        # Format speed (P1000 -> 1Gbps, P100 -> 100Mbps)
+        if speed == "P1000":
+            speed_display = "1 Gbps"
+        elif speed == "P100":
+            speed_display = "100 Mbps"
+        elif speed == "P10":
+            speed_display = "10 Mbps"
+        else:
+            speed_display = speed
+
+        carrier_style = "green" if has_carrier else "dim"
+        carrier_text = "Connected" if has_carrier else "No Link"
+
+        # Check for neighbor
+        neighbor = port.get("neighbor")
+        neighbor_text = ""
+        if neighbor and isinstance(neighbor, dict):
+            metadata = neighbor.get("metadata", {})
+            neighbor_location = metadata.get("location")
+            if neighbor_location:
+                neighbor_text = f" → {neighbor_location}"
+
+        lines.append(
+            f"[bold]Port {port_name}:[/bold] [{carrier_style}]{carrier_text}[/{carrier_style}]"
+            f" ({speed_display}){neighbor_text}"
+        )
+
+    return build_panel(lines, "Ethernet Ports", "cyan") if lines else None
+
+
+def _eero_wifi_panel(eero: Dict[str, Any]) -> Optional[Panel]:
+    """Build the WiFi bands panel."""
+    bands = eero.get("bands", [])
+
+    if not bands:
+        return None
+
+    lines = []
+
+    # Format band names nicely
+    band_names = {
+        "band_2_4GHz": "2.4 GHz",
+        "band_5GHz_low": "5 GHz (Low)",
+        "band_5GHz_high": "5 GHz (High)",
+        "band_6GHz": "6 GHz",
+    }
+
+    for band in bands:
+        display_name = band_names.get(band, band)
+        lines.append(f"[bold]•[/bold] {display_name}")
+
+    provides_wifi = eero.get("provides_wifi", True)
+    if not provides_wifi:
+        lines.append("[dim]WiFi disabled[/dim]")
+
+    return build_panel(lines, "WiFi Bands", "magenta") if lines else None
+
+
+def _eero_clients_panel(eero: Dict[str, Any]) -> Optional[Panel]:
+    """Build the clients breakdown panel."""
+    total = eero.get("connected_clients_count", 0)
+    wired = eero.get("connected_wired_clients_count", 0)
+    wireless = eero.get("connected_wireless_clients_count", 0)
+
+    if total == 0:
+        return None
+
+    lines = [
+        field("Total Clients", total),
+        field("Wireless", wireless),
+        field("Wired", wired),
+    ]
+
+    return build_panel(lines, "Connected Clients", "yellow")
+
+
 # ==================== Main Eero Details Function ====================
 
 
@@ -183,6 +309,24 @@ def print_eero_details(
 
     # Basic info panel (always shown)
     console.print(_eero_basic_panel(e, extensive))
+
+    # Connection panel (always shown)
+    console.print(_eero_connection_panel(e))
+
+    # Clients panel
+    clients_panel = _eero_clients_panel(e)
+    if clients_panel:
+        console.print(clients_panel)
+
+    # Ethernet ports panel
+    ethernet_panel = _eero_ethernet_panel(e)
+    if ethernet_panel:
+        console.print(ethernet_panel)
+
+    # WiFi bands panel
+    wifi_panel = _eero_wifi_panel(e)
+    if wifi_panel:
+        console.print(wifi_panel)
 
     # LED/Nightlight panel
     led_panel = _eero_led_panel(e)
