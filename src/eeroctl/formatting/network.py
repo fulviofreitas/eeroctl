@@ -195,6 +195,13 @@ def _network_dns_brief_panel(network: Dict[str, Any]) -> Optional[Panel]:
         caching = dns_info.get("caching", False)
         lines.append(field_bool("DNS Caching", caching))
 
+        # Show upstream/parent DNS servers
+        parent = dns_info.get("parent", {})
+        parent_ips = parent.get("ips", []) if isinstance(parent, dict) else []
+        if parent_ips:
+            lines.append(field("Upstream DNS", ", ".join(parent_ips)))
+
+        # Show custom DNS servers
         custom = dns_info.get("custom", {})
         custom_ips = custom.get("ips", []) if isinstance(custom, dict) else []
         if custom_ips:
@@ -211,6 +218,40 @@ def _network_dns_brief_panel(network: Dict[str, Any]) -> Optional[Panel]:
             lines.append("[bold]Ad Block:[/bold] [green]Enabled[/green]")
 
     return build_panel(lines, "DNS & Security", "magenta") if lines else None
+
+
+def _network_location_panel(network: Dict[str, Any]) -> Optional[Panel]:
+    """Build the location/geo info panel."""
+    geo_ip = network.get("geo_ip", {})
+    if not geo_ip or not isinstance(geo_ip, dict):
+        return None
+
+    # Build location string (city, region, country)
+    city = geo_ip.get("city")
+    region = geo_ip.get("region") or geo_ip.get("regionName")
+    country = geo_ip.get("countryName") or geo_ip.get("countryCode")
+
+    location_parts = [p for p in [city, region, country] if p]
+    location = ", ".join(location_parts) if location_parts else None
+
+    lines = []
+
+    if location:
+        lines.append(field("Location", location))
+
+    timezone = geo_ip.get("timezone")
+    if timezone:
+        lines.append(field("Timezone", timezone))
+
+    org = geo_ip.get("org")
+    if org:
+        lines.append(field("Organization", org))
+
+    asn = geo_ip.get("asn")
+    if asn:
+        lines.append(field("ASN", f"AS{asn}"))
+
+    return build_panel(lines, "Location", "cyan") if lines else None
 
 
 def _network_settings_panel(network: Dict[str, Any]) -> Panel:
@@ -317,6 +358,10 @@ def print_network_details(
 
         console.print(_network_connection_panel(net))
 
+        location_panel = _network_location_panel(net)
+        if location_panel:
+            console.print(location_panel)
+
         dhcp_panel = _network_dhcp_panel(net)
         if dhcp_panel:
             console.print(dhcp_panel)
@@ -333,6 +378,10 @@ def print_network_details(
     else:
         # Extensive view - show all panels
         console.print(_network_connection_panel(net))
+
+        location_panel = _network_location_panel(net)
+        if location_panel:
+            console.print(location_panel)
 
         dhcp_panel = _network_dhcp_panel(net)
         if dhcp_panel:
