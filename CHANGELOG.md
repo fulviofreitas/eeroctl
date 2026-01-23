@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1](https://github.com/fulviofreitas/eeroctl/compare/v2.0.0...v2.0.1) (2026-01-23)
+
+### 🐛 Bug Fixes
+
+* **renovate:** disable automerge for eero-api, require review ([d10eca7](https://github.com/fulviofreitas/eeroctl/commit/d10eca7ddf8444cebed614dbb050f6130265aca0))
+
 ## [2.0.0](https://github.com/fulviofreitas/eeroctl/compare/v1.8.0...v2.0.0) (2026-01-23)
 
 ### ⚠ BREAKING CHANGES
