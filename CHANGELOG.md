@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.7.0](https://github.com/fulviofreitas/eeroctl/compare/v2.6.0...v2.7.0) (2026-01-23)
+
+### ✨ Features
+
+* manage preferred_network in config.json, not credentials ([209fbe4](https://github.com/fulviofreitas/eeroctl/commit/209fbe4a3cbfcfe943fe4c8bdfd0811388690e4a))
+
+### 🐛 Bug Fixes
+
+* resolve mypy type errors in auth.py ([3cd165d](https://github.com/fulviofreitas/eeroctl/commit/3cd165d0238e9ab56978ee8263796e19634a42c9))
+
 ## [2.6.0](https://github.com/fulviofreitas/eeroctl/compare/v2.5.0...v2.6.0) (2026-01-23)
 
 ### ✨ Features
