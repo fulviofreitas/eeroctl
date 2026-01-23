@@ -53,40 +53,12 @@
   // ============================================================================
   packageRules: [
     // ==========================================================================
-    // 🟢 eero-api - Internal dependency (feature release)
-    // ==========================================================================
-    // Updates trigger minor version bump via feat(deps): prefix
-    // Note: Match all Python managers to ensure consistent behavior
-    {
-      matchPackageNames: ["eero-api"],
-      matchManagers: ["pep621", "poetry", "pip_requirements", "pip-compile"],
-      groupName: "eero-api",
-      description: "🟢 eero-api update (triggers minor release, requires review)",
-      automerge: false,
-      addLabels: ["eero-api", "feature", "critical", "needs-review"],
-      reviewers: ["fulviofreitas"],
-      prPriority: 10,
-      commitMessagePrefix: "feat(deps):",
-      commitMessageExtra: "{{newVersion}}",
-      prTitle: "feat(deps): update eero-api to {{{newVersion}}}",
-      prBodyNotes: [
-        "## 🟢 eero-api Update",
-        "",
-        "This PR updates `eero-api`, the core API client for eero network communication.",
-        "",
-        "### Links",
-        "- [eero-api on PyPI](https://pypi.org/project/eero-api/)",
-        "- [eero-api Repository](https://github.com/fulviofreitas/eero-api)",
-        "- [eero-api Releases](https://github.com/fulviofreitas/eero-api/releases)",
-      ],
-    },
-
-    // ==========================================================================
-    // 🟡 Python dependencies: Group minor/patch updates
+    // 🟡 Python dependencies: Group minor/patch updates (excludes eero-api)
     // ==========================================================================
     {
       matchManagers: ["pep621", "poetry", "pip_requirements", "pip-compile"],
       matchUpdateTypes: ["minor", "patch"],
+      excludePackageNames: ["eero-api"],
       groupName: "python-minor-patch",
       description: "Python minor/patch updates (auto-merge)",
       automerge: true,
@@ -133,6 +105,35 @@
       matchPackageNames: ["*"],
       prPriority: 20,
       description: "Security patches get high priority",
+    },
+
+    // ==========================================================================
+    // 🟢 eero-api - Internal dependency (MUST BE LAST to override other rules)
+    // ==========================================================================
+    // Updates trigger minor version bump via feat(deps): prefix.
+    // This rule is placed LAST so it takes precedence over all other rules.
+    {
+      matchPackageNames: ["eero-api"],
+      matchManagers: ["pep621", "poetry", "pip_requirements", "pip-compile"],
+      groupName: "eero-api",
+      description: "🟢 eero-api update (triggers minor release, requires review)",
+      automerge: false,
+      addLabels: ["eero-api", "feature", "critical", "needs-review"],
+      reviewers: ["fulviofreitas"],
+      prPriority: 10,
+      commitMessagePrefix: "feat(deps):",
+      commitMessageExtra: "{{newVersion}}",
+      prTitle: "feat(deps): update eero-api to {{{newVersion}}}",
+      prBodyNotes: [
+        "## 🟢 eero-api Update",
+        "",
+        "This PR updates `eero-api`, the core API client for eero network communication.",
+        "",
+        "### Links",
+        "- [eero-api on PyPI](https://pypi.org/project/eero-api/)",
+        "- [eero-api Repository](https://github.com/fulviofreitas/eero-api)",
+        "- [eero-api Releases](https://github.com/fulviofreitas/eero-api/releases)",
+      ],
     },
   ],
 
