@@ -36,6 +36,8 @@ def routing_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(routing, "eero.network.routing.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(routing, "eero.network.routing.show/v1")
             else:
                 console.print(
                     Panel(
@@ -79,6 +81,8 @@ def thread_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(thread_data, "eero.network.thread.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(thread_data, "eero.network.thread.show/v1")
             else:
                 console.print(
                     Panel(
@@ -124,6 +128,8 @@ def support_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(support_data, "eero.network.support.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(support_data, "eero.network.support.show/v1")
             else:
                 console.print(
                     Panel(

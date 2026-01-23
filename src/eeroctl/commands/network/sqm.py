@@ -57,6 +57,8 @@ def sqm_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(sqm_data, "eero.network.sqm.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(sqm_data, "eero.network.sqm.show/v1")
             else:
                 enabled = sqm_data.get("enabled", False)
                 upload_bw = sqm_data.get("upload_bandwidth")

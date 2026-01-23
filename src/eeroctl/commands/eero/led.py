@@ -67,6 +67,8 @@ def led_show(ctx: click.Context, eero_identifier: str) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(led_data, "eero.eero.led.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(led_data, "eero.eero.led.show/v1")
             else:
                 led_on = led_data.get("led_on", False)
                 brightness = led_data.get("led_brightness", 100)

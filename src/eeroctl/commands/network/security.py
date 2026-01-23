@@ -60,6 +60,8 @@ def security_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(sec_data, "eero.network.security.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(sec_data, "eero.network.security.show/v1")
             else:
                 table = Table(title="Security Settings")
                 table.add_column("Setting", style="cyan")

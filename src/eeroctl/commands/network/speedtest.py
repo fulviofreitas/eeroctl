@@ -85,6 +85,8 @@ def speedtest_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(speed_test, "eero.network.speedtest.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(speed_test, "eero.network.speedtest.show/v1")
             else:
                 download = speed_test.get("down", {}).get("value", 0)
                 upload = speed_test.get("up", {}).get("value", 0)

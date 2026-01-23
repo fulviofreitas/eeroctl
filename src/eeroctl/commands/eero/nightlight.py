@@ -77,6 +77,8 @@ def nightlight_show(ctx: click.Context, eero_identifier: str) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(nl_data, "eero.eero.nightlight.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(nl_data, "eero.eero.nightlight.show/v1")
             else:
                 enabled = nl_data.get("enabled", False)
                 brightness = nl_data.get("brightness", 100)

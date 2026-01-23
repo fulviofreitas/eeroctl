@@ -58,13 +58,16 @@ def guest_show(ctx: click.Context) -> None:
 
             network = normalize_network(extract_data(raw_network))
 
+            data = {
+                "enabled": network.get("guest_network_enabled"),
+                "name": network.get("guest_network_name"),
+                "password": "********" if network.get("guest_network_password") else None,
+            }
+
             if cli_ctx.is_json_output():
-                data = {
-                    "enabled": network.get("guest_network_enabled"),
-                    "name": network.get("guest_network_name"),
-                    "password": "********" if network.get("guest_network_password") else None,
-                }
                 renderer.render_json(data, "eero.network.guest.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(data, "eero.network.guest.show/v1")
             else:
                 enabled = network.get("guest_network_enabled")
                 content = (

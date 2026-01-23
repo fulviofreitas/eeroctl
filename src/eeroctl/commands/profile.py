@@ -181,6 +181,9 @@ def profile_show(
 
             if cli_ctx.is_structured_output():
                 cli_ctx.render_structured(profile, "eero.profile.show/v1")
+            elif cli_ctx.is_list_output():
+                # Simple key-value output for list format
+                cli_ctx.renderer.render_text(profile, "eero.profile.show/v1")
             else:
                 from ..formatting import print_profile_details
 
@@ -346,11 +349,12 @@ def apps_list(
             if isinstance(apps, dict):
                 apps = apps.get("applications", [])
 
+            apps_data = {"profile": target.get("name"), "blocked_apps": apps}
+
             if cli_ctx.is_json_output():
-                renderer.render_json(
-                    {"profile": target.get("name"), "blocked_apps": apps},
-                    "eero.profile.apps.list/v1",
-                )
+                renderer.render_json(apps_data, "eero.profile.apps.list/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(apps_data, "eero.profile.apps.list/v1")
             else:
                 if not apps:
                     console.print("[dim]No blocked applications[/dim]")
@@ -529,6 +533,8 @@ def schedule_show(
 
             if cli_ctx.is_json_output():
                 renderer.render_json(schedule_data, "eero.profile.schedule.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(schedule_data, "eero.profile.schedule.show/v1")
             else:
                 enabled = schedule_data.get("enabled", False)
                 time_blocks = schedule_data.get("time_blocks", [])

@@ -197,6 +197,9 @@ def eero_show(
 
             if cli_ctx.is_structured_output():
                 cli_ctx.render_structured(eero, "eero.eero.show/v1")
+            elif cli_ctx.is_list_output():
+                # Simple key-value output for list format
+                cli_ctx.renderer.render_text(eero, "eero.eero.show/v1")
             else:
                 from ...formatting import print_eero_details
 

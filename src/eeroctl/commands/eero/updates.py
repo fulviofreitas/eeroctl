@@ -46,6 +46,8 @@ def updates_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(updates, "eero.eero.updates.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(updates, "eero.eero.updates.show/v1")
             else:
                 has_update = updates.get("has_update", False)
                 target = updates.get("target_firmware", "N/A")

@@ -57,6 +57,8 @@ def backup_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(backup_data, "eero.network.backup.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(backup_data, "eero.network.backup.show/v1")
             else:
                 enabled = backup_data.get("enabled", False)
                 content = (
@@ -148,10 +150,12 @@ def backup_status(ctx: click.Context) -> None:
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
 
+            status_output = {**status_data, "using_backup": is_using}
+
             if cli_ctx.is_json_output():
-                renderer.render_json(
-                    {**status_data, "using_backup": is_using}, "eero.network.backup.status/v1"
-                )
+                renderer.render_json(status_output, "eero.network.backup.status/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(status_output, "eero.network.backup.status/v1")
             else:
                 style = "yellow" if is_using else "green"
                 status = "Using Backup" if is_using else "Primary Connection"

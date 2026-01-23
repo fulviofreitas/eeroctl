@@ -54,6 +54,8 @@ def dns_show(ctx: click.Context) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(dns_data, "eero.network.dns.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(dns_data, "eero.network.dns.show/v1")
             else:
                 caching = dns_data.get("dns_caching", False)
                 mode = dns_data.get("dns_mode", "auto")

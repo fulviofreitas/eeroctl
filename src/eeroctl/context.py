@@ -96,6 +96,10 @@ class EeroCliContext:
         """Check if output format is plain text."""
         return self.output_format == "text"
 
+    def is_list_output(self) -> bool:
+        """Check if output format is list (simple key-value pairs)."""
+        return self.output_format == "list"
+
     def is_structured_output(self) -> bool:
         """Check if output format is a structured format (JSON, YAML, or text)."""
         return self.output_format in ("json", "yaml", "text")

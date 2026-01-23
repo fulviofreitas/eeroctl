@@ -111,6 +111,8 @@ def forwards_show(ctx: click.Context, forward_id: str) -> None:
 
             if cli_ctx.is_json_output():
                 renderer.render_json(target, "eero.network.forwards.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(target, "eero.network.forwards.show/v1")
             else:
                 content = "\n".join(f"[bold]{k}:[/bold] {v}" for k, v in target.items())
                 console.print(

@@ -206,6 +206,9 @@ def device_show(
 
             if cli_ctx.is_structured_output():
                 cli_ctx.render_structured(device, "eero.device.show/v1")
+            elif cli_ctx.is_list_output():
+                # Simple key-value output for list format
+                cli_ctx.renderer.render_text(device, "eero.device.show/v1")
             else:
                 from ..formatting import print_device_details
 
@@ -412,6 +415,8 @@ def priority_show(
 
             if cli_ctx.is_json_output():
                 renderer.render_json(priority_data, "eero.device.priority.show/v1")
+            elif cli_ctx.is_list_output():
+                renderer.render_text(priority_data, "eero.device.priority.show/v1")
             else:
                 prioritized = priority_data.get("prioritized", False)
                 duration = priority_data.get("duration", 0)
