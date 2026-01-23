@@ -24,7 +24,7 @@ from .commands import (
     troubleshoot_group,
 )
 from .context import create_cli_context
-from .utils import get_preferred_network
+from .utils import ensure_config, get_default_output, get_preferred_network
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -63,8 +63,8 @@ def _get_version_info() -> str:
     "--output",
     "-o",
     type=click.Choice(["table", "list", "json", "yaml", "text"]),
-    default="table",
-    help="Output format (default: table).",
+    default=None,
+    help="Output format (default from config, or 'table').",
 )
 @click.option(
     "--network-id",
@@ -90,7 +90,7 @@ def cli(
     debug: bool,
     quiet: bool,
     no_color: bool,
-    output: str,
+    output: Optional[str],
     network_id: Optional[str],
     non_interactive: bool,
     force: bool,
@@ -100,6 +100,9 @@ def cli(
     Manage your Eero mesh Wi-Fi network from the command line.
     Use --help with any command for more information.
     """
+    # Ensure config file exists with defaults
+    ensure_config()
+
     # Setup logging
     if debug:
         logging.basicConfig(level=logging.DEBUG)
@@ -109,12 +112,15 @@ def cli(
     # Create console
     console = Console(force_terminal=not no_color, no_color=no_color, quiet=quiet)
 
+    # Determine output format: command line > config > default
+    effective_output = output if output is not None else get_default_output()
+
     # Create context
     cli_ctx = create_cli_context(
         debug=debug,
         quiet=quiet,
         no_color=no_color,
-        output_format=output,
+        output_format=effective_output,
         non_interactive=non_interactive,
         force=force,
     )

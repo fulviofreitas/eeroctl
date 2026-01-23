@@ -112,29 +112,99 @@ def get_config_file() -> Path:
     return get_config_dir() / "config.json"
 
 
+# ==================== Config Defaults ====================
+
+# Default configuration values
+DEFAULT_CONFIG = {
+    "default_output": "table",
+    "auth_method": "keyring",
+    "preferred_network_id": None,
+}
+
+# Valid values for config options
+VALID_OUTPUT_FORMATS = ("table", "list", "json", "yaml", "text")
+VALID_AUTH_METHODS = ("keyring", "cookie_file")
+
+
+def ensure_config() -> dict:
+    """Ensure config file exists with default values.
+
+    Creates the config file with defaults if it doesn't exist.
+    Returns the current config.
+
+    Returns:
+        The current configuration dictionary
+    """
+    config_file = get_config_file()
+
+    if config_file.exists():
+        try:
+            with open(config_file, "r") as f:
+                config = json.load(f)
+            # Merge with defaults for any missing keys
+            updated = False
+            for key, default_value in DEFAULT_CONFIG.items():
+                if key not in config:
+                    config[key] = default_value
+                    updated = True
+            if updated:
+                with open(config_file, "w") as f:
+                    json.dump(config, f, indent=2)
+            return config
+        except (json.JSONDecodeError, IOError):
+            pass
+
+    # Create new config with defaults
+    config = DEFAULT_CONFIG.copy()
+    try:
+        with open(config_file, "w") as f:
+            json.dump(config, f, indent=2)
+    except IOError as e:
+        console.print(f"[bold red]Error creating config: {e}[/bold red]")
+
+    return config
+
+
+def _load_config() -> dict:
+    """Load config from file, returning defaults if not exists."""
+    config_file = get_config_file()
+
+    if not config_file.exists():
+        return DEFAULT_CONFIG.copy()
+
+    try:
+        with open(config_file, "r") as f:
+            config = json.load(f)
+        # Merge with defaults for any missing keys
+        result = DEFAULT_CONFIG.copy()
+        result.update(config)
+        return result
+    except (json.JSONDecodeError, IOError):
+        return DEFAULT_CONFIG.copy()
+
+
+def _save_config(config: dict) -> None:
+    """Save config to file."""
+    config_file = get_config_file()
+    try:
+        with open(config_file, "w") as f:
+            json.dump(config, f, indent=2)
+    except IOError as e:
+        console.print(f"[bold red]Error saving config: {e}[/bold red]")
+
+
+# ==================== Preferred Network ====================
+
+
 def set_preferred_network(network_id: str) -> None:
     """Set the preferred network ID in the configuration.
 
     Args:
         network_id: The network ID to set as preferred
     """
-    config_file = get_config_file()
-    config = {}
-
-    if config_file.exists():
-        try:
-            with open(config_file, "r") as f:
-                config = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            pass
-
+    config = _load_config()
     config["preferred_network_id"] = network_id
-
-    try:
-        with open(config_file, "w") as f:
-            json.dump(config, f, indent=2)
-    except IOError as e:
-        console.print(f"[bold red]Error saving config: {e}[/bold red]")
+    _save_config(config)
 
 
 def get_preferred_network() -> Optional[str]:
@@ -143,63 +213,82 @@ def get_preferred_network() -> Optional[str]:
     Returns:
         The preferred network ID or None if not set
     """
-    config_file = get_config_file()
-
-    if not config_file.exists():
-        return None
-
-    try:
-        with open(config_file, "r") as f:
-            config = json.load(f)
-        return config.get("preferred_network_id")
-    except (json.JSONDecodeError, IOError):
-        return None
+    config = _load_config()
+    return config.get("preferred_network_id")
 
 
+# ==================== Auth Method ====================
+
+
+def set_auth_method(method: str) -> None:
+    """Set the authentication method in the configuration.
+
+    Args:
+        method: Authentication method ('keyring' or 'cookie_file')
+    """
+    if method not in VALID_AUTH_METHODS:
+        raise ValueError(f"Invalid auth method: {method}. Must be one of {VALID_AUTH_METHODS}")
+    config = _load_config()
+    config["auth_method"] = method
+    _save_config(config)
+
+
+def get_auth_method() -> str:
+    """Get the authentication method from the configuration.
+
+    Returns:
+        The authentication method ('keyring' or 'cookie_file').
+        Defaults to 'keyring' if not set.
+    """
+    config = _load_config()
+    return config.get("auth_method", "keyring")
+
+
+# Legacy compatibility
 def set_use_keyring(use_keyring: bool) -> None:
-    """Set the use_keyring preference in the configuration.
+    """Set the auth method based on keyring preference (legacy).
 
     Args:
         use_keyring: Whether to use keyring for credential storage
     """
-    config_file = get_config_file()
-    config = {}
-
-    if config_file.exists():
-        try:
-            with open(config_file, "r") as f:
-                config = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            pass
-
-    config["use_keyring"] = use_keyring
-
-    try:
-        with open(config_file, "w") as f:
-            json.dump(config, f, indent=2)
-    except IOError as e:
-        console.print(f"[bold red]Error saving config: {e}[/bold red]")
+    set_auth_method("keyring" if use_keyring else "cookie_file")
 
 
 def get_use_keyring() -> bool:
-    """Get the use_keyring preference from the configuration.
+    """Get whether keyring should be used (legacy).
 
     Returns:
         True if keyring should be used, False otherwise.
-        Defaults to True if not set.
     """
-    config_file = get_config_file()
+    return get_auth_method() == "keyring"
 
-    if not config_file.exists():
-        return True  # Default to using keyring
 
-    try:
-        with open(config_file, "r") as f:
-            config = json.load(f)
-        # Default to True if not explicitly set
-        return config.get("use_keyring", True)
-    except (json.JSONDecodeError, IOError):
-        return True
+# ==================== Default Output ====================
+
+
+def set_default_output(output_format: str) -> None:
+    """Set the default output format in the configuration.
+
+    Args:
+        output_format: Output format ('table', 'list', 'json', 'yaml', 'text')
+    """
+    if output_format not in VALID_OUTPUT_FORMATS:
+        raise ValueError(
+            f"Invalid output format: {output_format}. Must be one of {VALID_OUTPUT_FORMATS}"
+        )
+    config = _load_config()
+    config["default_output"] = output_format
+    _save_config(config)
+
+
+def get_default_output() -> str:
+    """Get the default output format from the configuration.
+
+    Returns:
+        The default output format. Defaults to 'table' if not set.
+    """
+    config = _load_config()
+    return config.get("default_output", "table")
 
 
 async def run_with_client(func):

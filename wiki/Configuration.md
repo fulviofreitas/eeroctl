@@ -39,6 +39,39 @@ Credentials are stored in `~/.config/eeroctl/cookies.json`.
 | Credentials | `~/.config/eeroctl/cookies.json` | Session token storage |
 | Settings | `~/.config/eeroctl/config.json` | User preferences |
 
+### Configuration Options
+
+The `config.json` file is created automatically on first use with these defaults:
+
+```json
+{
+  "default_output": "table",
+  "auth_method": "keyring",
+  "preferred_network_id": null
+}
+```
+
+| Option | Values | Description |
+|--------|--------|-------------|
+| `default_output` | `table`, `list`, `json`, `yaml`, `text` | Default output format for commands |
+| `auth_method` | `keyring`, `cookie_file` | How credentials are stored |
+| `preferred_network_id` | Network ID or `null` | Default network for commands |
+
+### Changing Settings
+
+Edit `~/.config/eeroctl/config.json` directly, or use CLI commands:
+
+```bash
+# Set preferred network
+eero network use <NETWORK_ID>
+
+# Login with keyring (default)
+eero auth login
+
+# Login with cookie file storage
+eero auth login --no-keyring
+```
+
 ### Custom Config Location
 
 ```bash

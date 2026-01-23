@@ -25,11 +25,12 @@ from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..output import OutputFormat
 from ..utils import (
+    get_auth_method,
     get_config_file,
     get_cookie_file,
     get_use_keyring,
+    set_auth_method,
     set_preferred_network,
-    set_use_keyring,
 )
 
 logger = logging.getLogger(__name__)
@@ -98,9 +99,9 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
     console = cli_ctx.console
 
     # Determine use_keyring setting:
-    # - If --no-keyring is specified, use False
-    # - Otherwise, use the saved preference (defaults to True)
-    use_keyring = not no_keyring if no_keyring else get_use_keyring()
+    # - If --no-keyring is specified, use cookie_file method
+    # - Otherwise, use the saved preference (defaults to keyring)
+    use_keyring = not no_keyring if no_keyring else get_auth_method() == "keyring"
 
     async def run() -> None:
         async with EeroClient(
@@ -122,8 +123,8 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
 
             await _interactive_login(client, force, console, cli_ctx)
 
-            # Save the use_keyring preference for future commands
-            set_use_keyring(use_keyring)
+            # Save the auth_method preference for future commands
+            set_auth_method("keyring" if use_keyring else "cookie_file")
 
     try:
         asyncio.run(run())

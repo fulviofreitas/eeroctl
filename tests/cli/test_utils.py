@@ -15,12 +15,18 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from eeroctl.utils import (
+    DEFAULT_CONFIG,
     confirm_action,
+    ensure_config,
+    get_auth_method,
     get_config_dir,
     get_config_file,
     get_cookie_file,
+    get_default_output,
     get_preferred_network,
     run_with_client,
+    set_auth_method,
+    set_default_output,
     set_preferred_network,
     with_client,
 )
@@ -329,3 +335,124 @@ class TestConfirmAction:
         confirm_action("Custom message")
 
         assert received_messages == ["Custom message"]
+
+
+# ========================== Ensure Config Tests ==========================
+
+
+class TestEnsureConfig:
+    """Tests for ensure_config function."""
+
+    def test_creates_config_with_defaults(self, tmp_path, monkeypatch):
+        """Test creates config file with default values."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        config = ensure_config()
+
+        assert config == DEFAULT_CONFIG
+        config_file = get_config_file()
+        assert config_file.exists()
+
+    def test_preserves_existing_values(self, tmp_path, monkeypatch):
+        """Test preserves existing config values."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        config_file = get_config_file()
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(json.dumps({"preferred_network_id": "net_123"}))
+
+        config = ensure_config()
+
+        assert config["preferred_network_id"] == "net_123"
+        assert config["default_output"] == "table"  # Added default
+        assert config["auth_method"] == "keyring"  # Added default
+
+    def test_adds_missing_keys(self, tmp_path, monkeypatch):
+        """Test adds missing keys to existing config."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        config_file = get_config_file()
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(json.dumps({"custom_key": "value"}))
+
+        ensure_config()
+
+        # Custom key preserved
+        with open(config_file) as f:
+            saved = json.load(f)
+        assert saved["custom_key"] == "value"
+        assert saved["default_output"] == "table"
+
+
+# ========================== Auth Method Tests ==========================
+
+
+class TestAuthMethod:
+    """Tests for auth_method get/set functions."""
+
+    def test_get_default_auth_method(self, tmp_path, monkeypatch):
+        """Test default auth method is keyring."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        result = get_auth_method()
+
+        assert result == "keyring"
+
+    def test_set_auth_method_keyring(self, tmp_path, monkeypatch):
+        """Test setting auth method to keyring."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        set_auth_method("keyring")
+
+        assert get_auth_method() == "keyring"
+
+    def test_set_auth_method_cookie_file(self, tmp_path, monkeypatch):
+        """Test setting auth method to cookie_file."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        set_auth_method("cookie_file")
+
+        assert get_auth_method() == "cookie_file"
+
+    def test_set_invalid_auth_method_raises(self, tmp_path, monkeypatch):
+        """Test setting invalid auth method raises ValueError."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        with pytest.raises(ValueError, match="Invalid auth method"):
+            set_auth_method("invalid")
+
+
+# ========================== Default Output Tests ==========================
+
+
+class TestDefaultOutput:
+    """Tests for default_output get/set functions."""
+
+    def test_get_default_output(self, tmp_path, monkeypatch):
+        """Test default output format is table."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        result = get_default_output()
+
+        assert result == "table"
+
+    def test_set_default_output_json(self, tmp_path, monkeypatch):
+        """Test setting default output to json."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        set_default_output("json")
+
+        assert get_default_output() == "json"
+
+    def test_set_default_output_list(self, tmp_path, monkeypatch):
+        """Test setting default output to list."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        set_default_output("list")
+
+        assert get_default_output() == "list"
+
+    def test_set_invalid_output_raises(self, tmp_path, monkeypatch):
+        """Test setting invalid output format raises ValueError."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        with pytest.raises(ValueError, match="Invalid output format"):
+            set_default_output("invalid")
