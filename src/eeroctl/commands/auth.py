@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import sys
-from typing import TypedDict
+from typing import Any, TypedDict
 
 import click
 from eero import EeroClient
@@ -211,19 +211,19 @@ async def _interactive_login(
                     try:
                         networks_response = await client.get_networks()
                         data = networks_response.get("data", {})
-                        networks = []
+                        network_list: list[dict[str, Any]] = []
                         if isinstance(data, list):
-                            networks = data
+                            network_list = data
                         elif isinstance(data, dict):
-                            networks = data.get("networks") or data.get("data") or []
+                            network_list = data.get("networks") or data.get("data") or []
 
-                        if networks and len(networks) > 0:
-                            first_network = networks[0]
+                        if network_list:
+                            first_network = network_list[0]
                             net_id = first_network.get("id")
                             if not net_id and first_network.get("url"):
-                                net_id = first_network["url"].rstrip("/").split("/")[-1]
+                                net_id = str(first_network["url"]).rstrip("/").split("/")[-1]
                             if net_id:
-                                set_preferred_network(net_id)
+                                set_preferred_network(str(net_id))
                                 logger.debug("Saved preferred network: %s", net_id)
                     except Exception as ex:
                         logger.debug("Could not get networks for preferred: %s", ex)
