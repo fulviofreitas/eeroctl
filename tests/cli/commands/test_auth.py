@@ -350,26 +350,32 @@ class TestAuthStatus:
             "preferred_network_id": "123",
         }
 
-        # Create mock account
-        mock_user = MagicMock()
-        mock_user.id = "user_123"
-        mock_user.name = "Test User"
-        mock_user.email = "test@example.com"
-        mock_user.phone = None
-        mock_user.role = "owner"
-        mock_user.created_at = None
-
-        mock_account = MagicMock()
-        mock_account.id = "account_123"
-        mock_account.name = "Test Account"
-        mock_account.premium_status = "active"
-        mock_account.premium_expiry = None
-        mock_account.created_at = None
-        mock_account.users = [mock_user]
+        # Create mock account as raw response (eero-api v2.0.0 returns raw JSON)
+        mock_account_response = {
+            "meta": {"code": 200},
+            "data": {
+                "url": "/2.2/accounts/account_123",
+                "id": "account_123",
+                "name": "Test Account",
+                "premium_status": "active",
+                "premium_expiry": None,
+                "created_at": None,
+                "users": [
+                    {
+                        "id": "user_123",
+                        "name": "Test User",
+                        "email": "test@example.com",
+                        "phone": None,
+                        "role": "owner",
+                        "created_at": None,
+                    }
+                ],
+            },
+        }
 
         mock_client = AsyncMock()
         mock_client.is_authenticated = True
-        mock_client.get_account = AsyncMock(return_value=mock_account)
+        mock_client.get_account = AsyncMock(return_value=mock_account_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_client_class.return_value = mock_client
