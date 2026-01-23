@@ -86,11 +86,36 @@ class TestNetworkList:
     @patch("eeroctl.commands.network.base.run_with_client")
     def test_network_list_displays_networks(self, mock_run_with_client, runner, mock_networks):
         """Test network list displays networks in table format."""
+        # Detailed network responses for get_network calls
+        detail_net_1 = {
+            "meta": {"code": 200},
+            "data": {
+                "url": "/2.2/networks/net_1",
+                "name": "Home Network",
+                "status": {"status": "online"},
+                "wan_ip": "203.0.113.1",
+                "public_ip": "203.0.113.1",
+                "isp": {"name": "Comcast"},
+            },
+        }
+        detail_net_2 = {
+            "meta": {"code": 200},
+            "data": {
+                "url": "/2.2/networks/net_2",
+                "name": "Office Network",
+                "status": {"status": "online"},
+                "wan_ip": "203.0.113.2",
+                "public_ip": "203.0.113.2",
+                "isp": {"name": "AT&T"},
+            },
+        }
 
         async def run_func(func):
             # Create mock client and call the function
             mock_client = AsyncMock()
             mock_client.get_networks = AsyncMock(return_value=mock_networks)
+            # Mock get_network to return detailed info for each network
+            mock_client.get_network = AsyncMock(side_effect=[detail_net_1, detail_net_2])
             await func(mock_client)
 
         mock_run_with_client.side_effect = run_func
@@ -122,10 +147,35 @@ class TestNetworkList:
     @patch("eeroctl.commands.network.base.run_with_client")
     def test_network_list_json_output(self, mock_run_with_client, runner, mock_networks):
         """Test network list with JSON output."""
+        # Detailed network responses for get_network calls
+        detail_net_1 = {
+            "meta": {"code": 200},
+            "data": {
+                "url": "/2.2/networks/net_1",
+                "name": "Home Network",
+                "status": {"status": "online"},
+                "wan_ip": "203.0.113.1",
+                "public_ip": "203.0.113.1",
+                "isp": {"name": "Comcast"},
+            },
+        }
+        detail_net_2 = {
+            "meta": {"code": 200},
+            "data": {
+                "url": "/2.2/networks/net_2",
+                "name": "Office Network",
+                "status": {"status": "online"},
+                "wan_ip": "203.0.113.2",
+                "public_ip": "203.0.113.2",
+                "isp": {"name": "AT&T"},
+            },
+        }
 
         async def run_func(func):
             mock_client = AsyncMock()
             mock_client.get_networks = AsyncMock(return_value=mock_networks)
+            # Mock get_network to return detailed info for each network
+            mock_client.get_network = AsyncMock(side_effect=[detail_net_1, detail_net_2])
             await func(mock_client)
 
         mock_run_with_client.side_effect = run_func

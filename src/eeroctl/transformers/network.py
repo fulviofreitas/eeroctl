@@ -93,13 +93,50 @@ def normalize_network(data: Dict[str, Any]) -> Dict[str, Any]:
     # Extract DHCP info
     dhcp_data = data.get("dhcp", {})
     if isinstance(dhcp_data, dict):
-        custom = dhcp_data.get("custom", {})
+        custom = dhcp_data.get("custom", {}) or {}
+
+        # Try to get subnet_mask from multiple locations
+        subnet_mask = (
+            custom.get("subnet_mask")
+            or dhcp_data.get("subnet_mask")
+            or dhcp_data.get("subnet")
+            or "255.255.255.0"
+        )
+
+        # Try to get DHCP range from custom, then fall back to dhcp_data root
+        starting_address = (
+            custom.get("starting_address")
+            or custom.get("start")
+            or dhcp_data.get("starting_address")
+            or dhcp_data.get("range_start")
+            or dhcp_data.get("start")
+        )
+        ending_address = (
+            custom.get("ending_address")
+            or custom.get("end")
+            or dhcp_data.get("ending_address")
+            or dhcp_data.get("range_end")
+            or dhcp_data.get("end")
+        )
+
+        # Try to get lease time from multiple locations
+        lease_time = (
+            custom.get("lease_time_seconds")
+            or custom.get("lease_time")
+            or dhcp_data.get("lease_time_seconds")
+            or dhcp_data.get("lease_time")
+            or 86400
+        )
+
+        # Try to get DNS server from multiple locations
+        dns_server = custom.get("dns_server") or dhcp_data.get("dns_server")
+
         dhcp = {
-            "subnet_mask": custom.get("subnet_mask", "255.255.255.0"),
-            "starting_address": custom.get("starting_address", ""),
-            "ending_address": custom.get("ending_address", ""),
-            "lease_time_seconds": custom.get("lease_time_seconds", 86400),
-            "dns_server": custom.get("dns_server"),
+            "subnet_mask": subnet_mask,
+            "starting_address": starting_address,
+            "ending_address": ending_address,
+            "lease_time_seconds": lease_time,
+            "dns_server": dns_server,
         }
     else:
         dhcp = None

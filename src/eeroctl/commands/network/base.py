@@ -22,7 +22,7 @@ from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
-from ...transformers import extract_networks
+from ...transformers import extract_id_from_url, extract_networks
 from ...transformers.network import extract_network, normalize_network
 from ...utils import run_with_client, set_preferred_network
 
@@ -77,13 +77,30 @@ def network_list(ctx: click.Context, output: Optional[str]) -> None:
             with cli_ctx.status("Getting networks..."):
                 raw_response = await client.get_networks()
 
-            # Extract and normalize networks from raw response
+            # Extract networks from raw response
             networks = extract_networks(raw_response)
-            normalized = [normalize_network(n) for n in networks]
 
-            if not normalized:
+            if not networks:
                 console.print("[yellow]No networks found[/yellow]")
                 return
+
+            # Fetch detailed info for each network (list endpoint returns minimal data)
+            detailed_networks = []
+            for net in networks:
+                net_id = net.get("id") or extract_id_from_url(net.get("url"))
+                if net_id:
+                    try:
+                        with cli_ctx.status(f"Getting details for network {net_id}..."):
+                            detail_response = await client.get_network(net_id)
+                        detailed_net = extract_network(detail_response)
+                        detailed_networks.append(detailed_net)
+                    except Exception:
+                        # Fall back to minimal data if detail fetch fails
+                        detailed_networks.append(net)
+                else:
+                    detailed_networks.append(net)
+
+            normalized = [normalize_network(n) for n in detailed_networks]
 
             if cli_ctx.is_structured_output():
                 data = [

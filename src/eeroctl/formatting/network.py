@@ -163,10 +163,15 @@ def _network_dhcp_panel(network: Dict[str, Any]) -> Optional[Panel]:
         return None
 
     lease_time = dhcp.get("lease_time_seconds", 86400)
+
+    # Use "Automatic" for empty DHCP range values since eero manages it
+    starting = dhcp.get("starting_address")
+    ending = dhcp.get("ending_address")
+
     lines = [
         field("Subnet Mask", dhcp.get("subnet_mask")),
-        field("Starting Address", dhcp.get("starting_address")),
-        field("Ending Address", dhcp.get("ending_address")),
+        field("Starting Address", starting, "Automatic"),
+        field("Ending Address", ending, "Automatic"),
         field("Lease Time", f"{lease_time // 3600} hours"),
         field("DNS Server", dhcp.get("dns_server"), "Default"),
     ]
