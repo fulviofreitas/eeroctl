@@ -170,11 +170,17 @@ def _normalize_profile_data(profile: Union[Dict[str, Any], Any]) -> Dict[str, An
     return normalize_profile(vars(profile))
 
 
+def _format_enabled(value: Any) -> str:
+    """Format a boolean value as Enabled/Disabled to match table output."""
+    return "Enabled" if value else "Disabled"
+
+
 def get_profile_show_fields(profile: Union[Dict[str, Any], Any]) -> List[tuple]:
     """Get the canonical list of fields to display for profile show.
 
     This is the SINGLE SOURCE OF TRUTH for profile show output fields.
     Both table (rich panels) and list (text) output use this.
+    Field labels and value formatting match the table panel output.
 
     Args:
         profile: Profile dict or model object
@@ -185,21 +191,39 @@ def get_profile_show_fields(profile: Union[Dict[str, Any], Any]) -> List[tuple]:
     p = _normalize_profile_data(profile)
 
     fields = [
-        # Basic info
+        # Basic info - matches _profile_basic_panel
         ("Name", p.get("name")),
-        ("Paused", "Yes" if p.get("paused") else "No"),
-        ("Default", "Yes" if p.get("default") else "No"),
+        ("Paused", _format_enabled(p.get("paused"))),
+        ("Default", _format_enabled(p.get("default"))),
         ("Devices", p.get("device_count", 0)),
         ("Connected Devices", p.get("connected_device_count", 0)),
-        ("Schedule Enabled", "Yes" if p.get("schedule_enabled") else "No"),
+        ("Schedule Enabled", _format_enabled(p.get("schedule_enabled"))),
         ("State", p.get("state")),
     ]
 
-    # Content filter
+    # Content filter - matches _profile_content_filter_panel
     content_filter = p.get("content_filter", {})
     if content_filter:
-        safe_search = "Enabled" if content_filter.get("safe_search_enabled") else "Disabled"
-        fields.append(("Safe Search", safe_search))
+        fields.append(("Safe Search", _format_enabled(content_filter.get("safe_search"))))
+        fields.append(
+            ("YouTube Restricted", _format_enabled(content_filter.get("youtube_restricted")))
+        )
+        fields.append(("Block Adult Content", _format_enabled(content_filter.get("block_adult"))))
+        fields.append(
+            ("Block Illegal Content", _format_enabled(content_filter.get("block_illegal")))
+        )
+        fields.append(
+            ("Block Violent Content", _format_enabled(content_filter.get("block_violent")))
+        )
+
+    # Custom lists - matches _profile_custom_lists_panel
+    block_list = p.get("custom_block_list", [])
+    if block_list:
+        fields.append(("Blocked Domains", len(block_list)))
+
+    allow_list = p.get("custom_allow_list", [])
+    if allow_list:
+        fields.append(("Allowed Domains", len(allow_list)))
 
     # Blocked apps count
     blocked_apps = p.get("blocked_applications", [])

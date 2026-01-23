@@ -335,11 +335,17 @@ def _normalize_network_data(network: Union[Dict[str, Any], Any]) -> Dict[str, An
     return normalize_network(vars(network))
 
 
+def _format_enabled(value: Any) -> str:
+    """Format a boolean value as Enabled/Disabled to match table output."""
+    return "Enabled" if value else "Disabled"
+
+
 def get_network_show_fields(network: Union[Dict[str, Any], Any]) -> List[tuple]:
     """Get the canonical list of fields to display for network show.
 
     This is the SINGLE SOURCE OF TRUTH for network show output fields.
     Both table (rich panels) and list (text) output use this.
+    Field labels and value formatting match the table panel output.
 
     Args:
         network: Network dict or model object
@@ -350,62 +356,101 @@ def get_network_show_fields(network: Union[Dict[str, Any], Any]) -> List[tuple]:
     net = _normalize_network_data(network)
 
     fields = [
-        # Basic info
+        # Basic info - matches _network_basic_panel
         ("Name", net.get("name")),
         ("Status", net.get("status")),
         ("Public IP", net.get("public_ip")),
         ("ISP", net.get("isp_name")),
-        ("Created", format_datetime(net.get("created_at"), include_time=False)),
+        ("Created", format_datetime(net.get("created_at"))),
         ("Updated", format_datetime(net.get("updated_at"))),
         ("Owner", net.get("owner")),
-        ("Network Type", net.get("network_customer_type")),
-        # Connection
-        ("Gateway Type", net.get("gateway")),
-        ("WAN Type", net.get("wan_type")),
-        ("Gateway IP", net.get("gateway_ip")),
-        # Guest network
-        ("Guest Network", "Enabled" if net.get("guest_network_enabled") else "Disabled"),
-        ("Guest Network Name", net.get("guest_network_name")),
+        ("Type", net.get("network_customer_type")),
+        ("Guest Network", _format_enabled(net.get("guest_network_enabled"))),
     ]
 
-    # DHCP info
+    # Connection - matches _network_connection_panel
+    fields.extend(
+        [
+            ("Gateway Type", net.get("gateway")),
+            ("WAN Type", net.get("wan_type")),
+            ("Gateway IP", net.get("gateway_ip")),
+        ]
+    )
+
+    backup_enabled = net.get("backup_internet_enabled", False)
+    if backup_enabled:
+        fields.append(("Backup Internet", "Enabled"))
+
+    # DHCP - matches _network_dhcp_panel
     dhcp = net.get("dhcp", {})
     if dhcp:
-        fields.append(("DHCP Subnet", dhcp.get("subnet_mask")))
+        fields.append(("Subnet Mask", dhcp.get("subnet_mask")))
+        starting = dhcp.get("starting_address")
+        ending = dhcp.get("ending_address")
+        fields.append(("Starting Address", starting or "Automatic"))
+        fields.append(("Ending Address", ending or "Automatic"))
         lease_hours = dhcp.get("lease_time_seconds", 86400) // 3600
-        fields.append(("DHCP Lease Time", f"{lease_hours} hours"))
+        fields.append(("Lease Time", f"{lease_hours} hours"))
+        fields.append(("DNS Server", dhcp.get("dns_server") or "Default"))
 
-    # DNS info
+    # DNS - matches _network_dns_brief_panel
     dns = net.get("dns", {})
     if dns:
         fields.append(("DNS Mode", dns.get("mode")))
-        parent = dns.get("parent", {})
-        if parent:
-            parent_ips = parent.get("ips", [])
-            if parent_ips:
-                fields.append(("Upstream DNS", ", ".join(parent_ips)))
+        caching = dns.get("caching", False)
+        fields.append(("DNS Caching", _format_enabled(caching)))
 
-    # Location info
+        parent = dns.get("parent", {})
+        parent_ips = parent.get("ips", []) if isinstance(parent, dict) else []
+        if parent_ips:
+            fields.append(("Upstream DNS", ", ".join(parent_ips)))
+
+        custom = dns.get("custom", {})
+        custom_ips = custom.get("ips", []) if isinstance(custom, dict) else []
+        if custom_ips:
+            fields.append(("Custom DNS", ", ".join(custom_ips)))
+
+    # Location - matches _network_location_panel
     geo_ip = net.get("geo_ip", {})
-    if geo_ip:
+    if geo_ip and isinstance(geo_ip, dict):
         city = geo_ip.get("city")
-        region = geo_ip.get("region")
-        country = geo_ip.get("country_code")
-        if city or region:
-            location_parts = [p for p in [city, region, country] if p]
+        region = geo_ip.get("region") or geo_ip.get("regionName")
+        country = geo_ip.get("countryName") or geo_ip.get("countryCode")
+        location_parts = [p for p in [city, region, country] if p]
+        if location_parts:
             fields.append(("Location", ", ".join(location_parts)))
         if geo_ip.get("timezone"):
             fields.append(("Timezone", geo_ip.get("timezone")))
+        if geo_ip.get("org"):
+            fields.append(("Organization", geo_ip.get("org")))
+        if geo_ip.get("asn"):
+            fields.append(("ASN", f"AS{geo_ip.get('asn')}"))
 
-    # Speed test
+    # Speed test - matches _network_speed_panel
     speed = net.get("speed_test", {})
     if speed:
-        down = speed.get("down", {}).get("value")
-        up = speed.get("up", {}).get("value")
-        if down:
-            fields.append(("Download Speed", f"{down} Mbps"))
-        if up:
-            fields.append(("Upload Speed", f"{up} Mbps"))
+        down_info = speed.get("down", {})
+        up_info = speed.get("up", {})
+        latency_info = speed.get("latency", {})
+
+        down_value = down_info.get("value", 0) if isinstance(down_info, dict) else 0
+        up_value = up_info.get("value", 0) if isinstance(up_info, dict) else 0
+        latency_value = latency_info.get("value", 0) if isinstance(latency_info, dict) else 0
+
+        if down_value:
+            down_str = f"{down_value:.1f}" if isinstance(down_value, float) else str(down_value)
+            fields.append(("Download", f"{down_str} Mbps"))
+        if up_value:
+            up_str = f"{up_value:.1f}" if isinstance(up_value, float) else str(up_value)
+            fields.append(("Upload", f"{up_str} Mbps"))
+        if latency_value:
+            fields.append(("Latency", f"{latency_value} ms"))
+
+        test_date = speed.get("date")
+        if test_date and test_date != "Unknown":
+            if "T" in str(test_date):
+                test_date = str(test_date)[:19].replace("T", " ")
+            fields.append(("Tested", test_date))
 
     return fields
 

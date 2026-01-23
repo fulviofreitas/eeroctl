@@ -219,11 +219,17 @@ def _normalize_device_data(device: Union[Dict[str, Any], Any]) -> Dict[str, Any]
     return normalize_device(vars(device))
 
 
+def _format_enabled(value: Any) -> str:
+    """Format a boolean value as Enabled/Disabled to match table output."""
+    return "Enabled" if value else "Disabled"
+
+
 def get_device_show_fields(device: Union[Dict[str, Any], Any]) -> List[tuple]:
     """Get the canonical list of fields to display for device show.
 
     This is the SINGLE SOURCE OF TRUTH for device show output fields.
     Both table (rich panels) and list (text) output use this.
+    Field labels and value formatting match the table panel output.
 
     Args:
         device: Device dict or model object
@@ -233,7 +239,7 @@ def get_device_show_fields(device: Union[Dict[str, Any], Any]) -> List[tuple]:
     """
     dev = _normalize_device_data(device)
 
-    # Determine status
+    # Determine status - matches _device_basic_panel
     if dev.get("connected"):
         status = "blocked" if dev.get("blocked") else "connected"
     else:
@@ -241,22 +247,61 @@ def get_device_show_fields(device: Union[Dict[str, Any], Any]) -> List[tuple]:
 
     device_name = dev.get("display_name") or dev.get("hostname") or dev.get("nickname") or "Unknown"
 
+    # Build profile display - matches _device_basic_panel
+    profile_display = "None"
+    profile = dev.get("profile", {})
+    if profile:
+        profile_name = profile.get("name") or "Unknown" if isinstance(profile, dict) else "Unknown"
+        profile_id = dev.get("profile_id") or "Unknown"
+        profile_display = f"{profile_name} ({profile_id})"
+    elif dev.get("profile_id"):
+        profile_display = f"Unknown ({dev.get('profile_id')})"
+
     fields = [
-        # Basic info
+        # Basic info - matches _device_basic_panel
         ("Name", device_name),
-        ("Nickname", dev.get("nickname")),
+        ("Nickname", dev.get("nickname") or "None"),
+        ("MAC Address", dev.get("mac") or "Unknown"),
+        ("IP Address", dev.get("ip") or dev.get("ipv4") or "Unknown"),
+        ("Hostname", dev.get("hostname")),
         ("Status", status),
-        ("IP Address", dev.get("ip") or dev.get("ipv4")),
-        ("MAC Address", dev.get("mac")),
-        ("Device Type", dev.get("device_type")),
         ("Manufacturer", dev.get("manufacturer")),
+        ("Model", dev.get("model_name")),
+        ("Type", dev.get("device_type")),
+        ("Connected", _format_enabled(dev.get("connected"))),
+        ("Guest", _format_enabled(dev.get("is_guest"))),
+        ("Paused", _format_enabled(dev.get("paused"))),
+        ("Blocked", _format_enabled(dev.get("blocked"))),
+        ("Profile", profile_display),
         ("Connection Type", dev.get("connection_type")),
-        ("Connected Eero", dev.get("source_location")),
-        ("Blocked", "Yes" if dev.get("blocked") else "No"),
-        ("Paused", "Yes" if dev.get("paused") else "No"),
+        ("Eero Location", dev.get("source_location") or "Unknown"),
     ]
 
-    # Activity times
+    # Connectivity - matches _device_connectivity_panel
+    connectivity = dev.get("connectivity", {})
+    if connectivity and isinstance(connectivity, dict):
+        signal = connectivity.get("signal")
+        if signal:
+            fields.append(("Signal", f"{signal} dBm"))
+
+        score_bars = connectivity.get("score_bars")
+        if score_bars is not None:
+            fields.append(("Quality", f"{score_bars}/5"))
+
+        frequency = connectivity.get("frequency")
+        if frequency:
+            band = "5 GHz" if frequency > 3000 else "2.4 GHz"
+            fields.append(("Frequency", f"{frequency} MHz ({band})"))
+
+        rx_bitrate = connectivity.get("rx_bitrate")
+        if rx_bitrate:
+            fields.append(("RX Bitrate", rx_bitrate))
+
+        tx_bitrate = connectivity.get("tx_bitrate")
+        if tx_bitrate:
+            fields.append(("TX Bitrate", tx_bitrate))
+
+    # Activity times - matches _device_timing_panel
     last_active = dev.get("last_active")
     if last_active:
         fields.append(("Last Active", format_datetime(last_active)))
@@ -264,16 +309,6 @@ def get_device_show_fields(device: Union[Dict[str, Any], Any]) -> List[tuple]:
     first_active = dev.get("first_active")
     if first_active:
         fields.append(("First Seen", format_datetime(first_active)))
-
-    # Connectivity info
-    connectivity = dev.get("connectivity", {})
-    if connectivity and isinstance(connectivity, dict):
-        if connectivity.get("signal"):
-            fields.append(("Signal", f"{connectivity.get('signal')} dBm"))
-        if connectivity.get("frequency"):
-            freq = connectivity.get("frequency")
-            band = "5 GHz" if freq > 3000 else "2.4 GHz"
-            fields.append(("Frequency", f"{freq} MHz ({band})"))
 
     return fields
 

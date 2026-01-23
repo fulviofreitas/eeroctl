@@ -309,11 +309,78 @@ def _format_timestamp(value: Any, include_time: bool = True) -> str:
     return s[:10]
 
 
+def _format_bool(value: Any) -> str:
+    """Format a boolean value as Enabled/Disabled to match table output."""
+    return "Enabled" if value else "Disabled"
+
+
+def _format_wifi_bands(bands: List[str]) -> Optional[str]:
+    """Format WiFi bands to match table output."""
+    if not bands:
+        return None
+    band_names = {
+        "band_2_4GHz": "2.4 GHz",
+        "band_5GHz_low": "5 GHz (Low)",
+        "band_5GHz_high": "5 GHz (High)",
+        "band_5GHz_full": "5 GHz",
+        "band_6GHz": "6 GHz",
+    }
+    formatted = [band_names.get(b, b) for b in bands]
+    return ", ".join(formatted)
+
+
+def _format_ethernet_ports(eero: Dict[str, Any]) -> List[str]:
+    """Format ethernet ports to match table output."""
+    raw = eero.get("_raw", {})
+    ethernet_status = raw.get("ethernet_status") or eero.get("ethernet_status")
+
+    if not ethernet_status or not isinstance(ethernet_status, dict):
+        return []
+
+    statuses = ethernet_status.get("statuses", [])
+    if not statuses:
+        return []
+
+    lines = []
+    for port in statuses:
+        port_name = port.get("port_name", "?")
+        has_carrier = port.get("hasCarrier", False)
+        speed = port.get("speed", "Unknown")
+
+        # Format speed (P1000 -> 1Gbps, P100 -> 100Mbps)
+        if speed == "P1000":
+            speed_display = "1 Gbps"
+        elif speed == "P100":
+            speed_display = "100 Mbps"
+        elif speed == "P10":
+            speed_display = "10 Mbps"
+        elif speed == "P10000":
+            speed_display = "10 Gbps"
+        else:
+            speed_display = speed
+
+        carrier_text = "Connected" if has_carrier else "No Link"
+
+        # Check for neighbor
+        neighbor = port.get("neighbor")
+        neighbor_text = ""
+        if neighbor and isinstance(neighbor, dict):
+            metadata = neighbor.get("metadata", {})
+            neighbor_location = metadata.get("location")
+            if neighbor_location:
+                neighbor_text = f" -> {neighbor_location}"
+
+        lines.append(f"Port {port_name}: {carrier_text} ({speed_display}){neighbor_text}")
+
+    return lines
+
+
 def get_eero_show_fields(eero: Union[Dict[str, Any], Any]) -> List[tuple]:
     """Get the canonical list of fields to display for eero show.
 
     This is the SINGLE SOURCE OF TRUTH for eero show output fields.
     Both table (rich panels) and list (text) output use this.
+    Field labels and value formatting match the table panel output.
 
     Args:
         eero: Eero dict or model object
@@ -324,19 +391,19 @@ def get_eero_show_fields(eero: Union[Dict[str, Any], Any]) -> List[tuple]:
     e = _normalize_eero_data(eero)
 
     name = e.get("name") or e.get("location") or "Unknown"
-    role = "Gateway" if e.get("is_gateway") else "Leaf"
 
     fields = [
-        # Basic info
-        ("Name", name),
+        # Basic info - matches _eero_basic_panel
+        ("Name/Location", name),
         ("Model", e.get("model")),
         ("Model Number", e.get("model_number")),
         ("Serial", e.get("serial")),
         ("Status", e.get("status")),
-        ("Role", role),
-        ("Wired", "Yes" if e.get("wired") else "No"),
+        ("Gateway", _format_bool(e.get("is_gateway"))),
+        ("Wired", _format_bool(e.get("wired"))),
         ("Firmware", e.get("os_version")),
-        # Connection
+        ("Clients", e.get("connected_clients_count", 0)),
+        # Connection - matches _eero_connection_panel
         ("IP Address", e.get("ip_address")),
         ("MAC Address", e.get("mac_address")),
         ("Connection Type", e.get("connection_type")),
@@ -344,19 +411,34 @@ def get_eero_show_fields(eero: Union[Dict[str, Any], Any]) -> List[tuple]:
         ("Last Heartbeat", _format_timestamp(e.get("last_heartbeat"))),
         ("Joined", _format_timestamp(e.get("joined"), include_time=False)),
         ("Last Reboot", _format_timestamp(e.get("last_reboot"))),
-        # Clients
+        # Clients breakdown - matches _eero_clients_panel
         ("Total Clients", e.get("connected_clients_count", 0)),
-        ("Wireless Clients", e.get("connected_wireless_clients_count", 0)),
+        ("Wireless", e.get("connected_wireless_clients_count", 0)),
         ("Wired Clients", e.get("connected_wired_clients_count", 0)),
-        # LED/Nightlight
-        ("LED", "On" if e.get("led_on") else "Off"),
-        ("LED Brightness", f"{e.get('led_brightness', 0)}%"),
-        ("Nightlight", "On" if e.get("nightlight_enabled") else "Off"),
-        # Performance
-        ("Mesh Quality", f"{e.get('mesh_quality_bars', 0)}/5"),
-        # WiFi
-        ("WiFi Bands", ", ".join(str(b) for b in e.get("bands", []))),
     ]
+
+    # Ethernet Ports - matches _eero_ethernet_panel
+    ethernet_lines = _format_ethernet_ports(e)
+    for line in ethernet_lines:
+        fields.append(("Ethernet", line))
+
+    # WiFi Bands - matches _eero_wifi_panel
+    bands = e.get("bands", [])
+    if bands:
+        fields.append(("WiFi Bands", _format_wifi_bands(bands)))
+
+    # LED/Nightlight - matches _eero_led_panel
+    if e.get("led_on") is not None:
+        fields.append(("LED", _format_bool(e.get("led_on"))))
+    if e.get("led_brightness") is not None:
+        fields.append(("LED Brightness", f"{e.get('led_brightness')}%"))
+    if e.get("nightlight_enabled") is not None:
+        fields.append(("Nightlight", _format_bool(e.get("nightlight_enabled"))))
+
+    # Performance - matches _eero_performance_panel
+    mesh_quality = e.get("mesh_quality_bars")
+    if mesh_quality is not None:
+        fields.append(("Mesh Quality", f"{mesh_quality}/5"))
 
     return fields
 
