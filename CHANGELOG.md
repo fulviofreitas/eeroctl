@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.1](https://github.com/fulviofreitas/eeroctl/compare/v2.10.0...v2.10.1) (2026-04-02)
+
+### 🐛 Bug Fixes
+
+* **deps:** consolidate all dependency updates ([#29](https://github.com/fulviofreitas/eeroctl/issues/29)) ([933db2e](https://github.com/fulviofreitas/eeroctl/commit/933db2ebd9d15ce8ce66ecb08d2be7282e8946f2)), closes [#24](https://github.com/fulviofreitas/eeroctl/issues/24) [#25](https://github.com/fulviofreitas/eeroctl/issues/25) [#26](https://github.com/fulviofreitas/eeroctl/issues/26) [#27](https://github.com/fulviofreitas/eeroctl/issues/27) [#28](https://github.com/fulviofreitas/eeroctl/issues/28)
+
 ## [2.10.0](https://github.com/fulviofreitas/eeroctl/compare/v2.9.0...v2.10.0) (2026-01-26)
 
 ### ✨ Features
