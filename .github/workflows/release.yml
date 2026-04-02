@@ -6,7 +6,7 @@
 # Automatically creates releases based on conventional commit messages,
 # publishes to PyPI, and updates Homebrew tap.
 #
-# Reusable actions from: fulviofreitas/eero-api/.github/actions/
+# Reusable actions from: fulviofreitas/workflow-arsenal/.github/actions/
 # ============================================================================
 
 name: 🚀 Release
@@ -69,7 +69,7 @@ jobs:
 
       - name: 🚀 Run semantic-release
         id: release
-        uses: fulviofreitas/eero-api/.github/actions/semantic-release@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/semantic-release@master
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           dry-run: ${{ github.event.inputs.dry_run || 'false' }}

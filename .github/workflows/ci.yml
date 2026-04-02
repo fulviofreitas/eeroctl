@@ -3,7 +3,7 @@
 # ============================================================================
 # Chain: Commit Lint → Lint & Format → [Type Check ‖ Security ‖ Tests] → CI Success
 #
-# All reusable actions are sourced from fulviofreitas/eero-api/.github/actions/
+# All reusable actions are sourced from fulviofreitas/workflow-arsenal/.github/actions/
 # ============================================================================
 
 name: 🧪 CI Pipeline
@@ -43,7 +43,7 @@ jobs:
           fetch-depth: 0
 
       - name: 📝 Validate commits
-        uses: fulviofreitas/eero-api/.github/actions/commitlint@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/commitlint@master
         with:
           from-sha: ${{ github.event.pull_request.base.sha }}
           to-sha: ${{ github.event.pull_request.head.sha }}
@@ -71,7 +71,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🧹 Run Python lint
-        uses: fulviofreitas/eero-api/.github/actions/python-lint@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-lint@master
         with:
           src-path: "src/"
           tests-path: "tests/"
@@ -102,7 +102,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: 🔍 Run type check
-        uses: fulviofreitas/eero-api/.github/actions/python-typecheck@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-typecheck@master
         with:
           src-path: "src/"
           fail-on-error: "true"
@@ -132,7 +132,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🛡️ Run security scan
-        uses: fulviofreitas/eero-api/.github/actions/security-semgrep@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/security-semgrep@master
         with:
           config: "p/python p/security-audit"
           target-path: "src/"
@@ -168,7 +168,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: 🧪 Run tests
-        uses: fulviofreitas/eero-api/.github/actions/python-test@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-test@master
         with:
           test-path: "tests/"
           src-path: "src/eeroctl"
