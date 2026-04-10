@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.10.4](https://github.com/fulviofreitas/eeroctl/compare/v2.10.3...v2.10.4) (2026-04-10)
+
+### 🐛 Bug Fixes
+
+* remove deprecated matchPackageNames and invalid matchDepTypes from renovate config ([c235344](https://github.com/fulviofreitas/eeroctl/commit/c235344f3e0728c64e140e5289379781cfcb7381))
+
 ## [2.10.3](https://github.com/fulviofreitas/eeroctl/compare/v2.10.2...v2.10.3) (2026-04-10)
 
 ### 🐛 Bug Fixes
