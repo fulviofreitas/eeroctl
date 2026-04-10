@@ -7,7 +7,7 @@ Entry point: eeroctl.main:cli
 
 from .main import cli, main
 
-__version__ = "2.10.4"
+__version__ = "2.11.0"
 __version_info__ = tuple(int(x) for x in __version__.split(".")[:3])
 
 
