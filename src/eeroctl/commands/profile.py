@@ -3,6 +3,9 @@
 Commands:
 - eero profile list: List all profiles
 - eero profile show: Show profile details
+- eero profile create: Create a new profile
+- eero profile rename: Rename a profile
+- eero profile delete: Delete a profile
 - eero profile pause: Pause a profile
 - eero profile unpause: Unpause a profile
 - eero profile apps: App blocking management
@@ -56,6 +59,9 @@ def profile_group(ctx: click.Context) -> None:
     Commands:
       list     - List all profiles
       show     - Show profile details
+      create   - Create a new profile
+      rename   - Rename a profile
+      delete   - Delete a profile
       pause    - Pause internet access
       unpause  - Resume internet access
       apps     - Blocked apps management
@@ -65,6 +71,9 @@ def profile_group(ctx: click.Context) -> None:
     Examples:
       eero profile list
       eero profile show "Kids"
+      eero profile create Kids
+      eero profile rename Kids Schoolkids
+      eero profile delete Kids --force
       eero profile pause "Kids" --duration 30m
       eero profile apps block "Kids" tiktok
     """
@@ -197,6 +206,182 @@ def profile_show(
                 print_profile_details(profile, detail_level=detail)
 
         await run_with_client(get_profile)
+
+    asyncio.run(run_cmd())
+
+
+@profile_group.command(name="create")
+@click.argument("name")
+@output_option
+@network_option
+@click.pass_context
+def profile_create(
+    ctx: click.Context, name: str, output: Optional[str], network_id: Optional[str]
+) -> None:
+    """Create a new profile.
+
+    \b
+    Arguments:
+      NAME  Name for the new profile
+    """
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
+    console = cli_ctx.console
+
+    async def run_cmd() -> None:
+        async def create_profile(client: EeroClient) -> None:
+            with cli_ctx.status("Creating profile..."):
+                result = await client.create_profile(name, cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200:
+                profile = normalize_profile(extract_data(result))
+
+                if cli_ctx.is_structured_output():
+                    cli_ctx.render_structured(profile, "eero.profile.create/v1")
+                elif cli_ctx.is_list_output():
+                    from ..formatting.profile import get_profile_list_data
+
+                    list_data = get_profile_list_data(profile)
+                    for key, value in list_data.items():
+                        print(f"{key}: {value if value is not None else '-'}")
+                else:
+                    console.print(
+                        f"[bold green]Profile created:[/bold green] "
+                        f"{profile.get('name') or name} ({profile.get('id') or ''})"
+                    )
+            else:
+                console.print("[red]Failed to create profile[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(create_profile)
+
+    asyncio.run(run_cmd())
+
+
+@profile_group.command(name="rename")
+@click.argument("profile_identifier")
+@click.argument("new_name")
+@force_option
+@network_option
+@click.pass_context
+def profile_rename(
+    ctx: click.Context,
+    profile_identifier: str,
+    new_name: str,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Rename a profile.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      NEW_NAME            New name for the profile
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+
+    async def run_cmd() -> None:
+        async def rename_profile(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_response = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            try:
+                confirm_or_fail(
+                    action="rename",
+                    target=f"{target.get('name') or profile_identifier} → {new_name}",
+                    risk=OperationRisk.MEDIUM,
+                    force=cli_ctx.force,
+                    non_interactive=cli_ctx.non_interactive,
+                    dry_run=cli_ctx.dry_run,
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status("Renaming profile..."):
+                result = await client.rename_profile(target["id"], new_name, cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print(f"[bold green]Profile renamed to '{new_name}'[/bold green]")
+            else:
+                console.print("[red]Failed to rename profile[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(rename_profile)
+
+    asyncio.run(run_cmd())
+
+
+@profile_group.command(name="delete")
+@click.argument("profile_identifier")
+@force_option
+@network_option
+@click.pass_context
+def profile_delete(
+    ctx: click.Context,
+    profile_identifier: str,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Delete a profile.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+
+    async def run_cmd() -> None:
+        async def delete_profile(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_response = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            try:
+                confirm_or_fail(
+                    action="delete",
+                    target=target.get("name") or profile_identifier,
+                    risk=OperationRisk.HIGH,
+                    confirmation_phrase="DELETE",
+                    force=cli_ctx.force,
+                    non_interactive=cli_ctx.non_interactive,
+                    dry_run=cli_ctx.dry_run,
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status("Deleting profile..."):
+                result = await client.delete_profile(target["id"], cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print("[bold green]Profile deleted[/bold green]")
+            else:
+                console.print("[red]Failed to delete profile[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(delete_profile)
 
     asyncio.run(run_cmd())
 
