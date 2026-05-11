@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.16.0](https://github.com/fulviofreitas/eeroctl/compare/v2.15.0...v2.16.0) (2026-05-11)
+
+### ✨ Features
+
+* **profile:** add create/rename/delete + mutation regression suite ([#43](https://github.com/fulviofreitas/eeroctl/issues/43)) ([a18f676](https://github.com/fulviofreitas/eeroctl/commit/a18f676a5294e59d55e026f5ce64fd08ec67bfde))
+
 ## [2.15.0](https://github.com/fulviofreitas/eeroctl/compare/v2.14.0...v2.15.0) (2026-05-11)
 
 ### ✨ Features
