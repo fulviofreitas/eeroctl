@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.18.1](https://github.com/fulviofreitas/eeroctl/compare/v2.18.0...v2.18.1) (2026-05-21)
+
+### 🐛 Bug Fixes
+
+* coerce uptime and numeric eero fields from dict shapes ([#48](https://github.com/fulviofreitas/eeroctl/issues/48)) ([ecbf32e](https://github.com/fulviofreitas/eeroctl/commit/ecbf32e28a6bc8c7e8990d73cadd42c650f8b439))
+
 ## [2.18.0](https://github.com/fulviofreitas/eeroctl/compare/v2.17.0...v2.18.0) (2026-05-18)
 
 ### ✨ Features
