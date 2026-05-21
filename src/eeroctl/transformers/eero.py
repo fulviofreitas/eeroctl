@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 from .base import extract_data, extract_id_from_url, extract_list
+from .._coercion import coerce_numeric
 
 
 def extract_eeros(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -106,12 +107,13 @@ def normalize_eero(data: Dict[str, Any]) -> Dict[str, Any]:
         "led_brightness": data.get("led_brightness"),
         "nightlight_enabled": nightlight_enabled,
         "nightlight": nightlight,
-        # Performance
-        "mesh_quality_bars": data.get("mesh_quality_bars"),
-        "uptime": data.get("uptime"),
-        "memory_usage": data.get("memory_usage"),
-        "cpu_usage": data.get("cpu_usage"),
-        "temperature": data.get("temperature"),
+        # Performance — coerce numeric fields that the API may return as dicts.
+        # See: fulviofreitas/eero-prometheus-exporter#61 (uptime shape change).
+        "mesh_quality_bars": coerce_numeric(data.get("mesh_quality_bars"), "mesh_quality_bars"),
+        "uptime": coerce_numeric(data.get("uptime"), "uptime"),
+        "memory_usage": coerce_numeric(data.get("memory_usage"), "memory_usage"),
+        "cpu_usage": coerce_numeric(data.get("cpu_usage"), "cpu_usage"),
+        "temperature": coerce_numeric(data.get("temperature"), "temperature"),
         # Network info
         "ip_address": data.get("ip_address"),
         "ethernet_addresses": data.get("ethernet_addresses", []),
