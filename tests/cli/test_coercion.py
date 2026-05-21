@@ -11,17 +11,12 @@ Tests cover:
 
 from __future__ import annotations
 
-import logging
-from io import StringIO
 from typing import Any, Dict
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from eeroctl._coercion import _logged_unknown, coerce_numeric
 from eeroctl.formatting.eero import _eero_performance_panel
 from eeroctl.transformers.eero import normalize_eero
-
 
 # ========================== coerce_numeric: scalar inputs ==========================
 

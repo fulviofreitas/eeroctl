@@ -3,8 +3,8 @@
 from datetime import datetime
 from typing import Any, Dict, List
 
-from .base import extract_data, extract_id_from_url, extract_list
 from .._coercion import coerce_numeric
+from .base import extract_data, extract_id_from_url, extract_list
 
 
 def extract_eeros(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
