@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 from rich.panel import Panel
 from rich.table import Table
 
+from .._coercion import coerce_numeric
 from ..transformers.eero import normalize_eero
 from .base import (
     DetailLevel,
@@ -133,12 +134,14 @@ def _eero_performance_panel(eero: Dict[str, Any]) -> Optional[Panel]:
     lines = []
 
     if uptime is not None:
-        hours = uptime // 3600
-        days = hours // 24
-        if days > 0:
-            lines.append(field("Uptime", f"{days} days, {hours % 24} hours"))
-        else:
-            lines.append(field("Uptime", f"{hours} hours"))
+        uptime_seconds = coerce_numeric(uptime, "uptime")
+        if uptime_seconds is not None:
+            hours = int(uptime_seconds) // 3600
+            days = hours // 24
+            if days > 0:
+                lines.append(field("Uptime", f"{days} days, {hours % 24} hours"))
+            else:
+                lines.append(field("Uptime", f"{hours} hours"))
 
     if mesh_quality is not None:
         bars_style = "green" if mesh_quality >= 4 else "yellow" if mesh_quality >= 2 else "red"
