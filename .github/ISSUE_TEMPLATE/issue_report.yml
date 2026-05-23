@@ -1,0 +1,99 @@
+name: ⌨️ Issue Report
+description: Tell us what's going wrong with eeroctl
+title: "[<TYPE>]: <short description>"
+labels: ["triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        👋 Hey, thanks for taking the time to file this! Sorry you hit a snag — share what you've got below and we'll dig in. No need to fill every field.
+
+        > 🔒 A quick heads up: please scrub any secrets (session tokens, cookies, personal IPs, MAC addresses, network IDs) before posting.
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: 🏷️ What kind of issue is this?
+      options:
+        - 🐛 Bug
+        - 💥 Crash / unhandled error
+        - 🔐 Authentication / login
+        - 🎨 Output formatting (table / JSON / YAML / text)
+        - 📦 Install / packaging
+        - ❓ Question / how-to
+        - ✨ Feature request
+    validations:
+      required: true
+
+  - type: input
+    id: command
+    attributes:
+      label: ⌨️ Command you ran
+      description: Copy-paste the exact command (feel free to redact identifiers).
+      placeholder: eero --output json network show <NETWORK_ID>
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: 💬 What happened? What did you expect?
+      placeholder: I expected X, but got Y instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: debug-output
+    attributes:
+      label: 🔍 Debug output
+      description: |
+        Re-run with `--debug` and paste the output here — it's the single most useful thing for troubleshooting:
+        `eero --debug <your-command>`
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: versions
+    attributes:
+      label: 📦 Versions
+      description: 'Run: `eero --version && python --version`'
+      placeholder: eeroctl 1.5.0, Python 3.12.4
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install-method
+    attributes:
+      label: 🛠️ How did you install it?
+      options:
+        - 🍺 Homebrew
+        - 🐍 pip / PyPI
+        - 📂 Source
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os-shell
+    attributes:
+      label: 💻 Operating system + shell
+      options:
+        - 🍎 macOS / zsh
+        - 🍎 macOS / bash
+        - 🐧 Linux / bash
+        - 🐧 Linux / zsh
+        - 🐟 Linux / fish
+        - 🪟 Windows / PowerShell
+        - 🪟 WSL
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 🎁 Anything else?
+      description: Workarounds, screenshots, related issues — anything that might help.
+    validations:
+      required: false
