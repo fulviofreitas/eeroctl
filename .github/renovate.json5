@@ -1,144 +1,140 @@
 {
-  $schema: "https://docs.renovatebot.com/renovate-schema.json",
-
-  // ============================================================================
-  // Base Configuration
-  // ============================================================================
-  extends: ["config:recommended", ":semanticCommits"],
-
-  // Timezone for scheduling
-  timezone: "America/Los_Angeles",
-
-  // Create PRs immediately (override default schedule)
-  schedule: ["at any time"],
-
-  // Disable rate limiting
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+    ':semanticCommits',
+  ],
+  timezone: 'America/Los_Angeles',
+  schedule: [
+    'at any time',
+  ],
   prHourlyLimit: 0,
   prConcurrentLimit: 0,
-
-  // Branch naming
-  branchPrefix: "deps/",
-
-  // ============================================================================
-  // Commit Message Format (PR title is derived from commit message)
-  // ============================================================================
-  // The PR title is automatically derived from the commit message.
-  // Both must follow conventional commits format for commitlint to pass.
-  commitMessagePrefix: "chore(deps):",
-  commitMessageAction: "update",
-  commitMessageTopic: "{{{depName}}}",
-  commitMessageExtra: "to {{{newVersion}}}",
-
-  // Prevent long release notes in commit body (avoids commitlint failures)
-  commitBody: "",
+  branchPrefix: 'deps/',
+  commitMessagePrefix: 'chore(deps):',
+  commitMessageAction: 'update',
+  commitMessageTopic: '{{{depName}}}',
+  commitMessageExtra: 'to {{{newVersion}}}',
+  commitBody: '',
   commitBodyTable: false,
-
-  // ============================================================================
-  // Labels & Dashboard
-  // ============================================================================
-  labels: ["dependencies", "renovate", "automerge"],
+  labels: [
+    'dependencies',
+    'renovate',
+    'automerge',
+  ],
   dependencyDashboard: true,
-  dependencyDashboardTitle: "📦 Renovate Dependency Dashboard",
+  dependencyDashboardTitle: '📦 Renovate Dependency Dashboard',
   dependencyDashboardAutoclose: true,
   dependencyDashboardApproval: false,
-
-  // Allow recreating closed PRs
-  recreateWhen: "auto",
-
-  // PR body template
-  prBodyTemplate: "{{{header}}}{{{table}}}{{{warnings}}}{{{notes}}}{{{changelogs}}}{{{controls}}}{{{footer}}}",
-  fetchChangeLogs: "pr",
-
-  // ============================================================================
-  // Package Rules
-  // ============================================================================
+  recreateWhen: 'auto',
+  prBodyTemplate: '{{{header}}}{{{table}}}{{{warnings}}}{{{notes}}}{{{changelogs}}}{{{controls}}}{{{footer}}}',
+  fetchChangeLogs: 'pr',
   packageRules: [
-    // ==========================================================================
-    // 🟡 Python dependencies: Group minor/patch updates (excludes eero-api)
-    // ==========================================================================
     {
-      matchManagers: ["pep621", "poetry", "pip_requirements", "pip-compile"],
-      matchUpdateTypes: ["minor", "patch"],
-      excludePackageNames: ["eero-api"],
-      groupName: "python-minor-patch",
-      description: "Python minor/patch updates (auto-merge)",
+      matchManagers: [
+        'pep621',
+        'poetry',
+        'pip_requirements',
+        'pip-compile',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      groupName: 'python-minor-patch',
+      description: 'Python minor/patch updates (auto-merge)',
       automerge: true,
-      automergeType: "pr",
-      automergeStrategy: "squash",
-      commitMessagePrefix: "chore(deps-python):",
-      commitMessageTopic: "python dependencies",
+      automergeType: 'pr',
+      automergeStrategy: 'squash',
+      commitMessagePrefix: 'chore(deps-python):',
+      commitMessageTopic: 'python dependencies',
+      matchPackageNames: [
+        '!eero-api',
+      ],
     },
-
-    // ==========================================================================
-    // 🟢 GitHub Actions: Auto-merge minor/patch updates
-    // ==========================================================================
     {
-      matchManagers: ["github-actions"],
-      matchUpdateTypes: ["minor", "patch"],
-      groupName: "github-actions",
-      description: "GitHub Actions minor/patch updates (auto-merge)",
+      matchManagers: [
+        'github-actions',
+      ],
+      matchUpdateTypes: [
+        'minor',
+        'patch',
+      ],
+      groupName: 'github-actions',
+      description: 'GitHub Actions minor/patch updates (auto-merge)',
       automerge: true,
-      automergeType: "pr",
-      automergeStrategy: "squash",
-      commitMessagePrefix: "chore(deps-actions):",
-      commitMessageTopic: "github actions",
+      automergeType: 'pr',
+      automergeStrategy: 'squash',
+      commitMessagePrefix: 'chore(deps-actions):',
+      commitMessageTopic: 'github actions',
     },
-
-    // ==========================================================================
-    // 🔵 Major updates: Require review
-    // ==========================================================================
     {
-      matchUpdateTypes: ["major"],
-      description: "Major updates require manual review",
+      matchUpdateTypes: [
+        'major',
+      ],
+      description: 'Major updates require manual review',
       automerge: false,
-      addLabels: ["major-update", "needs-review"],
-      reviewers: ["fulviofreitas"],
-      commitMessagePrefix: "chore(deps-major):",
+      addLabels: [
+        'major-update',
+        'needs-review',
+      ],
+      reviewers: [
+        'fulviofreitas',
+      ],
+      commitMessagePrefix: 'chore(deps-major):',
     },
-
-    // ==========================================================================
-    // 🟣 Security updates: High priority
-    // ==========================================================================
     {
-      matchUpdateTypes: ["patch"],
+      matchUpdateTypes: [
+        'patch',
+      ],
       prPriority: 20,
-      description: "Security patches get high priority",
+      description: 'Security patches get high priority',
     },
-
-    // ==========================================================================
-    // 🟢 eero-api - Internal dependency (MUST BE LAST to override other rules)
-    // ==========================================================================
-    // Updates trigger minor version bump via feat(deps): prefix.
-    // This rule is placed LAST so it takes precedence over all other rules.
     {
-      matchPackageNames: ["eero-api"],
-      matchManagers: ["pep621", "poetry", "pip_requirements", "pip-compile"],
-      groupName: "eero-api",
-      description: "🟢 eero-api update (triggers minor release, requires review)",
+      matchPackageNames: [
+        'eero-api',
+      ],
+      matchManagers: [
+        'pep621',
+        'poetry',
+        'pip_requirements',
+        'pip-compile',
+      ],
+      groupName: 'eero-api',
+      description: '🟢 eero-api update (triggers minor release, requires review)',
       automerge: false,
-      addLabels: ["eero-api", "feature", "critical", "needs-review"],
-      reviewers: ["fulviofreitas"],
+      addLabels: [
+        'eero-api',
+        'feature',
+        'critical',
+        'needs-review',
+      ],
+      reviewers: [
+        'fulviofreitas',
+      ],
       prPriority: 10,
-      commitMessagePrefix: "feat(deps):",
-      commitMessageTopic: "eero-api",
-      commitMessageExtra: "to {{{newVersion}}}",
+      commitMessagePrefix: 'feat(deps):',
+      commitMessageTopic: 'eero-api',
+      commitMessageExtra: 'to {{{newVersion}}}',
       prBodyNotes: [
-        "## 🟢 eero-api Update",
-        "",
-        "This PR updates `eero-api`, the core API client for eero network communication.",
-        "",
-        "### Links",
-        "- [eero-api on PyPI](https://pypi.org/project/eero-api/)",
-        "- [eero-api Repository](https://github.com/fulviofreitas/eero-api)",
-        "- [eero-api Releases](https://github.com/fulviofreitas/eero-api/releases)",
+        '## 🟢 eero-api Update',
+        '',
+        'This PR updates `eero-api`, the core API client for eero network communication.',
+        '',
+        '### Links',
+        '- [eero-api on PyPI](https://pypi.org/project/eero-api/)',
+        '- [eero-api Repository](https://github.com/fulviofreitas/eero-api)',
+        '- [eero-api Releases](https://github.com/fulviofreitas/eero-api/releases)',
       ],
     },
   ],
-
-  // Vulnerability alerts
   vulnerabilityAlerts: {
     enabled: true,
-    labels: ["security", "critical", "automerge"],
+    labels: [
+      'security',
+      'critical',
+      'automerge',
+    ],
     automerge: true,
   },
 }
