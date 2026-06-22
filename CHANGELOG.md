@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.1](https://github.com/fulviofreitas/eeroctl/compare/v2.21.0...v2.21.1) (2026-06-22)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump idna from 3.11 to 3.15 ([d4190a8](https://github.com/fulviofreitas/eeroctl/commit/d4190a80b71895c33dcf3b75125b326ff80028c3))
+
 ## [2.21.0](https://github.com/fulviofreitas/eeroctl/compare/v2.20.0...v2.21.0) (2026-06-12)
 
 ### ✨ Features
