@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.3](https://github.com/fulviofreitas/eeroctl/compare/v2.21.2...v2.21.3) (2026-06-22)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump cryptography from 46.0.7 to 48.0.1 ([2d48308](https://github.com/fulviofreitas/eeroctl/commit/2d48308186ac68530531f28ab33664f096abdb54))
+
 ## [2.21.2](https://github.com/fulviofreitas/eeroctl/compare/v2.21.1...v2.21.2) (2026-06-22)
 
 ### 🐛 Bug Fixes
