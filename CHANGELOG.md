@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.2](https://github.com/fulviofreitas/eeroctl/compare/v2.21.1...v2.21.2) (2026-06-22)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump aiohttp from 3.13.5 to 3.14.1 ([7fe1e0c](https://github.com/fulviofreitas/eeroctl/commit/7fe1e0ce08a2b350691f3949acd3ab35781fbbec))
+
 ## [2.21.1](https://github.com/fulviofreitas/eeroctl/compare/v2.21.0...v2.21.1) (2026-06-22)
 
 ### 🐛 Bug Fixes
