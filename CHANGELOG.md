@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.3](https://github.com/fulviofreitas/eeroctl/compare/v2.21.2...v2.21.3) (2026-06-22)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump cryptography from 46.0.7 to 48.0.1 ([2d48308](https://github.com/fulviofreitas/eeroctl/commit/2d48308186ac68530531f28ab33664f096abdb54))
+
+## [2.21.2](https://github.com/fulviofreitas/eeroctl/compare/v2.21.1...v2.21.2) (2026-06-22)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump aiohttp from 3.13.5 to 3.14.1 ([7fe1e0c](https://github.com/fulviofreitas/eeroctl/commit/7fe1e0ce08a2b350691f3949acd3ab35781fbbec))
+
+## [2.21.1](https://github.com/fulviofreitas/eeroctl/compare/v2.21.0...v2.21.1) (2026-06-22)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump idna from 3.11 to 3.15 ([d4190a8](https://github.com/fulviofreitas/eeroctl/commit/d4190a80b71895c33dcf3b75125b326ff80028c3))
+
+## [2.21.0](https://github.com/fulviofreitas/eeroctl/compare/v2.20.0...v2.21.0) (2026-06-12)
+
+### ✨ Features
+
+* **deps:** update eero-api to 5.0.0 ([3f3120e](https://github.com/fulviofreitas/eeroctl/commit/3f3120e81c44f49c369b53cb1372ec9b19739632))
+
+## [2.20.0](https://github.com/fulviofreitas/eeroctl/compare/v2.19.0...v2.20.0) (2026-06-06)
+
+### ✨ Features
+
+* **deps:** update eero-api to 4.6.1 ([951e4cb](https://github.com/fulviofreitas/eeroctl/commit/951e4cbf96b4f33665ef637aeea4eff0d5dee96a))
+
+## [2.19.0](https://github.com/fulviofreitas/eeroctl/compare/v2.18.1...v2.19.0) (2026-06-05)
+
+### ✨ Features
+
+* **deps:** update eero-api to 4.6.0 ([2dae779](https://github.com/fulviofreitas/eeroctl/commit/2dae779e422b4772c7d4a050b85be063fc4f81bb))
+
 ## [2.18.1](https://github.com/fulviofreitas/eeroctl/compare/v2.18.0...v2.18.1) (2026-05-21)
 
 ### 🐛 Bug Fixes

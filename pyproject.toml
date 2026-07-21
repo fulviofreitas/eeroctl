@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "eeroctl"
-version = "2.18.1"
+version = "2.21.3"
 description = "Command-line interface for Eero network management"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -27,7 +27,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "eero-api==4.2.0",
+    "eero-api==5.0.0",
     "rich>=13.0.0",
     "click>=8.0.0",
     "pyyaml>=6.0.0",
