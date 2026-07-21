@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.5](https://github.com/fulviofreitas/eeroctl/compare/v2.21.4...v2.21.5) (2026-07-21)
+
+### 🐛 Bug Fixes
+
+* **ci:** suppress '[aw] No-Op Runs' tracker issue ([5f6be38](https://github.com/fulviofreitas/eeroctl/commit/5f6be38d5e677907a9ce9054d857eca21b8472c6))
+
 ## [2.21.4](https://github.com/fulviofreitas/eeroctl/compare/v2.21.3...v2.21.4) (2026-07-21)
 
 ### 🐛 Bug Fixes
