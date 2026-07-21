@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.4](https://github.com/fulviofreitas/eeroctl/compare/v2.21.3...v2.21.4) (2026-07-21)
+
+### 🐛 Bug Fixes
+
+* **ci:** update triage to gpt-4o-mini + gh-aw v0.80.9 + App token for try-fix chain ([c1bd7b2](https://github.com/fulviofreitas/eeroctl/commit/c1bd7b29d8459961fa2c6c77d4ebad08c4edab82))
+
 ## [2.21.3](https://github.com/fulviofreitas/eeroctl/compare/v2.21.2...v2.21.3) (2026-06-22)
 
 ### 🐛 Bug Fixes
