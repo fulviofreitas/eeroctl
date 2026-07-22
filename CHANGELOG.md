@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.6](https://github.com/fulviofreitas/eeroctl/compare/v2.21.5...v2.21.6) (2026-07-22)
+
+### 🐛 Bug Fixes
+
+* **cli:** repair device/activity commands and add device pause ([#111](https://github.com/fulviofreitas/eeroctl/issues/111)) ([eecb6ed](https://github.com/fulviofreitas/eeroctl/commit/eecb6edcd454b4dc092924438c3ef622ad5ac3e9)), closes [#106](https://github.com/fulviofreitas/eeroctl/issues/106) [#107](https://github.com/fulviofreitas/eeroctl/issues/107) [#108](https://github.com/fulviofreitas/eeroctl/issues/108) [#109](https://github.com/fulviofreitas/eeroctl/issues/109)
+
 ## [2.21.5](https://github.com/fulviofreitas/eeroctl/compare/v2.21.4...v2.21.5) (2026-07-21)
 
 ### 🐛 Bug Fixes
