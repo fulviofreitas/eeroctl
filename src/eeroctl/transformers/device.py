@@ -117,8 +117,8 @@ def normalize_device(data: Dict[str, Any]) -> Dict[str, Any]:
         "profile_name": profile_name,
         "profile": profile,
         # Status flags
-        "blocked": data.get("blocked", False),
-        "blacklisted": data.get("blocked", False),  # Alias
+        "blocked": data.get("blacklisted", False),
+        "blacklisted": data.get("blacklisted", False),  # Alias
         "paused": data.get("paused", False),
         "is_guest": data.get("is_guest", False),
         "is_private": data.get("is_private", False),

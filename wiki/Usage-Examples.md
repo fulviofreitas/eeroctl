@@ -118,8 +118,14 @@ eero device rename "00:11:22:33:44:55" --name "Work Laptop"
 # Block a device
 eero device block "Smart TV" --force
 
-# Prioritize a device for 30 minutes
-eero device priority on "Gaming PC" --minutes 30
+# Unblock a device
+eero device unblock "Smart TV" --force
+
+# Pause internet access for a device
+eero device pause "Kids Tablet" --force
+
+# Unpause internet access for a device
+eero device unpause "Kids Tablet"
 ```
 
 ---
@@ -141,6 +147,27 @@ eero profile apps block "Kids" TikTok YouTube
 
 # Unblock applications
 eero profile apps unblock "Kids" YouTube
+```
+
+---
+
+## Activity (Eero Plus)
+
+```bash
+# Show historical inspected-traffic data for a date range
+eero activity history --start 2026-07-01 --end 2026-07-22
+
+# Weekly cadence, blocked insight type
+eero activity history --start 2026-07-01 --end 2026-07-22 --insight-type blocked --cadence weekly
+
+# Show blocked-traffic categories for a date range
+eero activity categories --start 2026-07-01 --end 2026-07-22
+
+# Weekly cadence for categories
+eero activity categories --start 2026-07-01 --end 2026-07-22 --cadence weekly
+
+# JSON output for scripting
+eero --output json activity history --start 2026-07-01 --end 2026-07-22
 ```
 
 ---
