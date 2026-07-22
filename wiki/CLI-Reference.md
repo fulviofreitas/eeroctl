@@ -77,10 +77,8 @@ eero
 │   ├── rename <id> --name <name>
 │   ├── block <id>
 │   ├── unblock <id>
-│   └── priority     # Bandwidth priority
-│       ├── show
-│       ├── on [--minutes <n>]
-│       └── off
+│   ├── pause <id>
+│   └── unpause <id>
 │
 ├── profile          # User profile management
 │   ├── list         # List all profiles
@@ -96,9 +94,8 @@ eero
 │       └── set
 │
 ├── activity         # Activity data (Eero Plus)
-│   ├── clients      # Client activity
-│   ├── history      # Activity history
-│   └── categories   # Traffic categories
+│   ├── history      # Activity history (requires --start and --end)
+│   └── categories   # Blocked-traffic categories (requires --start and --end)
 │
 ├── troubleshoot     # Troubleshooting tools
 │   ├── status       # Network health status

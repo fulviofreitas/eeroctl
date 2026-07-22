@@ -6,7 +6,8 @@ Commands:
 - eero device rename: Rename a device
 - eero device block: Block a device
 - eero device unblock: Unblock a device
-- eero device priority: Device priority management
+- eero device pause: Pause a device
+- eero device unpause: Unpause a device
 """
 
 import asyncio
@@ -15,7 +16,6 @@ from typing import Any, Dict, Literal, Optional
 
 import click
 from eero import EeroClient
-from rich.panel import Panel
 from rich.table import Table
 
 from ..context import EeroCliContext, ensure_cli_context
@@ -75,19 +75,20 @@ def device_group(ctx: click.Context) -> None:
 
     \b
     Commands:
-      list     - List all connected devices
-      show     - Show device details
-      rename   - Rename a device
-      block    - Block a device
-      unblock  - Unblock a device
-      priority - Bandwidth priority management
+      list    - List all connected devices
+      show    - Show device details
+      rename  - Rename a device
+      block   - Block a device
+      unblock - Unblock a device
+      pause   - Pause a device
+      unpause - Unpause a device
 
     \b
     Examples:
       eero device list                    # List all devices
       eero device show "iPhone"           # Show by name
       eero device block AA:BB:CC:DD:EE:FF # Block by MAC
-      eero device priority show "iPad"    # Show priority
+      eero device pause "iPad"            # Pause a device
     """
     ensure_cli_context(ctx)
 
@@ -368,38 +369,49 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked
     asyncio.run(run_cmd())
 
 
-# ==================== Priority Subcommand Group ====================
-
-
-@device_group.group(name="priority")
-@click.pass_context
-def priority_group(ctx: click.Context) -> None:
-    """Manage device bandwidth priority.
-
-    \b
-    Commands:
-      show - Show priority status
-      on   - Enable priority
-      off  - Disable priority
-    """
-    pass
-
-
-@priority_group.command(name="show")
+@device_group.command(name="pause")
 @click.argument("device_identifier")
-@output_option
+@force_option
 @network_option
 @click.pass_context
-def priority_show(
-    ctx: click.Context, device_identifier: str, output: Optional[str], network_id: Optional[str]
+def device_pause(
+    ctx: click.Context, device_identifier: str, force: Optional[bool], network_id: Optional[str]
 ) -> None:
-    """Show priority status for a device."""
-    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
+    """Pause a device's internet access.
+
+    \b
+    Arguments:
+      DEVICE_IDENTIFIER  Device ID, MAC address, or name
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    _set_device_paused(cli_ctx, device_identifier, True)
+
+
+@device_group.command(name="unpause")
+@click.argument("device_identifier")
+@force_option
+@network_option
+@click.pass_context
+def device_unpause(
+    ctx: click.Context, device_identifier: str, force: Optional[bool], network_id: Optional[str]
+) -> None:
+    """Unpause a device's internet access.
+
+    \b
+    Arguments:
+      DEVICE_IDENTIFIER  Device ID, MAC address, or name
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    _set_device_paused(cli_ctx, device_identifier, False)
+
+
+def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: bool) -> None:
+    """Pause or unpause a device."""
     console = cli_ctx.console
-    renderer = cli_ctx.renderer
+    action = "pause" if paused else "unpause"
 
     async def run_cmd() -> None:
-        async def get_priority(client: EeroClient) -> None:
+        async def toggle_pause(client: EeroClient) -> None:
             # Find device first
             with cli_ctx.status("Finding device..."):
                 raw_response = await client.get_devices(cli_ctx.network_id)
@@ -412,115 +424,37 @@ def priority_show(
                 console.print("[dim]Try: eero device list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            with cli_ctx.status("Getting priority status..."):
-                raw_priority = await client.get_device_priority(target["id"], cli_ctx.network_id)
+            device_name = (
+                target.get("display_name")
+                or target.get("nickname")
+                or target.get("hostname")
+                or device_identifier
+            )
 
-            priority_data = extract_data(raw_priority)
-
-            if cli_ctx.is_json_output():
-                renderer.render_json(priority_data, "eero.device.priority.show/v1")
-            elif cli_ctx.is_list_output():
-                renderer.render_text(priority_data, "eero.device.priority.show/v1")
-            else:
-                prioritized = priority_data.get("prioritized", False)
-                duration = priority_data.get("duration", 0)
-
-                content = (
-                    f"[bold]Prioritized:[/bold] "
-                    f"{'[green]Yes[/green]' if prioritized else '[dim]No[/dim]'}"
+            try:
+                confirm_or_fail(
+                    action=action,
+                    target=device_name,
+                    risk=OperationRisk.MEDIUM,
+                    force=cli_ctx.force,
+                    non_interactive=cli_ctx.non_interactive,
+                    dry_run=cli_ctx.dry_run,
+                    console=cli_ctx.console,
                 )
-                if prioritized and duration > 0:
-                    content += f"\n[bold]Duration:[/bold] {duration} minutes"
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
 
-                console.print(Panel(content, title="Priority Status", border_style="blue"))
-
-        await run_with_client(get_priority)
-
-    asyncio.run(run_cmd())
-
-
-@priority_group.command(name="on")
-@click.argument("device_identifier")
-@click.option("--minutes", "-m", type=int, default=0, help="Duration in minutes (0=indefinite)")
-@network_option
-@click.pass_context
-def priority_on(
-    ctx: click.Context, device_identifier: str, minutes: int, network_id: Optional[str]
-) -> None:
-    """Enable priority for a device.
-
-    \b
-    Options:
-      --minutes, -m  Duration (0=indefinite)
-    """
-    cli_ctx = apply_options(ctx, network_id=network_id)
-    console = cli_ctx.console
-
-    async def run_cmd() -> None:
-        async def set_priority(client: EeroClient) -> None:
-            # Find device first
-            with cli_ctx.status("Finding device..."):
-                raw_response = await client.get_devices(cli_ctx.network_id)
-
-            devices = extract_devices(raw_response)
-            target = _find_device(devices, device_identifier)
-
-            if not target or not target.get("id"):
-                console.print(f"[red]Device '{device_identifier}' not found[/red]")
-                console.print("[dim]Try: eero device list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
-
-            duration_str = f" for {minutes} minutes" if minutes > 0 else " (indefinite)"
-            with cli_ctx.status(f"Prioritizing device{duration_str}..."):
-                # TODO: prioritize_device method not yet implemented in eero-api
-                result = await client.prioritize_device(target["id"], minutes, cli_ctx.network_id)  # type: ignore[attr-defined]
+            with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
+                result = await client.pause_device(target["id"], paused, cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:
-                console.print(f"[bold green]Device prioritized{duration_str}[/bold green]")
+                console.print(f"[bold green]Device {action}d[/bold green]")
             else:
-                console.print("[red]Failed to prioritize device[/red]")
+                console.print(f"[red]Failed to {action} device[/red]")
                 sys.exit(ExitCode.GENERIC_ERROR)
 
-        await run_with_client(set_priority)
-
-    asyncio.run(run_cmd())
-
-
-@priority_group.command(name="off")
-@click.argument("device_identifier")
-@network_option
-@click.pass_context
-def priority_off(ctx: click.Context, device_identifier: str, network_id: Optional[str]) -> None:
-    """Remove priority from a device."""
-    cli_ctx = apply_options(ctx, network_id=network_id)
-    console = cli_ctx.console
-
-    async def run_cmd() -> None:
-        async def remove_priority(client: EeroClient) -> None:
-            # Find device first
-            with cli_ctx.status("Finding device..."):
-                raw_response = await client.get_devices(cli_ctx.network_id)
-
-            devices = extract_devices(raw_response)
-            target = _find_device(devices, device_identifier)
-
-            if not target or not target.get("id"):
-                console.print(f"[red]Device '{device_identifier}' not found[/red]")
-                console.print("[dim]Try: eero device list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
-
-            with cli_ctx.status("Removing priority..."):
-                # TODO: deprioritize_device method not yet implemented in eero-api
-                result = await client.deprioritize_device(target["id"], cli_ctx.network_id)  # type: ignore[attr-defined]
-
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print("[bold green]Priority removed[/bold green]")
-            else:
-                console.print("[red]Failed to remove priority[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
-
-        await run_with_client(remove_priority)
+        await run_with_client(toggle_pause)
 
     asyncio.run(run_cmd())

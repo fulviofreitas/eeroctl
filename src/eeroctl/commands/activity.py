@@ -1,10 +1,8 @@
 """Activity commands for the Eero CLI (Eero Plus feature).
 
 Commands:
-- eero activity summary: Network activity summary
-- eero activity clients: Per-client activity
-- eero activity history: Historical activity
-- eero activity categories: Activity by category
+- eero activity history: Historical activity data (get_insights)
+- eero activity categories: Activity by category (get_insights, blocked)
 """
 
 import sys
@@ -12,27 +10,13 @@ from typing import Optional
 
 import click
 from eero import EeroClient
-from rich.panel import Panel
 from rich.table import Table
 
 from ..context import ensure_cli_context
 from ..errors import is_premium_error
 from ..exit_codes import ExitCode
 from ..options import apply_options, network_option, output_option
-from ..transformers import extract_data
 from ..utils import with_client
-
-
-def _format_bytes(bytes_val: int) -> str:
-    """Format bytes into human-readable format."""
-    if bytes_val < 1024:
-        return f"{bytes_val} B"
-    elif bytes_val < 1024 * 1024:
-        return f"{bytes_val / 1024:.1f} KB"
-    elif bytes_val < 1024 * 1024 * 1024:
-        return f"{bytes_val / (1024 * 1024):.1f} MB"
-    else:
-        return f"{bytes_val / (1024 * 1024 * 1024):.2f} GB"
 
 
 @click.group(name="activity")
@@ -42,122 +26,36 @@ def activity_group(ctx: click.Context) -> None:
 
     \b
     Commands:
-      summary    - Network activity summary
-      clients    - Per-client activity
-      history    - Historical activity
-      categories - Activity by category
+      history    - Historical activity (requires --start and --end)
+      categories - Blocked-traffic activity by category (requires --start and --end)
 
     \b
     Note: Requires an active Eero Plus subscription.
 
     \b
     Examples:
-      eero activity summary
-      eero activity clients
-      eero activity history --period week
+      eero activity history --start 2026-07-01 --end 2026-07-22
+      eero activity categories --start 2026-07-01 --end 2026-07-22 --cadence weekly
     """
     ensure_cli_context(ctx)
 
 
-@activity_group.command(name="summary")
-@output_option
-@network_option
-@click.pass_context
-@with_client
-async def activity_summary(
-    ctx: click.Context, client: EeroClient, output: Optional[str], network_id: Optional[str]
-) -> None:
-    """Show network activity summary."""
-    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
-    console = cli_ctx.console
-
-    with cli_ctx.status("Getting network activity..."):
-        try:
-            raw_response = await client.get_activity(cli_ctx.network_id)
-        except Exception as e:
-            if is_premium_error(e):
-                console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
-                sys.exit(ExitCode.PREMIUM_REQUIRED)
-            raise
-
-    activity_data = extract_data(raw_response) if isinstance(raw_response, dict) else raw_response
-
-    if cli_ctx.is_structured_output():
-        cli_ctx.render_structured(activity_data, "eero.activity.summary/v1")
-    else:
-        upload = activity_data.get("upload_bytes", 0) if isinstance(activity_data, dict) else 0
-        download = activity_data.get("download_bytes", 0) if isinstance(activity_data, dict) else 0
-        total = upload + download
-
-        content = (
-            f"[bold cyan]Download:[/bold cyan] {_format_bytes(download)}\n"
-            f"[bold cyan]Upload:[/bold cyan] {_format_bytes(upload)}\n"
-            f"[bold cyan]Total:[/bold cyan] {_format_bytes(total)}"
-        )
-        console.print(Panel(content, title="Network Activity Summary", border_style="blue"))
-
-
-@activity_group.command(name="clients")
-@output_option
-@network_option
-@click.pass_context
-@with_client
-async def activity_clients(
-    ctx: click.Context, client: EeroClient, output: Optional[str], network_id: Optional[str]
-) -> None:
-    """Show per-client activity data."""
-    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
-    console = cli_ctx.console
-
-    with cli_ctx.status("Getting client activity..."):
-        try:
-            raw_response = await client.get_activity_clients(cli_ctx.network_id)
-        except Exception as e:
-            if is_premium_error(e):
-                console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
-                sys.exit(ExitCode.PREMIUM_REQUIRED)
-            raise
-
-    clients_data = extract_data(raw_response) if isinstance(raw_response, dict) else raw_response
-    if isinstance(clients_data, dict):
-        clients_data = clients_data.get("clients", [])
-
-    if cli_ctx.is_structured_output():
-        cli_ctx.render_structured(clients_data, "eero.activity.clients/v1")
-    else:
-        if not clients_data:
-            console.print("[yellow]No client activity data available[/yellow]")
-            return
-
-        table = Table(title="Client Activity")
-        table.add_column("Device", style="cyan")
-        table.add_column("Download", justify="right")
-        table.add_column("Upload", justify="right")
-        table.add_column("Total", justify="right")
-
-        for client_info in clients_data:
-            name = (
-                client_info.get("display_name")
-                or client_info.get("hostname")
-                or client_info.get("mac", "Unknown")
-            )
-            download = client_info.get("download_bytes", 0)
-            upload = client_info.get("upload_bytes", 0)
-            total = download + upload
-
-            table.add_row(
-                name, _format_bytes(download), _format_bytes(upload), _format_bytes(total)
-            )
-
-        console.print(table)
-
-
 @activity_group.command(name="history")
+@click.option("--start", required=True, help="Start of window (ISO 8601, e.g. 2026-07-01)")
+@click.option("--end", required=True, help="End of window (ISO 8601, e.g. 2026-07-22)")
 @click.option(
-    "--period",
-    type=click.Choice(["hour", "day", "week", "month"]),
-    default="day",
-    help="Time period (default: day)",
+    "--insight-type",
+    type=click.Choice(["adblock", "blocked", "inspected"]),
+    default="inspected",
+    show_default=True,
+    help="Insight type to retrieve.",
+)
+@click.option(
+    "--cadence",
+    type=click.Choice(["hourly", "daily", "weekly"]),
+    default="daily",
+    show_default=True,
+    help="Data cadence.",
 )
 @output_option
 @network_option
@@ -166,87 +64,138 @@ async def activity_clients(
 async def activity_history(
     ctx: click.Context,
     client: EeroClient,
-    period: str,
+    start: str,
+    end: str,
+    insight_type: str,
+    cadence: str,
     output: Optional[str],
     network_id: Optional[str],
 ) -> None:
     """Show historical activity data.
 
     \b
-    Options:
-      --period  Time period: hour, day, week, month
+    Required:
+      --start ISO  Start of the time window (e.g. 2026-07-01)
+      --end ISO    End of the time window (e.g. 2026-07-22)
+
+    \b
+    Optional:
+      --insight-type  adblock | blocked | inspected (default: inspected)
+      --cadence       hourly | daily | weekly (default: daily)
     """
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
-    with cli_ctx.status(f"Getting activity history ({period})..."):
+    with cli_ctx.status("Getting activity history..."):
         try:
-            raw_response = await client.get_activity_history(cli_ctx.network_id, period)
+            raw_response = await client.get_insights(
+                cli_ctx.network_id,
+                start=start,
+                end=end,
+                insight_type=insight_type,
+                cadence=cadence,
+            )
         except Exception as e:
             if is_premium_error(e):
                 console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
                 sys.exit(ExitCode.PREMIUM_REQUIRED)
             raise
 
-    history_data = extract_data(raw_response) if isinstance(raw_response, dict) else raw_response
-    if not isinstance(history_data, dict):
-        history_data = {}
-
     if cli_ctx.is_structured_output():
-        cli_ctx.render_structured(history_data, "eero.activity.history/v1")
-    else:
-        total_download = history_data.get("total_download_bytes", 0)
-        total_upload = history_data.get("total_upload_bytes", 0)
-        data_points = history_data.get("data_points", [])
+        cli_ctx.render_structured(raw_response, "eero.activity.history/v1")
+        return
 
-        content = (
-            f"[bold]Period:[/bold] {period}\n"
-            f"[bold cyan]Total Download:[/bold cyan] {_format_bytes(total_download)}\n"
-            f"[bold cyan]Total Upload:[/bold cyan] {_format_bytes(total_upload)}\n"
-            f"[bold]Data Points:[/bold] {len(data_points)}"
+    series = raw_response.get("data", {}).get("series", [])
+    if not series:
+        console.print("[yellow]No activity data available for the given window[/yellow]")
+        return
+
+    table = Table(title=f"Activity History ({insight_type}, {cadence})")
+    table.add_column("Insight Type", style="cyan")
+    table.add_column("Sum", justify="right", style="green")
+    table.add_column("Data Points", justify="right")
+
+    for entry in series:
+        table.add_row(
+            str(entry.get("insight_type", "")),
+            str(entry.get("sum", 0)),
+            str(len(entry.get("values", []))),
         )
-        console.print(Panel(content, title=f"Activity History ({period})", border_style="blue"))
+
+    console.print(table)
 
 
 @activity_group.command(name="categories")
+@click.option("--start", required=True, help="Start of window (ISO 8601, e.g. 2026-07-01)")
+@click.option("--end", required=True, help="End of window (ISO 8601, e.g. 2026-07-22)")
+@click.option(
+    "--cadence",
+    type=click.Choice(["hourly", "daily", "weekly"]),
+    default="daily",
+    show_default=True,
+    help="Data cadence.",
+)
 @output_option
 @network_option
 @click.pass_context
 @with_client
 async def activity_categories(
-    ctx: click.Context, client: EeroClient, output: Optional[str], network_id: Optional[str]
+    ctx: click.Context,
+    client: EeroClient,
+    start: str,
+    end: str,
+    cadence: str,
+    output: Optional[str],
+    network_id: Optional[str],
 ) -> None:
-    """Show activity grouped by category."""
+    """Show blocked-traffic activity by category.
+
+    \b
+    Required:
+      --start ISO  Start of the time window (e.g. 2026-07-01)
+      --end ISO    End of the time window (e.g. 2026-07-22)
+
+    \b
+    Optional:
+      --cadence  hourly | daily | weekly (default: daily)
+    """
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
     with cli_ctx.status("Getting activity categories..."):
         try:
-            raw_response = await client.get_activity_categories(cli_ctx.network_id)
+            raw_response = await client.get_insights(
+                cli_ctx.network_id,
+                start=start,
+                end=end,
+                insight_type="blocked",
+                cadence=cadence,
+            )
         except Exception as e:
             if is_premium_error(e):
                 console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
                 sys.exit(ExitCode.PREMIUM_REQUIRED)
             raise
 
-    categories_data = extract_data(raw_response) if isinstance(raw_response, dict) else raw_response
-    if isinstance(categories_data, dict):
-        categories_data = categories_data.get("categories", [])
-
     if cli_ctx.is_structured_output():
-        cli_ctx.render_structured(categories_data, "eero.activity.categories/v1")
-    else:
-        if not categories_data:
-            console.print("[yellow]No category data available[/yellow]")
-            return
+        cli_ctx.render_structured(raw_response, "eero.activity.categories/v1")
+        return
 
-        table = Table(title="Activity by Category")
-        table.add_column("Category", style="cyan")
-        table.add_column("Usage", justify="right")
+    series = raw_response.get("data", {}).get("series", [])
+    if not series:
+        console.print("[yellow]No category data available for the given window[/yellow]")
+        return
 
-        for category in categories_data:
-            name = category.get("name", "Unknown")
-            usage = category.get("bytes", 0)
-            table.add_row(name, _format_bytes(usage))
+    table = Table(title=f"Activity Categories (blocked, {cadence})")
+    table.add_column("Insight Type", style="cyan")
+    table.add_column("Sum", justify="right", style="green")
+    table.add_column("Data Points", justify="right")
 
-        console.print(table)
+    for entry in series:
+        table.add_row(
+            str(entry.get("insight_type", "")),
+            str(entry.get("sum", 0)),
+            str(len(entry.get("values", []))),
+        )
+
+    console.print(table)
