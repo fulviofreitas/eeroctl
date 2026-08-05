@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.21.7](https://github.com/fulviofreitas/eeroctl/compare/v2.21.6...v2.21.7) (2026-08-05)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump aiohttp from 3.14.1 to 3.14.3 ([#114](https://github.com/fulviofreitas/eeroctl/issues/114)) ([1b00337](https://github.com/fulviofreitas/eeroctl/commit/1b0033729e3184040e5f317b2cd30815d13ab632))
+
+### ♻️ Refactoring
+
+* **ci:** migrate issue-triage and draft-fix to workflow-arsenal reusables ([d6f17f0](https://github.com/fulviofreitas/eeroctl/commit/d6f17f0c258b1eb49da30e06b72efcfadaceb5aa))
+
 ## [2.21.6](https://github.com/fulviofreitas/eeroctl/compare/v2.21.5...v2.21.6) (2026-07-22)
 
 ### 🐛 Bug Fixes
