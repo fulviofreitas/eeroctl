@@ -352,21 +352,21 @@ wheels = [
 
 [[package]]
 name = "eero-api"
-version = "6.0.0"
+version = "6.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "keyring" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cd/c6/46d80730e3df36298b1d566bbd87ecad77fd17aa01aa9e9830f35b7f129d/eero_api-6.0.0.tar.gz", hash = "sha256:3f5e6d84127d3f34992d9a5c7cd4766d100ddd3bfd6cf0b58c6c3f2c720bd5d0", size = 47584, upload-time = "2026-07-22T18:50:44.55Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/93/ad/fd3adbcc9fd80acd9c112d62c941941ddf50f8f2cb907f5be1a601455032/eero_api-6.2.0.tar.gz", hash = "sha256:899dfdb4bb547fa35d7e1232cf1339343260b3701fcbb9f5a40e12bfc696b9c9", size = 47847, upload-time = "2026-08-28T08:12:47.818Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/26/05eab414cc4c19fcce137c27fb3ea2871b8d1e38d06c4f7c784644f008c8/eero_api-6.0.0-py3-none-any.whl", hash = "sha256:fe0b5aa2285ba719c9893dfdd2010df49f2ee67bada596af8852e9b7a2b5bfc8", size = 64899, upload-time = "2026-07-22T18:50:43.238Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/87/8799b31e10a03db19c433f6922284efaa1d74a3844361c108411acffb1de/eero_api-6.2.0-py3-none-any.whl", hash = "sha256:532eb0bb0391640a01f99928874345875f92aaadbfe487b52e6f3b200930b276", size = 65033, upload-time = "2026-08-28T08:12:46.701Z" },
 ]
 
 [[package]]
 name = "eeroctl"
-version = "2.21.6"
+version = "2.21.8"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -390,7 +390,7 @@ dev = [
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
     { name = "click", specifier = ">=8.0.0" },
-    { name = "eero-api", specifier = "==6.0.0" },
+    { name = "eero-api", specifier = "==6.2.0" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.12.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
