@@ -366,7 +366,7 @@ wheels = [
 
 [[package]]
 name = "eeroctl"
-version = "2.21.6"
+version = "2.21.8"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
