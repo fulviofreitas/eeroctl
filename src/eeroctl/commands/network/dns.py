@@ -7,7 +7,9 @@ Commands:
 """
 
 import asyncio
+import ipaddress
 import sys
+from typing import Any, Dict, List, Optional
 
 import click
 from eero import EeroClient
@@ -15,8 +17,96 @@ from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
+from ...options import apply_options, network_option, output_option
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...transformers import extract_data, safe_get
 from ...utils import run_with_client
+
+DNS_SHOW_SCHEMA = "eero.network.dns.show/v2"
+"""Schema identifier for ``dns show`` structured output.
+
+Bumped to v2 when the payload was scoped to the DNS subtree. v1 emitted the entire
+network object, which includes the Wi-Fi and guest passwords in plaintext.
+"""
+
+
+def _format_ip(value: Any) -> str:
+    """Render an IP address in its canonical compact form.
+
+    The API stores IPv6 fully expanded (``2606:4700:4700:0:0:0:0:1111``); this
+    renders it as ``2606:4700:4700::1111``. Non-IP values pass through unchanged
+    so a shape change upstream degrades to raw display rather than an exception.
+    """
+    try:
+        return str(ipaddress.ip_address(str(value)))
+    except ValueError:
+        return str(value)
+
+
+def _dns_view(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Project the raw network response onto the DNS-relevant subtree.
+
+    ``get_dns_settings`` is ``GET networks/{id}``, so the response carries the whole
+    network object: Wi-Fi and guest passwords in plaintext, the WAN IP, geo-location,
+    and every node's serial and MAC. Structured output must expose only DNS.
+
+    This is an allowlist, deliberately. A denylist would leak each new sensitive
+    field the API adds until someone noticed.
+
+    Args:
+        raw: Full ``{"meta": ..., "data": ...}`` response from ``get_dns_settings``.
+
+    Returns:
+        A dict with just the ``dns`` and ``ipv6.name_servers`` subtrees.
+    """
+    data = extract_data(raw)
+    if not isinstance(data, dict):
+        return {"dns": {}, "ipv6": {"name_servers": {}}}
+
+    return {
+        "dns": data.get("dns") or {},
+        "ipv6": {"name_servers": safe_get(data, "ipv6", "name_servers", default={}) or {}},
+    }
+
+
+def _dns_panel(view: Dict[str, Any]) -> Panel:
+    """Build the table-output panel from a scoped DNS view.
+
+    Absent fields render as ``unknown`` rather than a plausible default. Showing
+    "auto" for a field that was never read is what let the original bug survive.
+    """
+    dns: Dict[str, Any] = view.get("dns") or {}
+    name_servers: Dict[str, Any] = safe_get(view, "ipv6", "name_servers", default={}) or {}
+
+    caching = dns.get("caching")
+    custom_ips: List[Any] = safe_get(dns, "custom", "ips", default=[]) or []
+    parent_ips: List[Any] = safe_get(dns, "parent", "ips", default=[]) or []
+    ipv6_ips: List[Any] = name_servers.get("custom") or []
+
+    lines = [f"[bold]DNS Mode:[/bold] {dns.get('mode') or '[dim]unknown[/dim]'}"]
+
+    if caching is None:
+        lines.append("[bold]DNS Caching:[/bold] [dim]unknown[/dim]")
+    else:
+        state = "[green]Enabled[/green]" if caching else "[dim]Disabled[/dim]"
+        lines.append(f"[bold]DNS Caching:[/bold] {state}")
+
+    if custom_ips:
+        lines.append(
+            f"[bold]Custom DNS (IPv4):[/bold] {', '.join(_format_ip(ip) for ip in custom_ips)}"
+        )
+
+    lines.append(f"[bold]IPv6 DNS Mode:[/bold] {name_servers.get('mode') or '[dim]unknown[/dim]'}")
+
+    if ipv6_ips:
+        lines.append(
+            f"[bold]Custom DNS (IPv6):[/bold] {', '.join(_format_ip(ip) for ip in ipv6_ips)}"
+        )
+
+    if parent_ips:
+        lines.append(f"[bold]ISP-assigned:[/bold] {', '.join(_format_ip(ip) for ip in parent_ips)}")
+
+    return Panel("\n".join(lines), title="DNS Settings", border_style="blue")
 
 
 @click.group(name="dns")
@@ -40,10 +130,12 @@ def dns_group(ctx: click.Context) -> None:
 
 
 @dns_group.command(name="show")
+@output_option
+@network_option
 @click.pass_context
-def dns_show(ctx: click.Context) -> None:
+def dns_show(ctx: click.Context, output: Optional[str], network_id: Optional[str]) -> None:
     """Show current DNS settings."""
-    cli_ctx = get_cli_context(ctx)
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 
@@ -52,23 +144,14 @@ def dns_show(ctx: click.Context) -> None:
             with cli_ctx.status("Getting DNS settings..."):
                 dns_data = await client.get_dns_settings(cli_ctx.network_id)
 
-            if cli_ctx.is_json_output():
-                renderer.render_json(dns_data, "eero.network.dns.show/v1")
+            view = _dns_view(dns_data)
+
+            if cli_ctx.is_structured_output():
+                cli_ctx.render_structured(view, DNS_SHOW_SCHEMA)
             elif cli_ctx.is_list_output():
-                renderer.render_text(dns_data, "eero.network.dns.show/v1")
+                renderer.render_text(view, DNS_SHOW_SCHEMA)
             else:
-                caching = dns_data.get("dns_caching", False)
-                mode = dns_data.get("dns_mode", "auto")
-                custom_dns = dns_data.get("custom_dns", [])
-
-                content = (
-                    f"[bold]DNS Mode:[/bold] {mode}\n"
-                    f"[bold]DNS Caching:[/bold] {'[green]Enabled[/green]' if caching else '[dim]Disabled[/dim]'}"
-                )
-                if custom_dns:
-                    content += f"\n[bold]Custom DNS:[/bold] {', '.join(custom_dns)}"
-
-                console.print(Panel(content, title="DNS Settings", border_style="blue"))
+                console.print(_dns_panel(view))
 
         await run_with_client(get_dns)
 
