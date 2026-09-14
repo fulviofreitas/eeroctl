@@ -30,6 +30,97 @@ network object, which includes the Wi-Fi and guest passwords in plaintext.
 """
 
 
+DNS_CONFIRMATION_PHRASE = "REBOOT"
+"""Phrase the user must type to approve a DNS write.
+
+Names the consequence rather than the command. Passed explicitly so every DNS
+subcommand asks for the same word; the auto-derived default would produce
+CHANGEDNSMODE, ENABLEDNSCACHING and so on.
+"""
+
+REBOOT_WARNING = (
+    "Applying a DNS change reboots every eero on the network. All clients lose "
+    "Wi-Fi and internet while the mesh restarts. The outage begins a few minutes "
+    "after this command returns, not immediately."
+)
+"""Warning emitted on every DNS write path, including --force.
+
+Observed 2026-09-12: two DNS writes were followed ~5 minutes later by all four
+nodes rebooting within a 17-second window. The SDK logs an equivalent warning,
+but eeroctl does not route the eero.api.dns logger through Rich, so that is not
+reliably visible to a user.
+"""
+
+
+def _write_succeeded(result: Any) -> bool:
+    """Check an API write response for success.
+
+    Validates ``meta.code`` rather than truthiness. eero-api 6.x fabricated a
+    ``{"meta": {"code": 400}}`` response for an invalid mode without contacting
+    the API; that dict is truthy, so ``if result:`` reported success for a write
+    the SDK had already rejected.
+
+    A missing or unrecognised ``meta.code`` is treated as failure. Assuming
+    success from an unfamiliar shape is the failure mode this replaces.
+
+    Args:
+        result: Raw ``{"meta": ..., "data": ...}`` response from a write call.
+
+    Returns:
+        True when ``meta.code`` is a 2xx status.
+    """
+    if not isinstance(result, dict):
+        return False
+
+    meta = result.get("meta")
+    if not isinstance(meta, dict):
+        return False
+
+    code = meta.get("code")
+    return isinstance(code, int) and 200 <= code < 300
+
+
+def _confirm_dns_write(
+    cli_ctx: EeroCliContext,
+    action: str,
+    target: str,
+    force: bool,
+) -> bool:
+    """Warn about the reboot, then require typed confirmation for a DNS write.
+
+    The warning is unconditional. ``--force`` correctly skips the prompt, but a
+    scripted caller should still be told a reboot was triggered.
+
+    Args:
+        cli_ctx: CLI context carrying the safety flags.
+        action: Description of the action, e.g. "change DNS mode".
+        target: Target of the action, e.g. "to custom".
+        force: Per-command --force value.
+
+    Returns:
+        True if the caller should proceed with the write.
+
+    Raises:
+        SystemExit: With ExitCode.SAFETY_RAIL when confirmation fails or is
+            required but unavailable.
+    """
+    cli_ctx.renderer.render_warning(REBOOT_WARNING)
+
+    try:
+        return confirm_or_fail(
+            action=action,
+            target=target,
+            risk=OperationRisk.HIGH,
+            confirmation_phrase=DNS_CONFIRMATION_PHRASE,
+            force=force or cli_ctx.force,
+            non_interactive=cli_ctx.non_interactive,
+            dry_run=cli_ctx.dry_run,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+
 def _format_ip(value: Any) -> str:
     """Render an IP address in its canonical compact form.
 
@@ -193,18 +284,8 @@ def dns_mode_set(ctx: click.Context, mode: str, servers: tuple, force: bool) -> 
         console.print("[red]Error: --servers required for custom mode[/red]")
         sys.exit(ExitCode.USAGE_ERROR)
 
-    try:
-        confirm_or_fail(
-            action="change DNS mode",
-            target=f"to {mode}",
-            risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
-        )
-    except SafetyError as e:
-        cli_ctx.renderer.render_error(e.message)
-        sys.exit(e.exit_code)
+    if not _confirm_dns_write(cli_ctx, "change DNS mode", f"to {mode}", force):
+        return
 
     async def run_cmd() -> None:
         async def set_mode(client: EeroClient) -> None:
@@ -212,7 +293,7 @@ def dns_mode_set(ctx: click.Context, mode: str, servers: tuple, force: bool) -> 
             with cli_ctx.status(f"Setting DNS mode to {mode}..."):
                 result = await client.set_dns_mode(mode, custom_servers, cli_ctx.network_id)
 
-            if result:
+            if _write_succeeded(result):
                 console.print(f"[bold green]DNS mode set to {mode}[/bold green]")
             else:
                 console.print("[red]Failed to set DNS mode[/red]")
@@ -253,25 +334,15 @@ def _set_dns_caching(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
     console = cli_ctx.console
     action = "enable" if enable else "disable"
 
-    try:
-        confirm_or_fail(
-            action=f"{action} DNS caching",
-            target="network",
-            risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
-        )
-    except SafetyError as e:
-        cli_ctx.renderer.render_error(e.message)
-        sys.exit(e.exit_code)
+    if not _confirm_dns_write(cli_ctx, f"{action} DNS caching", "on this network", force):
+        return
 
     async def run_cmd() -> None:
         async def set_caching(client: EeroClient) -> None:
             with cli_ctx.status(f"{action.capitalize()}ing DNS caching..."):
                 result = await client.set_dns_caching(enable, cli_ctx.network_id)
 
-            if result:
+            if _write_succeeded(result):
                 console.print(f"[bold green]DNS caching {action}d[/bold green]")
             else:
                 console.print(f"[red]Failed to {action} DNS caching[/red]")

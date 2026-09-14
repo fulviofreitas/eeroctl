@@ -237,11 +237,13 @@ OPERATION_RISKS = {
     "change_wifi_password": OperationRisk.HIGH,
     "change_wifi_ssid": OperationRisk.HIGH,
     "factory_reset": OperationRisk.HIGH,
+    # A DNS write reboots every eero on the network - same blast radius as
+    # reboot_network, so it carries the same risk level.
+    "dns_change": OperationRisk.HIGH,
     # MEDIUM risk - Y/N confirmation
     "reboot_eero": OperationRisk.MEDIUM,
     "guest_enable": OperationRisk.MEDIUM,
     "guest_disable": OperationRisk.MEDIUM,
-    "dns_change": OperationRisk.MEDIUM,
     "security_change": OperationRisk.MEDIUM,
     "sqm_change": OperationRisk.MEDIUM,
     "block_device": OperationRisk.MEDIUM,
