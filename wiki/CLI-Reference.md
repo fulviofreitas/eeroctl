@@ -22,10 +22,12 @@ eero
 │   ├── show         # Show network details
 │   ├── rename       # Rename network (SSID)
 │   ├── premium      # Check Eero Plus status
-│   ├── dns          # DNS settings
+│   ├── dns          # DNS settings (every write reboots the network)
 │   │   ├── show
-│   │   ├── mode <auto|cloudflare|google|opendns|custom>
-│   │   └── caching <enable|disable>
+│   │   ├── providers                        # List the network's DNS catalogue
+│   │   ├── mode set <auto|custom|PROVIDER>  # PROVIDER from `dns providers`
+│   │   ├── caching <enable|disable>
+│   │   └── clear [--family ipv4|ipv6]       # Back to automatic, servers kept
 │   ├── security     # Security settings
 │   │   ├── show
 │   │   ├── wpa3 <enable|disable>

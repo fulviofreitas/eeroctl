@@ -297,20 +297,33 @@ class TestNetworkDNS:
         assert "Show current DNS settings" in result.output
 
     def test_dns_mode_set_help(self, runner):
-        """Test dns mode set shows help."""
+        """Help states the contract rather than enumerating providers.
+
+        Provider names come from the network's catalogue, not a fixed list, so
+        --help must stay correct offline and point at 'dns providers'.
+        """
         result = runner.invoke(cli, ["network", "dns", "mode", "set", "--help"])
 
         assert result.exit_code == 0
         assert "auto" in result.output
-        assert "cloudflare" in result.output
-        assert "google" in result.output
+        assert "custom" in result.output
+        assert "dns providers" in result.output
+        assert "reboots every eero" in result.output
 
-    def test_dns_mode_set_custom_requires_servers(self, runner):
-        """Test dns mode set custom requires --servers."""
-        result = runner.invoke(cli, ["--force", "network", "dns", "mode", "set", "custom"])
+    def test_dns_providers_help(self, runner):
+        """Test dns providers shows help."""
+        result = runner.invoke(cli, ["network", "dns", "providers", "--help"])
 
-        assert result.exit_code != 0
-        assert "servers" in result.output.lower()
+        assert result.exit_code == 0
+        assert "DNS providers" in result.output
+
+    def test_dns_clear_help(self, runner):
+        """dns clear documents that it is non-destructive."""
+        result = runner.invoke(cli, ["network", "dns", "clear", "--help"])
+
+        assert result.exit_code == 0
+        assert "--family" in result.output
+        assert "retains" in result.output
 
     def test_dns_caching_enable_help(self, runner):
         """Test dns caching enable shows help."""
@@ -325,6 +338,202 @@ class TestNetworkDNS:
 
         assert result.exit_code == 0
         assert "Disable DNS caching" in result.output
+
+
+# ---------------------------------------------------------------------------
+# TestDNSShow
+# ---------------------------------------------------------------------------
+
+
+_SENSITIVE_NETWORK_FIELDS = {
+    "password": "br@stemp",
+    "wan_ip": "162.206.74.252",
+    "geo_ip": {"city": "Brentwood", "postalCode": "94513"},
+    "guest_network": {"name": "Guest", "password": "california19", "enabled": False},
+    "eeros": {
+        "count": 1,
+        "data": [{"serial": "GGB21E0A402700SM", "mac_address": "24:2d:6c:76:ac:c0"}],
+    },
+}
+"""Fields the network endpoint returns that ``dns show`` must never emit.
+
+Values mirror the shape of a real ``GET networks/{id}`` response.
+"""
+
+
+def _dns_response(**overrides):
+    """Build a realistic ``get_dns_settings`` envelope.
+
+    Includes the sensitive network fields by default, because the real endpoint
+    does and the scoping tests need something to fail against.
+    """
+    data = {
+        **_SENSITIVE_NETWORK_FIELDS,
+        "dns": {
+            "mode": "custom",
+            "parent": {"ips": ["192.168.1.254"]},
+            "custom": {"ips": ["1.1.1.1", "1.0.0.1"]},
+            "caching": False,
+            "default_test_servers": [
+                {
+                    "name": "Cloudflare",
+                    "ipv4": ["1.1.1.1", "1.0.0.1"],
+                    "ipv6": ["2606:4700:4700::1111", "2606:4700:4700::1001"],
+                },
+            ],
+        },
+        "ipv6": {
+            "name_servers": {
+                "mode": "custom",
+                # The API stores IPv6 fully expanded.
+                "custom": ["2606:4700:4700:0:0:0:0:1111", "2606:4700:4700:0:0:0:0:1001"],
+            }
+        },
+    }
+    data.update(overrides)
+    return {"meta": {"code": 200, "server_time": "2026-09-14T04:54:38.854Z"}, "data": data}
+
+
+class TestDNSShow:
+    """Tests for ``eero network dns show`` field reads and output scoping."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    def _invoke(self, runner, response, *args):
+        """Run ``dns show`` against a mocked client returning *response*."""
+        client = MagicMock()
+        client.get_dns_settings = AsyncMock(return_value=response)
+
+        async def _run(func):
+            await func(client)
+
+        with patch("eeroctl.commands.network.dns.run_with_client", side_effect=_run):
+            return runner.invoke(cli, ["--network-id", "NID", "network", "dns", "show", *args])
+
+    # -- field reads --------------------------------------------------------
+
+    def test_show_reads_mode_from_data_envelope(self, runner):
+        """Mode comes from data.dns.mode, not a top-level key."""
+        result = self._invoke(runner, _dns_response())
+
+        assert result.exit_code == 0
+        assert "custom" in result.output
+
+    def test_show_renders_ipv4_custom_servers(self, runner):
+        """Custom IPv4 servers come from data.dns.custom.ips."""
+        result = self._invoke(runner, _dns_response())
+
+        assert "1.1.1.1" in result.output
+        assert "1.0.0.1" in result.output
+
+    def test_show_renders_ipv6_custom_servers_compacted(self, runner):
+        """IPv6 servers are stored expanded and rendered compact."""
+        result = self._invoke(runner, _dns_response())
+
+        assert "2606:4700:4700::1111" in result.output
+        assert "2606:4700:4700:0:0:0:0:1111" not in result.output
+
+    def test_show_renders_caching_disabled(self, runner):
+        """Caching false renders as Disabled, read from data.dns.caching."""
+        result = self._invoke(runner, _dns_response())
+
+        assert "Disabled" in result.output
+
+    def test_show_renders_caching_enabled(self, runner):
+        """Caching true renders as Enabled."""
+        response = _dns_response()
+        response["data"]["dns"]["caching"] = True
+
+        result = self._invoke(runner, response)
+
+        assert "Enabled" in result.output
+
+    def test_show_renders_isp_assigned_servers(self, runner):
+        """Parent (ISP-assigned) servers are surfaced."""
+        result = self._invoke(runner, _dns_response())
+
+        assert "192.168.1.254" in result.output
+
+    def test_show_automatic_mode_omits_custom_line(self, runner):
+        """Automatic mode with no custom servers never prints a Custom DNS line."""
+        response = _dns_response()
+        response["data"]["dns"] = {"mode": "automatic", "caching": True, "parent": {"ips": []}}
+        response["data"]["ipv6"] = {"name_servers": {"mode": "automatic"}}
+
+        result = self._invoke(runner, response)
+
+        assert result.exit_code == 0
+        assert "automatic" in result.output
+        assert "Custom DNS" not in result.output
+
+    def test_show_missing_dns_key_renders_unknown_not_auto(self, runner):
+        """An absent dns key must not be reported as a real 'auto' reading."""
+        response = _dns_response()
+        del response["data"]["dns"]
+        del response["data"]["ipv6"]
+
+        result = self._invoke(runner, response)
+
+        assert result.exit_code == 0
+        assert "unknown" in result.output
+        assert "auto" not in result.output
+
+    # -- output scoping (security) -----------------------------------------
+
+    @pytest.mark.parametrize("fmt", ["json", "yaml", "text", "list"])
+    def test_structured_output_excludes_credentials(self, runner, fmt):
+        """Structured output must not carry passwords or network inventory.
+
+        Asserts on the serialised string so nested occurrences are caught.
+        """
+        result = self._invoke(runner, _dns_response(), "--output", fmt)
+
+        assert result.exit_code == 0
+        for secret in ("br@stemp", "california19", "162.206.74.252", "Brentwood", "94513"):
+            assert secret not in result.output
+        for key in ("password", "wan_ip", "geo_ip", "guest_network", "serial"):
+            assert key not in result.output
+
+    @pytest.mark.parametrize("fmt", ["json", "yaml", "text", "list"])
+    def test_structured_output_includes_dns_subtree(self, runner, fmt):
+        """Scoping keeps the fields the command is actually about.
+
+        Key casing differs by renderer (text/list title-case), so match
+        case-insensitively.
+        """
+        result = self._invoke(runner, _dns_response(), "--output", fmt)
+
+        assert result.exit_code == 0
+        assert "1.1.1.1" in result.output
+        assert "caching" in result.output.lower()
+
+    def test_json_output_is_scoped_and_versioned(self, runner):
+        """JSON payload carries only dns/ipv6 and the v2 schema id."""
+        result = self._invoke(runner, _dns_response(), "--output", "json")
+
+        payload = json.loads(result.output)
+
+        assert payload["schema"] == "eero.network.dns.show/v2"
+        assert set(payload["data"]) == {"dns", "ipv6"}
+        assert set(payload["data"]["ipv6"]) == {"name_servers"}
+        assert payload["data"]["dns"]["mode"] == "custom"
+
+    def test_yaml_output_is_not_the_table_panel(self, runner):
+        """YAML previously fell through to the Rich panel."""
+        result = self._invoke(runner, _dns_response(), "--output", "yaml")
+
+        assert result.exit_code == 0
+        assert "DNS Settings" not in result.output
+
+    def test_text_output_is_not_the_table_panel(self, runner):
+        """Text previously fell through to the Rich panel."""
+        result = self._invoke(runner, _dns_response(), "--output", "text")
+
+        assert result.exit_code == 0
+        assert "DNS Settings" not in result.output
 
 
 class TestNetworkSecurity:

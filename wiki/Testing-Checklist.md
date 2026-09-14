@@ -38,6 +38,17 @@ Manual verification scenarios before releasing.
 - [ ] `eero --help` — Clean help output
 - [ ] `eero network --help` — Subcommand help
 - [ ] `eero network dns --help` — Nested subcommand help
+- [ ] `eero network dns mode set --help` — Names no fixed provider list; points at `dns providers`
+
+### DNS (destructive — every write reboots the network)
+
+- [ ] `eero network dns show` — Real mode/servers/caching, not defaults
+- [ ] `eero network dns show --output json` — DNS subtree only; no password, wan_ip or eeros
+- [ ] `eero network dns providers` — Lists the network's catalogue
+- [ ] `eero network dns mode set <provider>` — Prompts for `REBOOT`
+- [ ] `eero network dns mode set <provider>` twice — Second run exits 0, "already configured", no write
+- [ ] `eero network dns mode set custom -s 1.1.1.1 -s 1.0.0.1 -s 8.8.8.8` — Exits 2 before prompting
+- [ ] `eero --non-interactive network dns clear` — Exits 8, never hangs
 
 ### Legacy Compatibility
 
