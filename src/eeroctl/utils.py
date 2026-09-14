@@ -10,7 +10,7 @@ from typing import Awaitable, Callable, Optional, TypeVar
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroAuthenticationException
+from eero.exceptions import EeroAuthenticationException, EeroException
 from rich.console import Console
 
 # Create console for rich output
@@ -296,8 +296,16 @@ async def run_with_client(func):
 
     Respects the use_keyring preference saved during login.
 
+    Any SDK exception that escapes *func* is translated to a user-facing message
+    and the exit code that :func:`~eeroctl.errors.handle_cli_error` maps it to.
+    Commands with their own handling are unaffected: their handlers run first,
+    and only what they re-raise reaches this one.
+
     Args:
         func: Async function that takes an EeroClient as argument
+
+    Raises:
+        SystemExit: With the mapped exit code when an SDK exception escapes.
     """
     cookie_file = get_cookie_file()
     use_keyring = get_use_keyring()
@@ -312,6 +320,13 @@ async def run_with_client(func):
         console.print("[bold red]Not authenticated[/bold red]")
         console.print("Please login first: [bold]eero auth login[/bold]")
         raise SystemExit(1)
+    except EeroException as e:
+        # Deliberately not `except Exception`: a bare catch would swallow the
+        # SystemExit that commands raise via sys.exit() inside the coroutine,
+        # and would mask genuine bugs as tidy CLI errors.
+        from .errors import handle_cli_error
+
+        raise SystemExit(handle_cli_error(e, console))
 
 
 def confirm_action(message: str) -> bool:

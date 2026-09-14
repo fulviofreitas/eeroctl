@@ -13,7 +13,16 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from eero.exceptions import (
+    EeroAPIException,
+    EeroAuthenticationException,
+    EeroException,
+    EeroNotFoundException,
+    EeroPremiumRequiredException,
+    EeroValidationException,
+)
 
+from eeroctl.exit_codes import ExitCode
 from eeroctl.utils import (
     DEFAULT_CONFIG,
     confirm_action,
@@ -292,6 +301,119 @@ class TestRunWithClient:
         import asyncio
 
         assert asyncio.iscoroutinefunction(run_with_client)
+
+
+class TestRunWithClientErrorMapping:
+    """Tests that SDK exceptions escaping a command map to exit codes.
+
+    ``run_with_client`` is the single boundary every command routes through, so
+    this mapping applies repo-wide, not just to DNS.
+    """
+
+    @staticmethod
+    def _client():
+        """Build a mock EeroClient usable as an async context manager."""
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        # Must return falsy: a truthy __aexit__ suppresses the exception under test.
+        client.__aexit__ = AsyncMock(return_value=False)
+        return client
+
+    async def _run_raising(self, tmp_path, monkeypatch, exc):
+        """Run ``run_with_client`` with a coroutine that raises *exc*."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        async def my_func(client):
+            raise exc
+
+        with patch("eeroctl.utils.EeroClient", return_value=self._client()):
+            with pytest.raises(SystemExit) as excinfo:
+                await run_with_client(my_func)
+        return excinfo.value.code
+
+    @pytest.mark.asyncio
+    async def test_validation_exception_maps_to_usage_error(self, tmp_path, monkeypatch):
+        """EeroValidationException exits 2, not an unhandled traceback."""
+        exc = EeroValidationException("dns_servers", "at most 2 IPv4 servers are supported")
+
+        code = await self._run_raising(tmp_path, monkeypatch, exc)
+
+        assert code == ExitCode.USAGE_ERROR
+
+    @pytest.mark.asyncio
+    async def test_api_403_maps_to_forbidden(self, tmp_path, monkeypatch):
+        """A 403 from the API exits 4."""
+        code = await self._run_raising(tmp_path, monkeypatch, EeroAPIException(403, "nope"))
+
+        assert code == ExitCode.FORBIDDEN
+
+    @pytest.mark.asyncio
+    async def test_not_found_maps_to_not_found(self, tmp_path, monkeypatch):
+        """A not-found exits 5."""
+        exc = EeroNotFoundException("Network", "NID")
+
+        code = await self._run_raising(tmp_path, monkeypatch, exc)
+
+        assert code == ExitCode.NOT_FOUND
+
+    @pytest.mark.asyncio
+    async def test_premium_required_maps_to_premium(self, tmp_path, monkeypatch):
+        """A premium-required exits 11."""
+        exc = EeroPremiumRequiredException("Activity data")
+
+        code = await self._run_raising(tmp_path, monkeypatch, exc)
+
+        assert code == ExitCode.PREMIUM_REQUIRED
+
+    @pytest.mark.asyncio
+    async def test_generic_eero_exception_maps_to_generic_error(self, tmp_path, monkeypatch):
+        """A bare EeroException exits 1."""
+        code = await self._run_raising(tmp_path, monkeypatch, EeroException("boom"))
+
+        assert code == ExitCode.GENERIC_ERROR
+
+    @pytest.mark.asyncio
+    async def test_auth_exception_keeps_its_bespoke_message(self, tmp_path, monkeypatch):
+        """Authentication keeps exit 1 and the existing login hint.
+
+        Guards against the new handler swallowing the more specific one.
+        """
+        exc = EeroAuthenticationException("expired")
+
+        code = await self._run_raising(tmp_path, monkeypatch, exc)
+
+        assert code == 1
+
+    @pytest.mark.asyncio
+    async def test_sys_exit_from_command_still_propagates(self, tmp_path, monkeypatch):
+        """sys.exit() inside the coroutine must not be swallowed.
+
+        This is why the handler catches EeroException rather than Exception:
+        SystemExit derives from BaseException, and a bare catch would turn every
+        deliberate exit code into a generic error.
+        """
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        async def my_func(client):
+            raise SystemExit(ExitCode.SAFETY_RAIL)
+
+        with patch("eeroctl.utils.EeroClient", return_value=self._client()):
+            with pytest.raises(SystemExit) as excinfo:
+                await run_with_client(my_func)
+
+        assert excinfo.value.code == ExitCode.SAFETY_RAIL
+
+    @pytest.mark.asyncio
+    async def test_non_sdk_exception_is_not_swallowed(self, tmp_path, monkeypatch):
+        """A genuine bug surfaces as itself, not as a tidy CLI error."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        async def my_func(client):
+            raise KeyError("a real bug")
+
+        with patch("eeroctl.utils.EeroClient", return_value=self._client()):
+            with pytest.raises(KeyError):
+                await run_with_client(my_func)
 
 
 # ========================== confirm_action Tests ==========================
