@@ -23,6 +23,34 @@ from eeroctl.main import cli
 _OK_RESPONSE = {"meta": {"code": 200, "error": None}, "data": {}}
 _ERR_RESPONSE = {"meta": {"code": 500, "error": "boom"}, "data": {}}
 
+# DNS writes read current state first, so DNS mocks need get_dns_settings.
+# This state is automatic with no custom servers, so any set is a real change.
+_DNS_STATE = {
+    "meta": {"code": 200},
+    "data": {
+        "dns": {
+            "mode": "automatic",
+            "parent": {"ips": ["192.168.1.254"]},
+            "custom": {"ips": []},
+            "caching": False,
+            "default_test_servers": [
+                {
+                    "name": "Cloudflare",
+                    "ipv4": ["1.1.1.1", "1.0.0.1"],
+                    "ipv6": ["2606:4700:4700::1111", "2606:4700:4700::1001"],
+                },
+                {
+                    "name": "Google",
+                    "ipv4": ["8.8.8.8", "8.8.4.4"],
+                    "ipv6": ["2001:4860:4860::8888", "2001:4860:4860::8844"],
+                },
+                {"name": "Quad9", "ipv4": ["9.9.9.9", "149.112.112.112"], "ipv6": ["2620:fe::fe"]},
+            ],
+        },
+        "ipv6": {"name_servers": {"mode": "automatic", "custom": []}},
+    },
+}
+
 NID = "NID"
 
 
@@ -143,7 +171,15 @@ class TestDNS:
     @pytest.fixture
     def mock_client(self) -> MagicMock:
         """Mock EeroClient with DNS methods returning OK responses."""
-        return _make_mock_client(set_dns_caching=_OK_RESPONSE, set_dns_mode=_OK_RESPONSE)
+        return _make_mock_client(
+            get_dns_settings=_DNS_STATE,
+            set_dns_caching=_OK_RESPONSE,
+            set_dns_mode=_OK_RESPONSE,
+            set_custom_dns=_OK_RESPONSE,
+            set_custom_dns_ipv4=_OK_RESPONSE,
+            set_custom_dns_ipv6=_OK_RESPONSE,
+            clear_custom_dns=_OK_RESPONSE,
+        )
 
     def test_dns_caching_enable_calls_set_dns_caching(
         self, runner: CliRunner, mock_client: MagicMock
@@ -161,8 +197,15 @@ class TestDNS:
         mock_client.set_dns_caching.assert_called_once_with(True, NID)
         assert result.exit_code == 0
 
-    def test_dns_mode_set_calls_set_dns_mode(self, runner: CliRunner, mock_client: MagicMock):
-        """dns mode set google passes (mode, servers, network_id) to set_dns_mode."""
+    def test_dns_mode_set_resolves_provider_from_catalogue(
+        self, runner: CliRunner, mock_client: MagicMock
+    ):
+        """A provider name resolves CLI-side to its catalogue addresses.
+
+        eero-api 7.0.0 removed the named presets from set_dns_mode, so eeroctl
+        resolves them against data.dns.default_test_servers and writes the
+        addresses. Providers default to IPv4 only.
+        """
         with patch(
             "eeroctl.commands.network.dns.run_with_client",
             side_effect=_make_run_with_client(mock_client),
@@ -172,9 +215,9 @@ class TestDNS:
                 ["--network-id", NID, "network", "dns", "mode", "set", "google", "--force"],
             )
 
-        # servers=None because no --servers flag was provided for a non-custom mode
-        mock_client.set_dns_mode.assert_called_once_with("google", None, NID)
         assert result.exit_code == 0
+        mock_client.set_custom_dns_ipv4.assert_called_once_with(["8.8.8.8", "8.8.4.4"], NID)
+        mock_client.set_dns_mode.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +240,15 @@ class TestDNSWriteSafetyRails:
     @pytest.fixture
     def mock_client(self) -> MagicMock:
         """Mock EeroClient with DNS write methods returning 200 responses."""
-        return _make_mock_client(set_dns_caching=_OK_RESPONSE, set_dns_mode=_OK_RESPONSE)
+        return _make_mock_client(
+            get_dns_settings=_DNS_STATE,
+            set_dns_caching=_OK_RESPONSE,
+            set_dns_mode=_OK_RESPONSE,
+            set_custom_dns=_OK_RESPONSE,
+            set_custom_dns_ipv4=_OK_RESPONSE,
+            set_custom_dns_ipv6=_OK_RESPONSE,
+            clear_custom_dns=_OK_RESPONSE,
+        )
 
     def _invoke(self, runner, mock_client, args, **kwargs):
         """Run a DNS command against the mocked client."""
@@ -328,6 +379,424 @@ class TestDNSWriteSafetyRails:
         result = self._invoke(runner, client, ["network", "dns", "caching", "enable", "--force"])
 
         assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# TestDNSPresetResolution
+# ---------------------------------------------------------------------------
+
+
+class TestDNSPresetResolution:
+    """Provider names resolve against the network's own catalogue.
+
+    eero-api 7.0.0 removed named presets from set_dns_mode, so eeroctl resolves
+    them from data.dns.default_test_servers instead of a hardcoded list.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_client(self) -> MagicMock:
+        """Mock EeroClient serving the provider catalogue."""
+        return _make_mock_client(
+            get_dns_settings=_DNS_STATE,
+            set_dns_mode=_OK_RESPONSE,
+            set_custom_dns=_OK_RESPONSE,
+            set_custom_dns_ipv4=_OK_RESPONSE,
+            set_custom_dns_ipv6=_OK_RESPONSE,
+            clear_custom_dns=_OK_RESPONSE,
+        )
+
+    def _invoke(self, runner, client, args):
+        """Run a DNS command against the mocked client."""
+        with patch(
+            "eeroctl.commands.network.dns.run_with_client",
+            side_effect=_make_run_with_client(client),
+        ):
+            return runner.invoke(cli, ["--network-id", NID, *args])
+
+    @pytest.mark.parametrize("name", ["google", "Google", "GOOGLE"])
+    def test_provider_match_is_case_insensitive(self, runner, mock_client, name):
+        """The API serves Title-Case names; users type lowercase."""
+        result = self._invoke(
+            runner, mock_client, ["network", "dns", "mode", "set", name, "--force"]
+        )
+
+        assert result.exit_code == 0
+        mock_client.set_custom_dns_ipv4.assert_called_once_with(["8.8.8.8", "8.8.4.4"], NID)
+
+    def test_quad9_resolves_without_being_enumerated(self, runner, mock_client):
+        """A provider eeroctl hardcodes nowhere still works.
+
+        This is the point of resolving from the catalogue.
+        """
+        result = self._invoke(
+            runner, mock_client, ["network", "dns", "mode", "set", "quad9", "--force"]
+        )
+
+        assert result.exit_code == 0
+        mock_client.set_custom_dns_ipv4.assert_called_once_with(["9.9.9.9", "149.112.112.112"], NID)
+
+    def test_provider_family_both_writes_ipv6_too(self, runner, mock_client):
+        """--family both opts into the IPv6 half of the catalogue entry."""
+        result = self._invoke(
+            runner,
+            mock_client,
+            ["network", "dns", "mode", "set", "google", "--family", "both", "--force"],
+        )
+
+        assert result.exit_code == 0
+        mock_client.set_custom_dns.assert_called_once_with(
+            ["8.8.8.8", "8.8.4.4", "2001:4860:4860::8888", "2001:4860:4860::8844"], NID
+        )
+
+    def test_unknown_provider_lists_available_names(self, runner, mock_client):
+        """A typo exits 2 and names what the catalogue actually served."""
+        result = self._invoke(
+            runner, mock_client, ["network", "dns", "mode", "set", "cloudfare", "--force"]
+        )
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        assert "Cloudflare" in result.output
+        assert "Quad9" in result.output
+        mock_client.set_custom_dns_ipv4.assert_not_called()
+
+    def test_missing_catalogue_falls_back_for_known_providers(self, runner):
+        """Without a catalogue, the three SDK-legacy providers still work."""
+        state = {"meta": {"code": 200}, "data": {"dns": {"mode": "automatic"}, "ipv6": {}}}
+        client = _make_mock_client(get_dns_settings=state, set_custom_dns_ipv4=_OK_RESPONSE)
+
+        result = self._invoke(
+            runner, client, ["network", "dns", "mode", "set", "cloudflare", "--force"]
+        )
+
+        assert result.exit_code == 0
+        client.set_custom_dns_ipv4.assert_called_once_with(["1.1.1.1", "1.0.0.1"], NID)
+
+    def test_missing_catalogue_fails_for_unknown_provider(self, runner):
+        """quad9 has no built-in fallback, so it fails rather than being invented."""
+        state = {"meta": {"code": 200}, "data": {"dns": {"mode": "automatic"}, "ipv6": {}}}
+        client = _make_mock_client(get_dns_settings=state, set_custom_dns_ipv4=_OK_RESPONSE)
+
+        result = self._invoke(runner, client, ["network", "dns", "mode", "set", "quad9", "--force"])
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        client.set_custom_dns_ipv4.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestDNSServerValidation
+# ---------------------------------------------------------------------------
+
+
+class TestDNSServerValidation:
+    """--servers is validated before the confirmation prompt.
+
+    Validation running first matters: a user must never be asked to approve a
+    network reboot for input that will be rejected anyway.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_client(self) -> MagicMock:
+        """Mock EeroClient for validation tests."""
+        return _make_mock_client(
+            get_dns_settings=_DNS_STATE,
+            set_custom_dns=_OK_RESPONSE,
+            set_custom_dns_ipv4=_OK_RESPONSE,
+            set_custom_dns_ipv6=_OK_RESPONSE,
+        )
+
+    def _invoke(self, runner, client, args, **kwargs):
+        """Run a DNS command against the mocked client."""
+        with patch(
+            "eeroctl.commands.network.dns.run_with_client",
+            side_effect=_make_run_with_client(client),
+        ):
+            return runner.invoke(cli, ["--network-id", NID, *args], **kwargs)
+
+    def test_three_ipv4_servers_rejected_before_prompt(self, runner, mock_client):
+        """Over-limit input exits 2 without ever prompting."""
+        result = self._invoke(
+            runner,
+            mock_client,
+            [
+                "network",
+                "dns",
+                "mode",
+                "set",
+                "custom",
+                "-s",
+                "1.1.1.1",
+                "-s",
+                "1.0.0.1",
+                "-s",
+                "8.8.8.8",
+            ],
+            input="REBOOT\n",
+        )
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        assert "at most 2 IPv4" in result.output
+        assert "REBOOT" not in result.output
+        mock_client.set_custom_dns.assert_not_called()
+
+    def test_two_per_family_is_accepted(self, runner, mock_client):
+        """The cap is per family, so 2 IPv4 plus 2 IPv6 is fine."""
+        result = self._invoke(
+            runner,
+            mock_client,
+            [
+                "network",
+                "dns",
+                "mode",
+                "set",
+                "custom",
+                "--force",
+                "-s",
+                "1.1.1.1",
+                "-s",
+                "1.0.0.1",
+                "-s",
+                "2606:4700:4700::1111",
+                "-s",
+                "2606:4700:4700::1001",
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_client.set_custom_dns.assert_called_once()
+
+    def test_malformed_literal_rejected(self, runner, mock_client):
+        """A non-IP value exits 2."""
+        result = self._invoke(
+            runner,
+            mock_client,
+            ["network", "dns", "mode", "set", "custom", "-s", "not-an-ip"],
+            input="REBOOT\n",
+        )
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        assert "not a valid IP address" in result.output
+
+    def test_zone_identifier_rejected(self, runner, mock_client):
+        """A zone-scoped address is not valid for a DNS server."""
+        result = self._invoke(
+            runner,
+            mock_client,
+            ["network", "dns", "mode", "set", "custom", "-s", "fe80::1%eth0"],
+            input="REBOOT\n",
+        )
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        assert "zone identifier" in result.output
+
+    def test_family_ipv6_routes_to_ipv6_setter(self, runner, mock_client):
+        """--family ipv6 writes only the IPv6 half."""
+        result = self._invoke(
+            runner,
+            mock_client,
+            [
+                "network",
+                "dns",
+                "mode",
+                "set",
+                "custom",
+                "--force",
+                "--family",
+                "ipv6",
+                "-s",
+                "2606:4700:4700::1111",
+            ],
+        )
+
+        assert result.exit_code == 0
+        mock_client.set_custom_dns_ipv6.assert_called_once_with(["2606:4700:4700::1111"], NID)
+
+
+# ---------------------------------------------------------------------------
+# TestDNSNoOpSkip
+# ---------------------------------------------------------------------------
+
+
+_DNS_STATE_CLOUDFLARE = {
+    "meta": {"code": 200},
+    "data": {
+        "dns": {
+            "mode": "custom",
+            "custom": {"ips": ["1.1.1.1", "1.0.0.1"]},
+            "caching": False,
+            "default_test_servers": _DNS_STATE["data"]["dns"]["default_test_servers"],
+        },
+        "ipv6": {
+            "name_servers": {
+                "mode": "custom",
+                # Stored expanded, as the API does.
+                "custom": ["2606:4700:4700:0:0:0:0:1111", "2606:4700:4700:0:0:0:0:1001"],
+            }
+        },
+    },
+}
+
+
+class TestDNSNoOpSkip:
+    """Writes are skipped when the configuration already matches.
+
+    Without this, a scheduled job reboots the mesh on every run.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_client(self) -> MagicMock:
+        """Mock already configured with Cloudflare on both families."""
+        return _make_mock_client(
+            get_dns_settings=_DNS_STATE_CLOUDFLARE,
+            set_custom_dns=_OK_RESPONSE,
+            set_custom_dns_ipv4=_OK_RESPONSE,
+            clear_custom_dns=_OK_RESPONSE,
+        )
+
+    def _invoke(self, runner, client, args, **kwargs):
+        """Run a DNS command against the mocked client."""
+        with patch(
+            "eeroctl.commands.network.dns.run_with_client",
+            side_effect=_make_run_with_client(client),
+        ):
+            return runner.invoke(cli, ["--network-id", NID, *args], **kwargs)
+
+    def test_unchanged_config_skips_write_and_prompt(self, runner, mock_client):
+        """Already-applied config exits 0 with no write and no prompt."""
+        result = self._invoke(runner, mock_client, ["network", "dns", "mode", "set", "cloudflare"])
+
+        assert result.exit_code == 0
+        assert "already configured" in result.output
+        assert "REBOOT" not in result.output
+        mock_client.set_custom_dns_ipv4.assert_not_called()
+
+    def test_force_rewrites_unchanged_config_with_warning(self, runner, mock_client):
+        """--force forces the rewrite and says so.
+
+        Pins the accepted trade-off: --force means both "skip the prompt" and
+        "write anyway", so a scheduled caller has no idempotent path.
+        """
+        result = self._invoke(
+            runner, mock_client, ["network", "dns", "mode", "set", "cloudflare", "--force"]
+        )
+
+        assert result.exit_code == 0
+        assert "rewriting anyway" in result.output
+        mock_client.set_custom_dns_ipv4.assert_called_once()
+
+    def test_ipv6_comparison_ignores_expanded_form(self, runner, mock_client):
+        """Stored IPv6 is expanded, the catalogue is compressed.
+
+        A string comparison would always differ and reboot the mesh every run.
+        """
+        result = self._invoke(
+            runner,
+            mock_client,
+            ["network", "dns", "mode", "set", "cloudflare", "--family", "both"],
+        )
+
+        assert result.exit_code == 0
+        assert "already configured" in result.output
+        mock_client.set_custom_dns.assert_not_called()
+
+    def test_changed_config_proceeds_to_prompt(self, runner, mock_client):
+        """A genuine change still asks for confirmation."""
+        result = self._invoke(
+            runner, mock_client, ["network", "dns", "mode", "set", "google"], input="REBOOT\n"
+        )
+
+        assert result.exit_code == 0
+        mock_client.set_custom_dns_ipv4.assert_called_once_with(["8.8.8.8", "8.8.4.4"], NID)
+
+
+# ---------------------------------------------------------------------------
+# TestDNSClear
+# ---------------------------------------------------------------------------
+
+
+class TestDNSClear:
+    """Tests for the non-destructive clear."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_client(self) -> MagicMock:
+        """Mock currently on custom DNS, so a clear is a real change."""
+        return _make_mock_client(
+            get_dns_settings=_DNS_STATE_CLOUDFLARE, clear_custom_dns=_OK_RESPONSE
+        )
+
+    def _invoke(self, runner, client, args, **kwargs):
+        """Run a DNS command against the mocked client."""
+        with patch(
+            "eeroctl.commands.network.dns.run_with_client",
+            side_effect=_make_run_with_client(client),
+        ):
+            return runner.invoke(cli, ["--network-id", NID, *args], **kwargs)
+
+    def test_clear_calls_clear_custom_dns_for_both_families(self, runner, mock_client):
+        """No --family clears both."""
+        result = self._invoke(runner, mock_client, ["network", "dns", "clear", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.clear_custom_dns.assert_called_once_with(None, NID)
+
+    def test_clear_family_ipv4(self, runner, mock_client):
+        """--family ipv4 is passed through to the SDK."""
+        result = self._invoke(
+            runner, mock_client, ["network", "dns", "clear", "--family", "ipv4", "--force"]
+        )
+
+        assert result.exit_code == 0
+        mock_client.clear_custom_dns.assert_called_once_with("ipv4", NID)
+
+    def test_clear_requires_confirmation(self, runner, mock_client):
+        """clear is a write and reboots the mesh, so it prompts like any other."""
+        result = self._invoke(runner, mock_client, ["network", "dns", "clear"], input="REBOOT\n")
+
+        assert result.exit_code == 0
+        assert "reboots every eero" in result.output
+        mock_client.clear_custom_dns.assert_called_once()
+
+    def test_clear_non_interactive_without_force_fails(self, runner, mock_client):
+        """Exit 8, no write, no hang."""
+        result = self._invoke(runner, mock_client, ["--non-interactive", "network", "dns", "clear"])
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.clear_custom_dns.assert_not_called()
+
+    def test_clear_says_servers_are_retained(self, runner, mock_client):
+        """The success message must not imply servers were discarded."""
+        result = self._invoke(runner, mock_client, ["network", "dns", "clear", "--force"])
+
+        assert "retained" in result.output
+
+    def test_clear_skips_when_already_automatic(self, runner):
+        """No-op skip applies to clear too."""
+        client = _make_mock_client(get_dns_settings=_DNS_STATE, clear_custom_dns=_OK_RESPONSE)
+
+        result = self._invoke(runner, client, ["network", "dns", "clear"])
+
+        assert result.exit_code == 0
+        assert "already automatic" in result.output
+        client.clear_custom_dns.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
