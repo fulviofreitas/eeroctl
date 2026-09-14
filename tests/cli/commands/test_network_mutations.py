@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from click.testing import CliRunner
 
+from eeroctl.exit_codes import ExitCode
 from eeroctl.main import cli
 
 # ---------------------------------------------------------------------------
@@ -174,6 +175,159 @@ class TestDNS:
         # servers=None because no --servers flag was provided for a non-custom mode
         mock_client.set_dns_mode.assert_called_once_with("google", None, NID)
         assert result.exit_code == 0
+
+
+# ---------------------------------------------------------------------------
+# TestDNSWriteSafetyRails
+# ---------------------------------------------------------------------------
+
+
+class TestDNSWriteSafetyRails:
+    """Tests that DNS writes are gated as network-reboot operations.
+
+    A DNS write reboots every eero on the network, so these commands require a
+    typed confirmation phrase rather than a Y/N prompt.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    @pytest.fixture
+    def mock_client(self) -> MagicMock:
+        """Mock EeroClient with DNS write methods returning 200 responses."""
+        return _make_mock_client(set_dns_caching=_OK_RESPONSE, set_dns_mode=_OK_RESPONSE)
+
+    def _invoke(self, runner, mock_client, args, **kwargs):
+        """Run a DNS command against the mocked client."""
+        with patch(
+            "eeroctl.commands.network.dns.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            return runner.invoke(cli, ["--network-id", NID, *args], **kwargs)
+
+    # -- typed confirmation -------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["network", "dns", "mode", "set", "google"],
+            ["network", "dns", "caching", "enable"],
+            ["network", "dns", "caching", "disable"],
+        ],
+    )
+    def test_prompt_asks_for_reboot_phrase(self, runner, mock_client, args):
+        """The prompt asks for REBOOT, not an auto-derived string."""
+        result = self._invoke(runner, mock_client, args, input="REBOOT\n")
+
+        assert "REBOOT" in result.output
+        assert "CHANGEDNSMODE" not in result.output
+        assert "ENABLEDNSCACHING" not in result.output
+
+    def test_correct_phrase_proceeds(self, runner, mock_client):
+        """Typing REBOOT allows the write."""
+        result = self._invoke(
+            runner, mock_client, ["network", "dns", "caching", "enable"], input="REBOOT\n"
+        )
+
+        assert result.exit_code == 0
+        mock_client.set_dns_caching.assert_called_once_with(True, NID)
+
+    def test_wrong_phrase_is_a_safety_rail_failure(self, runner, mock_client):
+        """A mistyped phrase exits 8 and performs no write."""
+        result = self._invoke(
+            runner, mock_client, ["network", "dns", "caching", "enable"], input="reboot\n"
+        )
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.set_dns_caching.assert_not_called()
+
+    # -- reboot warning -----------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["network", "dns", "mode", "set", "google", "--force"],
+            ["network", "dns", "caching", "enable", "--force"],
+            ["network", "dns", "caching", "disable", "--force"],
+        ],
+    )
+    def test_force_still_warns_about_the_reboot(self, runner, mock_client, args):
+        """--force skips the prompt but must not silence the warning."""
+        result = self._invoke(runner, mock_client, args)
+
+        assert result.exit_code == 0
+        assert "reboots every eero" in result.output
+
+    def test_non_interactive_with_force_warns_and_proceeds(self, runner, mock_client):
+        """Scripted callers get the warning too."""
+        result = self._invoke(
+            runner,
+            mock_client,
+            ["--non-interactive", "network", "dns", "caching", "enable", "--force"],
+        )
+
+        assert result.exit_code == 0
+        assert "reboots every eero" in result.output
+
+    # -- --force placement --------------------------------------------------
+
+    def test_global_force_bypasses_prompt(self, runner, mock_client):
+        """The root --force is honoured, not just the per-command flag."""
+        result = self._invoke(
+            runner, mock_client, ["--force", "network", "dns", "caching", "enable"]
+        )
+
+        assert result.exit_code == 0
+        mock_client.set_dns_caching.assert_called_once_with(True, NID)
+
+    # -- non-interactive ----------------------------------------------------
+
+    @pytest.mark.parametrize(
+        "args",
+        [
+            ["network", "dns", "mode", "set", "google"],
+            ["network", "dns", "caching", "enable"],
+        ],
+    )
+    def test_non_interactive_without_force_fails_cleanly(self, runner, mock_client, args):
+        """Never hangs on a prompt, never silently proceeds: exit 8, no write."""
+        result = self._invoke(runner, mock_client, ["--non-interactive", *args])
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.set_dns_caching.assert_not_called()
+        mock_client.set_dns_mode.assert_not_called()
+
+    # -- success check ------------------------------------------------------
+
+    def test_error_response_is_not_reported_as_success(self, runner):
+        """A non-2xx meta.code fails rather than passing a truthiness check."""
+        client = _make_mock_client(set_dns_caching=_ERR_RESPONSE)
+
+        result = self._invoke(runner, client, ["network", "dns", "caching", "enable", "--force"])
+
+        assert result.exit_code != 0
+        assert "DNS caching enabled" not in result.output
+
+    def test_fabricated_400_is_not_reported_as_success(self, runner):
+        """The truthy {"meta": {"code": 400}} the SDK used to fabricate must fail."""
+        client = _make_mock_client(set_dns_mode={"meta": {"code": 400}, "data": {}})
+
+        result = self._invoke(
+            runner, client, ["network", "dns", "mode", "set", "google", "--force"]
+        )
+
+        assert result.exit_code != 0
+        assert "DNS mode set" not in result.output
+
+    def test_response_without_meta_is_not_reported_as_success(self, runner):
+        """An unrecognised shape is a failure, not an assumed success."""
+        client = _make_mock_client(set_dns_caching={})
+
+        result = self._invoke(runner, client, ["network", "dns", "caching", "enable", "--force"])
+
+        assert result.exit_code != 0
 
 
 # ---------------------------------------------------------------------------
