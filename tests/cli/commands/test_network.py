@@ -297,20 +297,33 @@ class TestNetworkDNS:
         assert "Show current DNS settings" in result.output
 
     def test_dns_mode_set_help(self, runner):
-        """Test dns mode set shows help."""
+        """Help states the contract rather than enumerating providers.
+
+        Provider names come from the network's catalogue, not a fixed list, so
+        --help must stay correct offline and point at 'dns providers'.
+        """
         result = runner.invoke(cli, ["network", "dns", "mode", "set", "--help"])
 
         assert result.exit_code == 0
         assert "auto" in result.output
-        assert "cloudflare" in result.output
-        assert "google" in result.output
+        assert "custom" in result.output
+        assert "dns providers" in result.output
+        assert "reboots every eero" in result.output
 
-    def test_dns_mode_set_custom_requires_servers(self, runner):
-        """Test dns mode set custom requires --servers."""
-        result = runner.invoke(cli, ["--force", "network", "dns", "mode", "set", "custom"])
+    def test_dns_providers_help(self, runner):
+        """Test dns providers shows help."""
+        result = runner.invoke(cli, ["network", "dns", "providers", "--help"])
 
-        assert result.exit_code != 0
-        assert "servers" in result.output.lower()
+        assert result.exit_code == 0
+        assert "DNS providers" in result.output
+
+    def test_dns_clear_help(self, runner):
+        """dns clear documents that it is non-destructive."""
+        result = runner.invoke(cli, ["network", "dns", "clear", "--help"])
+
+        assert result.exit_code == 0
+        assert "--family" in result.output
+        assert "retains" in result.output
 
     def test_dns_caching_enable_help(self, runner):
         """Test dns caching enable shows help."""
