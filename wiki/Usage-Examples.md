@@ -48,15 +48,31 @@ eero network rename --name "Home WiFi" --force
 
 ## DNS & Security
 
+> **Every DNS write reboots the network.** All eeros restart and clients lose
+> Wi-Fi and internet for a few minutes, starting shortly *after* the command
+> returns. These commands require typing `REBOOT` to confirm; `--force` skips
+> the prompt and also rewrites when the configuration already matches.
+> Without `--force`, a command that would change nothing exits 0 and does not
+> write.
+
 ```bash
 # Show DNS settings
 eero network dns show
 
-# Set DNS to Cloudflare
-eero network dns mode cloudflare --force
+# List the DNS providers this network offers
+eero network dns providers
 
-# Set custom DNS servers
-eero network dns mode custom --servers 1.1.1.1 --servers 8.8.8.8
+# Set DNS to a provider from that list (IPv4 only by default)
+eero network dns mode set cloudflare
+
+# Same, including the provider's IPv6 servers
+eero network dns mode set cloudflare --family both
+
+# Set custom DNS servers (mixed families; up to 2 per family)
+eero network dns mode set custom --servers 1.1.1.1 --servers 2606:4700:4700::1111
+
+# Back to ISP-assigned DNS, keeping the stored servers for later
+eero network dns clear
 
 # Enable WPA3
 eero network security wpa3 enable --force
