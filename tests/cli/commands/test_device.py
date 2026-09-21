@@ -192,6 +192,99 @@ class TestDeviceBlock:
         call_args = mock_client.block_device.call_args
         assert len(call_args[0]) == 2  # (device_id, network_id) -- no blocked bool
 
+    def test_device_block_prints_the_unverified_note(self, runner):
+        """`device block` is MEDIUM + UNVERIFIED: the prompt/note carries the
+        unverified-write line (safety.py's UNVERIFIED_WRITE_NOTE).
+        """
+        mock_devices_response = {
+            "meta": {"code": 200},
+            "data": [
+                {
+                    "url": "/2.2/networks/net1/devices/dev1",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "nickname": "MyPhone",
+                    "hostname": "myphone",
+                    "connected": True,
+                    "blacklisted": False,
+                    "paused": False,
+                }
+            ],
+        }
+        mock_block_response = {"meta": {"code": 200}, "data": {}}
+
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(return_value=mock_devices_response)
+        mock_client.block_device = AsyncMock(return_value=mock_block_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "block", "MyPhone", "--force"])
+
+        assert result.exit_code == 0
+        assert "not been verified" in result.output.lower()
+
+    def test_device_block_skips_write_when_already_blocked(self, runner):
+        """write_if_changed skips the write when blacklisted is already True."""
+        mock_devices_response = {
+            "meta": {"code": 200},
+            "data": [
+                {
+                    "url": "/2.2/networks/net1/devices/dev1",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "nickname": "MyPhone",
+                    "hostname": "myphone",
+                    "connected": True,
+                    "blacklisted": True,
+                    "paused": False,
+                }
+            ],
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(return_value=mock_devices_response)
+        mock_client.block_device = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "block", "MyPhone"], input="y\n")
+
+        assert result.exit_code == 0
+        assert "already configured" in result.output.lower()
+        mock_client.block_device.assert_not_called()
+
+    def test_device_block_non_interactive_without_force_fails(self, runner):
+        """MEDIUM risk requires confirmation; --non-interactive without --force
+        exits SAFETY_RAIL before any write.
+        """
+        mock_devices_response = {
+            "meta": {"code": 200},
+            "data": [
+                {
+                    "url": "/2.2/networks/net1/devices/dev1",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "nickname": "MyPhone",
+                    "hostname": "myphone",
+                    "connected": True,
+                    "blacklisted": False,
+                    "paused": False,
+                }
+            ],
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(return_value=mock_devices_response)
+        mock_client.block_device = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["--non-interactive", "device", "block", "MyPhone"])
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.block_device.assert_not_called()
+
 
 class TestDeviceUnblock:
     """Tests for device unblock command."""
