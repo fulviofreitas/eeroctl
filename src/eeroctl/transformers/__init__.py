@@ -46,7 +46,9 @@ from .ouicheck import extract_ouicheck
 from .permissions import extract_capability_map, extract_permissions, extract_role
 from .power_saving import extract_power_saving_schedules
 from .profile import extract_profile, extract_profiles, normalize_profile
+from .speedtest import extract_latest_speed_test, extract_speed_test_history
 from .subnets import extract_subnet_content_filters, extract_subnets_config
+from .transfer import extract_transfer_stats
 from .wan import extract_multistaticip
 from .wpa3 import extract_fast_transition, extract_wpa3_per_band
 
@@ -117,4 +119,9 @@ __all__ = [
     "extract_multistaticip",
     # OUI check
     "extract_ouicheck",
+    # Speedtest
+    "extract_speed_test_history",
+    "extract_latest_speed_test",
+    # Transfer
+    "extract_transfer_stats",
 ]

@@ -96,8 +96,14 @@ from .profile import (
     print_profile_details,
 )
 
+# Speedtest formatting
+from .speedtest import print_speedtest_history
+
 # Subnets formatting
 from .subnets import print_subnet_content_filters, print_subnets_config
+
+# Transfer formatting
+from .transfer import print_transfer_stats
 
 # WAN formatting
 from .wan import print_multistaticip, print_multistaticip_not_configured
@@ -180,4 +186,8 @@ __all__ = [
     "print_multistaticip_not_configured",
     # OUI check
     "print_ouicheck",
+    # Speedtest
+    "print_speedtest_history",
+    # Transfer
+    "print_transfer_stats",
 ]

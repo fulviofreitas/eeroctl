@@ -197,7 +197,7 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("run_speed_test", ("nid",), {}, "network/speedtest.py:43"),
     # `run_speed_test` returns 202 with `data: null` (8.0.1); `speedtest show`
     # now reads `get_speed_tests(limit=1)` (client.py:1206).
-    ("get_speed_tests", ("nid",), {"limit": 1}, "network/speedtest.py:77"),
+    ("get_speed_tests", ("nid",), {"limit": 1}, "network/speedtest.py:81"),
     # -- phase-A batch 1 catch-up (commits 11-15; see the "test(cli): bind the
     # phase-A batch 1 read call sites" commit for why these lag their family
     # commits) --------------------------------------------------------------
@@ -296,6 +296,14 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {"serial": "serial", "version": "1.0"},
         "network/ouicheck.py:69 (client.py:1805)",
     ),
+    # -- network/speedtest.py: history, network/transfer.py (commit 23) -----
+    (
+        "get_speed_tests",
+        ("nid",),
+        {"limit": None, "start_time": None, "end_time": None},
+        "network/speedtest.py:144 (client.py:1206)",
+    ),
+    ("get_transfer_stats", ("nid", None), {}, "network/transfer.py:41 (client.py:1569)"),
 ]
 
 
