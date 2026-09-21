@@ -198,14 +198,59 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     # `run_speed_test` returns 202 with `data: null` (8.0.1); `speedtest show`
     # now reads `get_speed_tests(limit=1)` (client.py:1206).
     ("get_speed_tests", ("nid",), {"limit": 1}, "network/speedtest.py:77"),
+    # -- phase-A batch 1 catch-up (commits 11-15; see the "test(cli): bind the
+    # phase-A batch 1 read call sites" commit for why these lag their family
+    # commits) --------------------------------------------------------------
+    # -- network/entitlements.py, commands/account.py (commit 11) -----------
+    ("get_entitlement_features", ("nid",), {}, "network/entitlements.py:61 (client.py:2292)"),
+    ("get_upsell_features", ("nid",), {}, "network/entitlements.py:81 (client.py:2300)"),
+    ("get_model_capabilities", ("nid",), {}, "network/entitlements.py:101 (client.py:2305)"),
+    ("get_premium_customer", (), {}, "commands/account.py:50 (client.py:2310, no network_id)"),
+    # -- network/events.py (commit 12) ---------------------------------------
+    (
+        "get_app_events",
+        ("nid",),
+        {"page_size": None, "timestamp": None},
+        "network/events.py:61 (client.py:2316)",
+    ),
+    ("get_network_scan", ("nid",), {}, "network/events.py:82 (client.py:2332)"),
+    (
+        "get_channel_utilization",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "busy_threshold": None,
+            "eero_id": None,
+            "band": None,
+            "granularity": None,
+        },
+        "network/events.py:148 (client.py:2339)",
+    ),
+    # -- network/permissions.py (commit 13) ----------------------------------
+    ("get_permissions", ("nid",), {}, "network/permissions.py:35 (client.py:2369)"),
+    # -- network/notifications.py (commit 14) --------------------------------
+    (
+        "get_notification_settings",
+        ("nid",),
+        {},
+        "network/notifications.py:64 (client.py:2378)",
+    ),
+    (
+        "has_unread_notifications",
+        ("nid",),
+        {},
+        "network/notifications.py:84 (client.py:2399)",
+    ),
+    (
+        "get_notification_history",
+        ("nid",),
+        {"timestamp": None},
+        "network/notifications.py:112 (client.py:2413)",
+    ),
+    # -- network/dns.py: policy subgroup (commit 15) -------------------------
+    ("get_advanced_content_filter", ("nid",), {}, "network/dns.py:851 (client.py:2428)"),
     # -- network/members.py (phase A, commit 16) ----------------------------
-    # get_advanced_content_filter (commit 15) and the eleven batch-1 methods
-    # (get_entitlement_features, get_upsell_features, get_model_capabilities,
-    # get_premium_customer, get_app_events, get_network_scan,
-    # get_channel_utilization, get_permissions, get_notification_settings,
-    # has_unread_notifications, get_notification_history) are added in the
-    # catch-up commit `test(cli): bind the phase-A batch 1 read call sites`
-    # immediately after commit 18, per the test-audit standing rule.
     ("get_members", ("nid",), {}, "network/members.py:47 (client.py:2572, verified)"),
     ("get_invites", ("nid",), {}, "network/members.py:71 (client.py:2579, unverified)"),
     # -- network/wpa3.py, network/security.py: fast-transition (commit 17) --
