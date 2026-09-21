@@ -152,7 +152,7 @@ def _set_led(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool) -> No
                 enabled,
                 write,
                 force=cli_ctx.force,
-                console=console,
+                console=cli_ctx.err_console,
                 read_command=spec.read_command,
             )
 

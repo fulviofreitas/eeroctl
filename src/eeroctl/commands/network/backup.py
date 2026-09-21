@@ -19,7 +19,7 @@ from typing import Any
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroPremiumRequiredException
+from eero.exceptions import EeroException, EeroPremiumRequiredException
 from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
@@ -127,7 +127,7 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
                 with cli_ctx.status("Reading current backup internet settings..."):
                     try:
                         raw_backup = await client.get_backup_internet(cli_ctx.network_id)
-                    except Exception as e:
+                    except EeroException as e:
                         if isinstance(e, EeroPremiumRequiredException):
                             console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
                             sys.exit(ExitCode.PREMIUM_REQUIRED)
@@ -143,7 +143,7 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
                 with cli_ctx.status(f"{action.capitalize()}ing backup internet..."):
                     try:
                         return await client.set_backup_internet(enable, cli_ctx.network_id)
-                    except Exception as e:
+                    except EeroException as e:
                         if isinstance(e, EeroPremiumRequiredException):
                             console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
                             sys.exit(ExitCode.PREMIUM_REQUIRED)
@@ -154,7 +154,7 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
                 enable,
                 write,
                 force=effective_force,
-                console=console,
+                console=cli_ctx.err_console,
                 read_command=spec.read_command,
             )
 

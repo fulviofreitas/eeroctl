@@ -134,7 +134,6 @@ def _set_security_setting(
 ):
     """Set a security setting."""
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
     action = "enable" if enable else "disable"
     effective_force = force or cli_ctx.force
     spec = get_write_spec(f"network security {setting_name} {action}")
@@ -174,7 +173,7 @@ def _set_security_setting(
                 enable,
                 write,
                 force=effective_force,
-                console=console,
+                console=cli_ctx.err_console,
                 read_command=spec.read_command,
             )
 

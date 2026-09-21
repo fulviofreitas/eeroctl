@@ -598,3 +598,28 @@ class TestSkipUnchangedAndReadCommandHints:
         assert result.exit_code == 0
         mock_client.set_led.assert_awaited_once_with("123", False, None)
         assert "verify with `eero eero led show`" in _plain(result.output).lower()
+
+    def test_device_unblock_output_json_leaves_stdout_json_safe(self, runner):
+        """--output json --force on a device write: same stdout-safety
+        contract as the network-family test in test_network_mutations.py
+        (device unblock, device.py:~393)."""
+        import json
+
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(
+            return_value=self._devices_response(blacklisted=True, paused=False)
+        )
+        mock_client.unblock_device = AsyncMock(return_value={"meta": {"code": 200}, "data": {}})
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--output", "json", "device", "unblock", "MyPhone", "--force"]
+            )
+
+        assert result.exit_code == 0
+        if result.stdout:
+            json.loads(result.stdout)
+        assert "Write accepted" not in result.stdout
+        assert "verify with" not in result.stdout.lower()

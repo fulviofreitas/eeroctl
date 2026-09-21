@@ -416,7 +416,7 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked
                 blocked,
                 write,
                 force=cli_ctx.force,
-                console=console,
+                console=cli_ctx.err_console,
                 read_command=spec.read_command,
             )
 
@@ -518,7 +518,7 @@ def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: 
                 paused,
                 write,
                 force=cli_ctx.force,
-                console=console,
+                console=cli_ctx.err_console,
                 read_command=spec.read_command,
             )
 

@@ -1426,3 +1426,33 @@ class TestSkipUnchangedAndReadCommandHints:
         assert result.exit_code == 0
         assert "reboots every eero" in result.stderr
         assert "reboots every eero" not in result.stdout
+
+    def test_sqm_enable_output_json_leaves_stdout_json_safe(self, runner: CliRunner):
+        """--output json --force: write_if_changed's own status messages
+        (the mesh warning, the unverified note, "Write accepted...") must
+        all land on stderr. `network sqm enable` renders no JSON envelope
+        of its own today, so stdout is empty rather than a schema'd
+        object -- which is exactly what makes `--output json | jq` safe:
+        empty input is a no-op for jq, whereas any of those status
+        strings leaking onto stdout would be a parse error. If stdout
+        does carry bytes, they must be parseable JSON, not stray text.
+        """
+        import json
+
+        mock_client = _make_sdk_client(
+            get_sqm_settings={"meta": {"code": 200}, "data": {"enabled": False}},
+            set_sqm=_OK_RESPONSE,
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--output", "json", "--network-id", NID, "network", "sqm", "enable", "--force"],
+            )
+
+        assert result.exit_code == 0
+        if result.stdout:
+            json.loads(result.stdout)
+        assert "Write accepted" not in result.stdout
+        assert "reboots every eero" not in result.stdout
+        assert "verify with" not in result.stdout.lower()

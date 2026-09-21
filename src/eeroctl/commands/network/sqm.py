@@ -102,7 +102,6 @@ def sqm_disable(ctx: click.Context, force: bool) -> None:
 
 def _set_sqm_enabled(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
     """Enable or disable SQM."""
-    console = cli_ctx.console
     action = "enable" if enable else "disable"
     effective_force = force or cli_ctx.force
     spec = get_write_spec(f"network sqm {action}")
@@ -139,7 +138,7 @@ def _set_sqm_enabled(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
                 enable,
                 write,
                 force=effective_force,
-                console=console,
+                console=cli_ctx.err_console,
                 read_command=spec.read_command,
             )
 

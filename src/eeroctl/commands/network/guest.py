@@ -179,7 +179,7 @@ def _set_guest_network(
                     enable,
                     write,
                     force=effective_force,
-                    console=console,
+                    console=cli_ctx.err_console,
                     read_command=spec.read_command,
                 )
                 return
