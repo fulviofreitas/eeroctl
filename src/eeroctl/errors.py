@@ -21,6 +21,7 @@ from eero.exceptions import (
     EeroValidationException,
 )
 from rich.console import Console
+from rich.markup import escape
 
 from .exit_codes import ExitCode
 
@@ -33,8 +34,11 @@ def _error_code_suffix(e: EeroException) -> str:
     Every v8 exception carries ``.error_code`` (``envelope["meta"]["error"]``),
     populated only when the API response included one. Never render
     ``e.envelope`` itself — it can carry ``user_token``, emails, phones.
+
+    ``error_code`` is API-supplied and gets interpolated into Rich markup by
+    every caller, so it is escaped here rather than at each call site.
     """
-    return f" (error code: {e.error_code})" if e.error_code else ""
+    return f" (error code: {escape(e.error_code)})" if e.error_code else ""
 
 
 def handle_cli_error(
@@ -55,6 +59,16 @@ def handle_cli_error(
     ``EeroValidationException`` does not) is checked before its parent, so
     the parent's branch never shadows it.
 
+    Every attribute drawn from the exception (``.message``, ``.error_code``,
+    ``.resource_type``/``.resource_id``, ``.feature``, ``.reason``,
+    ``.field``, the validation detail) can contain arbitrary API-supplied
+    text and is interpolated into a Rich-markup string; each one is passed
+    through :func:`rich.markup.escape` before interpolation so a stray ``[``
+    in a server response renders literally instead of raising
+    ``rich.errors.MarkupError`` or garbling the line. Only the literal
+    ``[red]``/``[yellow]``/``[/red]``/``[/yellow]`` tags this function writes
+    itself are left unescaped.
+
     Args:
         e: The exception to handle
         console: Rich console for output
@@ -71,37 +85,43 @@ def handle_cli_error(
         return ExitCode.AUTH_REQUIRED
 
     elif isinstance(e, EeroAccessDeniedException):
-        console.print(f"[red]{prefix}Permission denied: {e.message}{_error_code_suffix(e)}[/red]")
+        console.print(
+            f"[red]{prefix}Permission denied: {escape(e.message)}{_error_code_suffix(e)}[/red]"
+        )
         return ExitCode.FORBIDDEN
 
     elif isinstance(e, EeroClientBlockedException):
         console.print(
             f"[red]{prefix}This client version is blocked by the API: "
-            f"{e.message}{_error_code_suffix(e)}[/red]"
+            f"{escape(e.message)}{_error_code_suffix(e)}[/red]"
         )
         return ExitCode.CLIENT_BLOCKED
 
     elif isinstance(e, EeroNotFoundException):
         if e.resource_type is not None or e.resource_id is not None:
             console.print(
-                f"[red]{prefix}{e.resource_type} '{e.resource_id}' "
+                f"[red]{prefix}{escape(str(e.resource_type))} "
+                f"'{escape(str(e.resource_id))}' "
                 f"not found{_error_code_suffix(e)}[/red]"
             )
         else:
             # Built via `from_response` (no known resource type/ID): the
             # message is already a complete, human-readable sentence.
-            console.print(f"[red]{prefix}{e.message}{_error_code_suffix(e)}[/red]")
+            console.print(f"[red]{prefix}{escape(e.message)}{_error_code_suffix(e)}[/red]")
         return ExitCode.NOT_FOUND
 
     elif isinstance(e, EeroPremiumRequiredException):
         console.print(
-            f"[yellow]{prefix}{e.feature} requires Eero Plus "
+            f"[yellow]{prefix}{escape(e.feature)} requires Eero Plus "
             f"subscription{_error_code_suffix(e)}[/yellow]"
         )
         return ExitCode.PREMIUM_REQUIRED
 
     elif isinstance(e, EeroFeatureUnavailableException):
-        console.print(f"[yellow]{prefix}{e.feature} is {e.reason}{_error_code_suffix(e)}[/yellow]")
+        console.print(
+            f"[yellow]{prefix}{escape(e.feature)} is "
+            f"{escape(e.reason)}{_error_code_suffix(e)}[/yellow]"
+        )
         return ExitCode.FEATURE_UNAVAILABLE
 
     elif isinstance(e, EeroRateLimitException):
@@ -135,11 +155,13 @@ def handle_cli_error(
             detail = (
                 e.message[len(prefix_text) :] if e.message.startswith(prefix_text) else (e.message)
             )
-            console.print(f"[red]{prefix}Invalid request: {detail}{_error_code_suffix(e)}[/red]")
+            console.print(
+                f"[red]{prefix}Invalid request: {escape(detail)}{_error_code_suffix(e)}[/red]"
+            )
         else:
             console.print(
-                f"[red]{prefix}Invalid input for '{e.field}': "
-                f"{e.message}{_error_code_suffix(e)}[/red]"
+                f"[red]{prefix}Invalid input for '{escape(e.field)}': "
+                f"{escape(e.message)}{_error_code_suffix(e)}[/red]"
             )
         return ExitCode.USAGE_ERROR
 
@@ -155,31 +177,33 @@ def handle_cli_error(
             return ExitCode.AUTH_REQUIRED
         elif e.status_code == 403:
             console.print(
-                f"[red]{prefix}Permission denied: {e.message}{_error_code_suffix(e)}[/red]"
+                f"[red]{prefix}Permission denied: {escape(e.message)}{_error_code_suffix(e)}[/red]"
             )
             return ExitCode.FORBIDDEN
         elif e.status_code == 404:
             console.print(
-                f"[red]{prefix}Resource not found: {e.message}{_error_code_suffix(e)}[/red]"
+                f"[red]{prefix}Resource not found: {escape(e.message)}{_error_code_suffix(e)}[/red]"
             )
             return ExitCode.NOT_FOUND
         elif e.status_code == 409:
-            console.print(f"[yellow]{prefix}Conflict: {e.message}{_error_code_suffix(e)}[/yellow]")
+            console.print(
+                f"[yellow]{prefix}Conflict: {escape(e.message)}{_error_code_suffix(e)}[/yellow]"
+            )
             return ExitCode.CONFLICT
         else:
             # Includes an unmapped 429 (Q5: no dedicated rate-limit code).
             console.print(
                 f"[red]{prefix}API error ({e.status_code}): "
-                f"{e.message}{_error_code_suffix(e)}[/red]"
+                f"{escape(e.message)}{_error_code_suffix(e)}[/red]"
             )
             return ExitCode.GENERIC_ERROR
 
     elif isinstance(e, EeroException):
         # Generic Eero exception
-        console.print(f"[red]{prefix}{e.message}{_error_code_suffix(e)}[/red]")
+        console.print(f"[red]{prefix}{escape(e.message)}{_error_code_suffix(e)}[/red]")
         return ExitCode.GENERIC_ERROR
 
     else:
         # Unknown exception
-        console.print(f"[red]{prefix}Unexpected error: {e}[/red]")
+        console.print(f"[red]{prefix}Unexpected error: {escape(str(e))}[/red]")
         return ExitCode.GENERIC_ERROR

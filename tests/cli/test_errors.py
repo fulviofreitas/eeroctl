@@ -8,8 +8,13 @@ Tests cover:
   (is_premium_error / is_feature_unavailable_error / is_not_found_error,
   deleted in this commit) are gone: a generic EeroException whose message
   happens to contain "premium"/"beacon" must NOT be reclassified.
+- Rich-markup safety: every API-supplied string interpolated into a
+  console.print() call is escaped, so a stray `[` in server text (e.g. a
+  message that happens to contain something that looks like a markup tag)
+  never raises rich.errors.MarkupError or gets swallowed/garbled.
 """
 
+import io
 from unittest.mock import MagicMock
 
 import pytest
@@ -31,6 +36,12 @@ from rich.console import Console
 
 from eeroctl.errors import handle_cli_error
 from eeroctl.exit_codes import ExitCode
+
+# A string that is not valid/closed Rich markup on its own: if interpolated
+# unescaped into a console.print() call, it either raises
+# rich.errors.MarkupError (unclosed `[red`) or is parsed as a `[bold]` tag
+# pair and silently dropped from the rendered text.
+MALICIOUS_TEXT = "[bold]x[/bold] [red"
 
 # ========================== handle_cli_error Tests ==========================
 
@@ -384,3 +395,137 @@ class TestHandleCliError:
 
         assert exit_code == ExitCode.GENERIC_ERROR
         assert exit_code == 1
+
+
+# ========================== Rich markup safety Tests ==========================
+
+
+class TestMarkupSafety:
+    """API-supplied text must never be parsed as Rich markup.
+
+    Unlike the rest of this module, these tests use a real (unmocked)
+    ``Console`` writing to an in-memory buffer: only a real console actually
+    parses the ``console.print()`` argument as markup and can raise
+    ``rich.errors.MarkupError`` or silently swallow a `[tag]`-shaped
+    substring. A ``MagicMock(spec=Console)`` (used elsewhere in this file)
+    never parses anything, so it cannot catch this class of bug.
+    """
+
+    @staticmethod
+    def _render(exc: Exception) -> str:
+        """Run handle_cli_error against a real Console and return the plain
+        text it wrote. Raises whatever handle_cli_error/Console.print raises
+        -- in particular, this is where rich.errors.MarkupError would
+        surface if a value were interpolated unescaped."""
+        buffer = io.StringIO()
+        console = Console(file=buffer, width=200, no_color=True, highlight=False)
+        handle_cli_error(exc, console)
+        return buffer.getvalue()
+
+    def test_api_exception_message_renders_literally(self):
+        """`.message`, rendered through the generic EeroAPIException
+        fallback (status 500), must not raise and must appear verbatim."""
+        exc = EeroAPIException(500, MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    @pytest.mark.parametrize("status_code", [401, 403, 404, 409, 500])
+    def test_api_exception_message_renders_literally_every_status_branch(self, status_code):
+        """Same guarantee across every status-code branch of the
+        EeroAPIException fallback (401 doesn't interpolate the message, the
+        rest do)."""
+        exc = EeroAPIException(status_code, MALICIOUS_TEXT)
+
+        output = self._render(exc)  # must not raise rich.errors.MarkupError
+
+        if status_code != 401:
+            # 401 has a fixed, non-interpolated message; the others echo it.
+            assert MALICIOUS_TEXT in output
+
+    def test_access_denied_message_renders_literally(self, api_error):
+        exc = api_error(EeroAccessDeniedException, 403, None, message=MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    def test_client_blocked_message_renders_literally(self, api_error):
+        exc = api_error(EeroClientBlockedException, 400, None, message=MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    def test_not_found_resource_type_and_id_render_literally(self):
+        """`.resource_type`/`.resource_id`, directly constructed."""
+        exc = EeroNotFoundException(MALICIOUS_TEXT, MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert output.count(MALICIOUS_TEXT) == 2
+
+    def test_not_found_from_response_message_renders_literally(self, api_error):
+        exc = api_error(EeroNotFoundException, 404, None, message=MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    def test_premium_required_feature_renders_literally(self):
+        exc = EeroPremiumRequiredException(MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    def test_feature_unavailable_feature_and_reason_render_literally(self):
+        exc = EeroFeatureUnavailableException(MALICIOUS_TEXT, MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert output.count(MALICIOUS_TEXT) == 2
+
+    def test_validation_field_renders_literally(self):
+        exc = EeroValidationException(MALICIOUS_TEXT, "at least 8 characters")
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    def test_validation_detail_renders_literally(self, api_error):
+        """The stripped `from_response` detail (field == "request")."""
+        exc = api_error(
+            EeroValidationException,
+            400,
+            "error.form.errors",
+            message=MALICIOUS_TEXT,
+        )
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    def test_generic_eero_exception_message_renders_literally(self):
+        exc = EeroException(MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    def test_error_code_renders_literally(self):
+        """`.error_code`, via the shared `_error_code_suffix` helper."""
+        exc = EeroTimeoutException("Request timed out", error_code=MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
+
+    def test_unknown_exception_renders_literally(self):
+        """Non-SDK exceptions go through the final `else` branch."""
+        exc = ValueError(MALICIOUS_TEXT)
+
+        output = self._render(exc)
+
+        assert MALICIOUS_TEXT in output
