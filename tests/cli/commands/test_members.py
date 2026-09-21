@@ -121,6 +121,81 @@ class TestMembersList:
 
         assert result.exit_code == ExitCode.FORBIDDEN
 
+    def test_table_shows_dedicated_columns(self, runner: CliRunner):
+        """`table` gets a dedicated name/email/role/status view (Low finding,
+        batch-2 security review) -- email is shown deliberately here.
+        """
+        response = {
+            "meta": {"code": 200},
+            "data": {
+                "members": [
+                    {
+                        "name": "Alice",
+                        "email": "alice@example.com",
+                        "role": "owner",
+                        "status": "active",
+                    }
+                ]
+            },
+        }
+        mock_client = _mock_client(get_members=response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "members", "list"])
+
+        assert result.exit_code == 0
+        assert "Alice" in result.output
+        assert "alice@example.com" in result.output
+        assert "owner" in result.output
+        assert "active" in result.output
+
+
+class TestMembersListTextRedaction:
+    """Regression tests for the batch-2 security review Medium finding.
+
+    `print_members` used to gate on `is_structured_output()` (True for
+    json/yaml/text alike), so `--output text` rendered the raw, unredacted
+    `data.members` payload -- leaking a planted `invite_token`/`session_id`
+    the same way `account premium`/`network events` did before the
+    render_generic fix. Only json/yaml may see the raw payload now.
+    """
+
+    def test_text_output_redacts_planted_invite_token_and_session_id(self, runner: CliRunner):
+        response = {
+            "meta": {"code": 200},
+            "data": {
+                "members": [
+                    {
+                        "name": "Alice",
+                        "invite_token": "SECRETINVITETOKEN",
+                        "session_id": "SESSIONSECRET999",
+                    }
+                ]
+            },
+        }
+        mock_client = _mock_client(get_members=response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["--output", "text", "network", "members", "list"])
+
+        assert result.exit_code == 0
+        assert "SECRETINVITETOKEN" not in result.output
+        assert "SESSIONSECRET999" not in result.output
+
+    def test_json_output_still_carries_the_raw_values(self, runner: CliRunner):
+        """json stays the deliberate raw-payload opt-in."""
+        response = {
+            "meta": {"code": 200},
+            "data": {"members": [{"name": "Alice", "invite_token": "SECRETINVITETOKEN"}]},
+        }
+        mock_client = _mock_client(get_members=response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["--output", "json", "network", "members", "list"])
+
+        parsed = json.loads(result.output)
+        assert parsed["data"]["members"][0]["invite_token"] == "SECRETINVITETOKEN"
+
 
 class TestMembersInvites:
     """Tests for `network members invites`."""

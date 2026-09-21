@@ -60,6 +60,7 @@ def security_show(ctx: click.Context) -> None:
     straight from the `get_network` envelope since no dedicated GETs exist
     for them (migration plan §4, `network security show` (extend) row).
     """
+    from ...formatting.generic import redact_sensitive
     from ...transformers.network import extract_network, extract_network_security_extras
 
     cli_ctx = get_cli_context(ctx)
@@ -74,12 +75,18 @@ def security_show(ctx: click.Context) -> None:
 
             sec_data = extract_data(raw_security) if isinstance(raw_security, dict) else {}
             extras = extract_network_security_extras(extract_network(raw_network))
-            sec_data = {**sec_data, **extras}
 
             if cli_ctx.is_json_output():
-                renderer.render_json(sec_data, "eero.network.security.show/v1")
+                # json is the user's explicit opt-in to the raw payload (see
+                # formatting/generic.py); extras are not redacted here.
+                renderer.render_json({**sec_data, **extras}, "eero.network.security.show/v1")
             elif cli_ctx.is_list_output():
-                renderer.render_text(sec_data, "eero.network.security.show/v1")
+                # `ddns` may carry a provider username/token (migration plan
+                # §4, `network security show` (extend) row); this bespoke
+                # render_text call bypasses the generic renderer, so redact
+                # extras the same way it would.
+                safe_extras = redact_sensitive(extras)
+                renderer.render_text({**sec_data, **safe_extras}, "eero.network.security.show/v1")
             else:
                 table = Table(title="Security Settings")
                 table.add_column("Setting", style="cyan")
@@ -99,11 +106,12 @@ def security_show(ctx: click.Context) -> None:
 
                 console.print(table)
 
+                safe_extras = redact_sensitive(extras)
                 extras_table = Table(title="Extended Security Settings")
                 extras_table.add_column("Field", style="cyan")
                 extras_table.add_column("Value")
                 for key in ("mlo_mode", "passpoint", "proxied_nodes", "ddns"):
-                    extras_table.add_row(key, str(extras.get(key)))
+                    extras_table.add_row(key, str(safe_extras.get(key)))
                 console.print(extras_table)
 
         await run_with_client(get_security)

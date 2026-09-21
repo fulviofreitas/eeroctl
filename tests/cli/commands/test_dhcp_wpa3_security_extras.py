@@ -305,6 +305,67 @@ class TestSecurityShowExtended:
 
         assert result.exit_code == 0
         assert "mlo_mode" in result.output
+
+    def test_table_output_redacts_sensitive_extras(self, runner: CliRunner):
+        """Regression test for the batch-2 security review Low finding.
+
+        Extras used to be rendered with str(...) outside render_generic, so
+        a planted ddns credential (a provider username/token) leaked in
+        table output.
+        """
+        network_with_ddns_secret = {
+            "meta": {"code": 200},
+            "data": {
+                **NETWORK_RESPONSE["data"],
+                "ddns": {"provider": "dyndns", "password": "DDNSSECRET123"},
+            },
+        }
+        mock_client = _mock_client(
+            get_security_settings=SECURITY_RESPONSE, get_network=network_with_ddns_secret
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "security", "show"])
+
+        assert result.exit_code == 0
+        assert "DDNSSECRET123" not in result.output
+
+    def test_list_output_redacts_sensitive_extras(self, runner: CliRunner):
+        network_with_ddns_secret = {
+            "meta": {"code": 200},
+            "data": {
+                **NETWORK_RESPONSE["data"],
+                "ddns": {"provider": "dyndns", "password": "DDNSSECRET123"},
+            },
+        }
+        mock_client = _mock_client(
+            get_security_settings=SECURITY_RESPONSE, get_network=network_with_ddns_secret
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["--output", "list", "network", "security", "show"])
+
+        assert result.exit_code == 0
+        assert "DDNSSECRET123" not in result.output
+
+    def test_json_output_still_carries_the_raw_ddns_value(self, runner: CliRunner):
+        """json stays the deliberate raw-payload opt-in."""
+        network_with_ddns_secret = {
+            "meta": {"code": 200},
+            "data": {
+                **NETWORK_RESPONSE["data"],
+                "ddns": {"provider": "dyndns", "password": "DDNSSECRET123"},
+            },
+        }
+        mock_client = _mock_client(
+            get_security_settings=SECURITY_RESPONSE, get_network=network_with_ddns_secret
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["--output", "json", "network", "security", "show"])
+
+        parsed = json.loads(result.output)
+        assert parsed["data"]["ddns"]["password"] == "DDNSSECRET123"
         assert "passpoint" in result.output
 
 

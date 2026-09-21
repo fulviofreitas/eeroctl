@@ -66,9 +66,13 @@ class TestRedactSensitive:
         assert result["outer"]["inner"]["password"] == _REDACTED
 
     def test_redacts_within_lists_of_dicts(self):
-        data = {"sessions": [{"cookie": "abc"}, {"cookie": "def"}]}
+        # "logins", not "sessions": "session" is itself now a sensitive
+        # pattern (inherited from the SDK), so a "sessions" key would be
+        # hidden wholesale rather than recursed into -- see
+        # test_redacts_every_configured_pattern.
+        data = {"logins": [{"cookie": "abc"}, {"cookie": "def"}]}
         result = redact_sensitive(data)
-        assert all(item["cookie"] == _REDACTED for item in result["sessions"])
+        assert all(item["cookie"] == _REDACTED for item in result["logins"])
 
     def test_redacts_nested_structure_under_sensitive_key_wholesale(self):
         """A dict/list value under a sensitive key is hidden entirely, not
