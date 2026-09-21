@@ -16,6 +16,13 @@ from .events import (
     extract_scan,
 )
 from .network import extract_network, extract_networks, normalize_network, normalize_network_status
+from .notifications import (
+    extract_history_next_cursor,
+    extract_notification_history,
+    extract_notification_settings,
+    extract_unread,
+    extract_unread_flag,
+)
 from .permissions import extract_capability_map, extract_permissions, extract_role
 from .profile import extract_profile, extract_profiles, normalize_profile
 
@@ -55,4 +62,10 @@ __all__ = [
     "extract_permissions",
     "extract_role",
     "extract_capability_map",
+    # Notifications
+    "extract_notification_settings",
+    "extract_unread",
+    "extract_unread_flag",
+    "extract_notification_history",
+    "extract_history_next_cursor",
 ]

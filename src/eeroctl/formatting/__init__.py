@@ -64,6 +64,9 @@ from .network import (
     print_network_details,
 )
 
+# Notifications formatting
+from .notifications import print_notification_history, print_notification_settings, print_unread
+
 # Permissions formatting
 from .permissions import print_permissions
 
@@ -120,4 +123,8 @@ __all__ = [
     "print_channels",
     # Permissions
     "print_permissions",
+    # Notifications
+    "print_notification_settings",
+    "print_unread",
+    "print_notification_history",
 ]
