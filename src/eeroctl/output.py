@@ -46,6 +46,10 @@ class OutputMeta:
     )
     network_id: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
+    # Extra command-specific meta fields (e.g. `next_cursor` for paginated reads
+    # like `network events`/`network notifications history`), merged into the
+    # envelope's top-level `meta` object alongside timestamp/network_id/warnings.
+    extra: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -193,6 +197,7 @@ class OutputRenderer:
                 "timestamp": meta.timestamp,
                 "network_id": meta.network_id,
                 "warnings": meta.warnings,
+                **meta.extra,
             },
         }
 
@@ -223,6 +228,7 @@ class OutputRenderer:
                 "timestamp": meta.timestamp,
                 "network_id": meta.network_id,
                 "warnings": meta.warnings,
+                **meta.extra,
             },
         }
 

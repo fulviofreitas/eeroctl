@@ -51,6 +51,9 @@ def network_group(ctx: click.Context) -> None:
       thread    - Thread protocol
       support   - Support bundle
       entitlements - Premium entitlements and device capabilities
+      events    - Recent app events
+      scan      - Channel/neighbour scan
+      channels  - Wi-Fi channel utilization
 
     \b
     Examples:
@@ -361,6 +364,7 @@ from .backup import backup_group  # noqa: E402
 from .dhcp import dhcp_group  # noqa: E402
 from .dns import dns_group  # noqa: E402
 from .entitlements import entitlements_group  # noqa: E402
+from .events import network_channels, network_events, network_scan  # noqa: E402
 from .forwards import forwards_group  # noqa: E402
 from .guest import guest_group  # noqa: E402
 from .security import security_group  # noqa: E402
@@ -380,3 +384,6 @@ network_group.add_command(routing_show)
 network_group.add_command(thread_cmd_group)
 network_group.add_command(support_group)
 network_group.add_command(entitlements_group)
+network_group.add_command(network_events)
+network_group.add_command(network_scan)
+network_group.add_command(network_channels)

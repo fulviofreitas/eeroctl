@@ -20,9 +20,10 @@ rather than calling `render_generic` directly from `commands/`, so the
 schema string lives in exactly one place per command.
 """
 
-from typing import Any
+from typing import Any, Optional
 
 from ..context import EeroCliContext
+from ..output import OutputMeta
 
 
 def render_generic(cli_ctx: EeroCliContext, data: Any, schema: str) -> None:
@@ -44,3 +45,43 @@ def render_generic(cli_ctx: EeroCliContext, data: Any, schema: str) -> None:
         schema,
         {"network_id": cli_ctx.network_id},
     )
+
+
+def render_generic_with_cursor(
+    cli_ctx: EeroCliContext,
+    data: Any,
+    schema: str,
+    *,
+    next_cursor: Optional[str],
+    cursor_label: str = "next_cursor",
+) -> None:
+    """`render_generic`, plus a pagination cursor surfaced per format.
+
+    For `json`/`yaml`, the cursor is added to the envelope's top-level `meta`
+    object under *cursor_label* (e.g. `network events --cursor <value from
+    meta.next_cursor>` chains pages). For `table`/`list`/`text`, there is no
+    `meta` object in the rendered output, so the cursor is printed as a dim
+    note line instead.
+
+    Args:
+        cli_ctx: The active CLI context.
+        data: The already-extracted `data` payload.
+        schema: Structured-output schema id.
+        next_cursor: The pagination cursor for the next page, or `None` if
+            there isn't one (e.g. the response did not include one).
+        cursor_label: The `meta`/note key to use.
+    """
+    if next_cursor is None:
+        render_generic(cli_ctx, data, schema)
+        return
+
+    if cli_ctx.is_json_output():
+        meta = OutputMeta(network_id=cli_ctx.network_id, extra={cursor_label: next_cursor})
+        cli_ctx.renderer.render_json(data, schema, meta)
+    elif cli_ctx.is_yaml_output():
+        meta = OutputMeta(network_id=cli_ctx.network_id, extra={cursor_label: next_cursor})
+        cli_ctx.renderer.render_yaml(data, schema, meta)
+    else:
+        render_generic(cli_ctx, data, schema)
+        if not cli_ctx.quiet:
+            cli_ctx.console.print(f"[dim]{cursor_label}: {next_cursor}[/dim]")

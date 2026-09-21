@@ -46,6 +46,9 @@ from .entitlements import (
     print_entitlements_upsell,
 )
 
+# Events formatting
+from .events import print_channels, print_events, print_scan
+
 # Generic key/value renderer (undocumented response shapes)
 from .generic import render_generic
 
@@ -108,4 +111,8 @@ __all__ = [
     "print_entitlements_capabilities",
     # Account
     "print_account_premium",
+    # Events
+    "print_events",
+    "print_scan",
+    "print_channels",
 ]

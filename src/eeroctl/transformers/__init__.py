@@ -9,6 +9,12 @@ from .base import extract_data, extract_id_from_url, extract_list, safe_get
 from .device import extract_device, extract_devices, normalize_device
 from .eero import extract_eero, extract_eeros, normalize_eero
 from .entitlements import extract_entitlements
+from .events import (
+    extract_channel_utilization,
+    extract_events,
+    extract_next_cursor,
+    extract_scan,
+)
 from .network import extract_network, extract_networks, normalize_network, normalize_network_status
 from .profile import extract_profile, extract_profiles, normalize_profile
 
@@ -39,4 +45,9 @@ __all__ = [
     "extract_entitlements",
     # Account
     "extract_premium_customer",
+    # Events
+    "extract_events",
+    "extract_next_cursor",
+    "extract_scan",
+    "extract_channel_utilization",
 ]
