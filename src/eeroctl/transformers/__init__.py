@@ -11,6 +11,7 @@ from .backup_access_points import (
     extract_backup_ssid_discovery,
 )
 from .base import extract_data, extract_id_from_url, extract_list, safe_get
+from .data_usage import extract_data_usage
 from .device import extract_device, extract_devices, normalize_device
 from .dns_policy import extract_dns_policy
 from .eero import (
@@ -127,4 +128,6 @@ __all__ = [
     "extract_transfer_stats",
     # Activity (devices/profiles insights)
     "extract_insights",
+    # Data usage
+    "extract_data_usage",
 ]

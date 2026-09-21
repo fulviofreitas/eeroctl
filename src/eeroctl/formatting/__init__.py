@@ -39,6 +39,20 @@ from .base import (
     get_network_status_value,
 )
 
+# Data usage formatting
+from .data_usage import (
+    print_data_usage_breakdown,
+    print_data_usage_report_settings,
+    print_data_usage_summary,
+    print_device_data_usage,
+    print_devices_data_usage,
+    print_eero_data_usage,
+    print_eeros_data_usage_summary,
+    print_profile_data_usage,
+    print_unprofiled_data_usage_summary,
+    print_unprofiled_devices_data_usage,
+)
+
 # Device formatting
 from .device import (
     create_devices_table,
@@ -205,4 +219,15 @@ __all__ = [
     "print_profiles_insights",
     "print_profile_insights",
     "print_profile_devices_insights",
+    # Data usage
+    "print_data_usage_summary",
+    "print_data_usage_breakdown",
+    "print_devices_data_usage",
+    "print_device_data_usage",
+    "print_eeros_data_usage_summary",
+    "print_eero_data_usage",
+    "print_profile_data_usage",
+    "print_unprofiled_devices_data_usage",
+    "print_unprofiled_data_usage_summary",
+    "print_data_usage_report_settings",
 ]

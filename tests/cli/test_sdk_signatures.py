@@ -360,6 +360,113 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         },
         "activity.py:451 (client.py:1390)",
     ),
+    # -- network/usage.py: data-usage family (phase A, commit 24b, closes #46) --
+    (
+        "get_data_usage",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "timezone": None,
+        },
+        "network/usage.py:92 (client.py:1578)",
+    ),
+    (
+        "get_data_usage_breakdown",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": None,
+            "timezone": None,
+        },
+        "network/usage.py:126 (client.py:1605)",
+    ),
+    (
+        "get_devices_data_usage",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": None,
+            "timezone": None,
+            "profile_id": None,
+        },
+        "network/usage.py:162 (client.py:1624)",
+    ),
+    (
+        "get_device_data_usage",
+        ("mac", "nid"),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "timezone": None,
+        },
+        "network/usage.py:204 (client.py:1649)",
+    ),
+    (
+        "get_eeros_data_usage_summary",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "timezone": None,
+        },
+        "network/usage.py:239 (client.py:1669)",
+    ),
+    (
+        "get_eero_data_usage",
+        ("eid", "nid"),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "timezone": None,
+        },
+        "network/usage.py:280 (client.py:1688)",
+    ),
+    (
+        "get_profile_data_usage",
+        ("pid", "nid"),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "timezone": None,
+        },
+        "network/usage.py:322 (client.py:1708)",
+    ),
+    (
+        "get_unprofiled_devices_data_usage",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "timezone": None,
+        },
+        "network/usage.py:381 (client.py:1728)",
+    ),
+    (
+        "get_unprofiled_data_usage_summary",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "timezone": None,
+        },
+        "network/usage.py:371 (client.py:1747)",
+    ),
+    (
+        "get_data_usage_report_settings",
+        ("nid",),
+        {},
+        "network/usage.py:417 (client.py:1766)",
+    ),
 ]
 
 

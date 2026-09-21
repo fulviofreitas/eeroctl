@@ -63,6 +63,7 @@ def network_group(ctx: click.Context) -> None:
       wan       - WAN configuration (multi-static-IP)
       ouicheck  - OUI check for a specific Eero node
       transfer  - Transfer statistics (network or one device)
+      usage     - Data usage (closes #46)
 
     \b
     Examples:
@@ -386,6 +387,7 @@ from .speedtest import speedtest_group  # noqa: E402
 from .sqm import sqm_group  # noqa: E402
 from .subnets import subnets_group  # noqa: E402
 from .transfer import network_transfer  # noqa: E402
+from .usage import usage_group  # noqa: E402
 from .wan import wan_group  # noqa: E402
 from .wpa3 import wpa3_per_band_group  # noqa: E402
 
@@ -414,3 +416,4 @@ network_group.add_command(subnets_group)
 network_group.add_command(wan_group)
 network_group.add_command(network_ouicheck)
 network_group.add_command(network_transfer)
+network_group.add_command(usage_group)
