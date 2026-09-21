@@ -12,7 +12,13 @@ from .backup_access_points import (
 from .base import extract_data, extract_id_from_url, extract_list, safe_get
 from .device import extract_device, extract_devices, normalize_device
 from .dns_policy import extract_dns_policy
-from .eero import extract_eero, extract_eeros, normalize_eero
+from .eero import (
+    extract_connections,
+    extract_eero,
+    extract_eero_support,
+    extract_eeros,
+    normalize_eero,
+)
 from .entitlements import extract_entitlements
 from .events import (
     extract_channel_utilization,
@@ -36,6 +42,7 @@ from .notifications import (
     extract_unread,
     extract_unread_flag,
 )
+from .ouicheck import extract_ouicheck
 from .permissions import extract_capability_map, extract_permissions, extract_role
 from .power_saving import extract_power_saving_schedules
 from .profile import extract_profile, extract_profiles, normalize_profile
@@ -64,6 +71,8 @@ __all__ = [
     "extract_eeros",
     "extract_eero",
     "normalize_eero",
+    "extract_connections",
+    "extract_eero_support",
     # Profile
     "extract_profiles",
     "extract_profile",
@@ -106,4 +115,6 @@ __all__ = [
     "extract_subnet_content_filters",
     # WAN
     "extract_multistaticip",
+    # OUI check
+    "extract_ouicheck",
 ]

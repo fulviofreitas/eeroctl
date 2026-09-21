@@ -95,12 +95,14 @@ def eero_group(ctx: click.Context) -> None:
 
     \b
     Commands:
-      list       - List all mesh nodes
-      show       - Show node details
-      reboot     - Reboot a node
-      led        - LED management
-      nightlight - Nightlight (Beacon only)
-      updates    - Update management
+      list        - List all mesh nodes
+      show        - Show node details
+      reboot      - Reboot a node
+      connections - Show a node's connections
+      support     - Show a node's support data
+      led         - LED management
+      nightlight  - Nightlight (Beacon only)
+      updates     - Update management
 
     \b
     Examples:
@@ -298,6 +300,7 @@ def eero_reboot(
 
 
 # Import and register subcommand groups after eero_group is defined
+from . import connections  # noqa: E402,F401  (registers connections/support via decorators)
 from .led import led_group  # noqa: E402
 from .nightlight import nightlight_group  # noqa: E402
 from .updates import updates_group  # noqa: E402

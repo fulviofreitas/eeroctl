@@ -42,7 +42,10 @@ from .dns_policy import print_dns_policy
 # Eero device formatting
 from .eero import (
     create_eeros_table,
+    print_connections,
     print_eero_details,
+    print_eero_support,
+    print_eero_support_unavailable,
 )
 
 # Entitlements formatting
@@ -76,6 +79,9 @@ from .network import (
 
 # Notifications formatting
 from .notifications import print_notification_history, print_notification_settings, print_unread
+
+# OUI-check formatting
+from .ouicheck import print_ouicheck
 
 # Permissions formatting
 from .permissions import print_permissions
@@ -122,6 +128,9 @@ __all__ = [
     # Eero
     "create_eeros_table",
     "print_eero_details",
+    "print_connections",
+    "print_eero_support",
+    "print_eero_support_unavailable",
     # Device
     "create_devices_table",
     "print_device_details",
@@ -169,4 +178,6 @@ __all__ = [
     # WAN
     "print_multistaticip",
     "print_multistaticip_not_configured",
+    # OUI check
+    "print_ouicheck",
 ]

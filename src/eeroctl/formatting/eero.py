@@ -10,6 +10,7 @@ from rich.panel import Panel
 from rich.table import Table
 
 from .._coercion import coerce_numeric
+from ..context import EeroCliContext
 from ..transformers.eero import normalize_eero
 from .base import (
     DetailLevel,
@@ -20,6 +21,7 @@ from .base import (
     field_status,
     format_eero_status,
 )
+from .generic import render_generic
 
 # ==================== Eero Table ====================
 
@@ -511,3 +513,36 @@ def print_eero_details(
     perf_panel = _eero_performance_panel(e)
     if perf_panel:
         console.print(perf_panel)
+
+
+def print_connections(cli_ctx: EeroCliContext, data: Any) -> None:
+    """Render `eero connections <id>` (`get_connections`).
+
+    <!-- unverified shape --> Response shape is undocumented (no live sample
+    captured yet, migration plan §5.3), so this goes through the generic
+    key/value renderer for every format.
+    """
+    render_generic(cli_ctx, data, "eero.eero.connections/v1")
+
+
+def print_eero_support(cli_ctx: EeroCliContext, data: Any) -> None:
+    """Render `eero support <id>` (`get_eero_support`).
+
+    <!-- unverified shape --> Response shape is undocumented (no live sample
+    captured yet, migration plan §5.3), so this goes through the generic
+    key/value renderer for every format.
+    """
+    render_generic(cli_ctx, data, "eero.eero.support/v1")
+
+
+def print_eero_support_unavailable(cli_ctx: EeroCliContext) -> None:
+    """Render the "unavailable" case (migration plan §12, Q7).
+
+    Absent-feature reads exit 0 with an explicit "unavailable" line and
+    `data: null` in structured output; exit 5 stays reserved for a wrong id.
+    """
+    schema = "eero.eero.support/v1"
+    if cli_ctx.is_structured_output():
+        cli_ctx.render_structured(None, schema)
+        return
+    cli_ctx.console.print("[yellow]Support data is unavailable for this eero.[/yellow]")

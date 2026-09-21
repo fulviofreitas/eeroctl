@@ -31,6 +31,25 @@ def extract_eero(raw: Dict[str, Any]) -> Dict[str, Any]:
     return extract_data(raw)
 
 
+def extract_connections(raw: Dict[str, Any]) -> Any:
+    """Unwrap the `data` field of a `get_connections` envelope.
+
+    Facade: `get_connections(eero_id, network_id=None)` -- client.py:661.
+    Response shape is undocumented beyond the envelope.
+    """
+    return extract_data(raw)
+
+
+def extract_eero_support(raw: Dict[str, Any]) -> Any:
+    """Unwrap the `data` field of a `get_eero_support` envelope.
+
+    Facade: `get_eero_support(eero_serial)` -- client.py:3114 (takes a bare
+    serial; no `network_id`). Response shape is undocumented beyond the
+    envelope.
+    """
+    return extract_data(raw)
+
+
 def normalize_eero(data: Dict[str, Any]) -> Dict[str, Any]:
     """Normalize eero data for consistent access.
 

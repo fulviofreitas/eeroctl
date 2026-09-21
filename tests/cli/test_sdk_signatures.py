@@ -286,6 +286,16 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ),
     # -- network/wan.py (phase A, commit 21) ---------------------------------
     ("get_multistaticip", ("nid",), {}, "network/wan.py:81 (client.py:3032)"),
+    # -- eero/connections.py, device.py, network/ouicheck.py (commit 22) ----
+    ("get_connections", ("eid", "nid"), {}, "eero/connections.py:65 (client.py:661)"),
+    ("get_eero_support", ("serial",), {}, "eero/connections.py:115 (client.py:3114)"),
+    ("get_device_labels", ("did", "nid"), {}, "device.py:521 (client.py:879)"),
+    (
+        "get_ouicheck",
+        ("nid",),
+        {"serial": "serial", "version": "1.0"},
+        "network/ouicheck.py:69 (client.py:1805)",
+    ),
 ]
 
 

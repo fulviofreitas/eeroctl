@@ -21,7 +21,7 @@ from rich.table import Table
 
 from ..context import EeroCliContext, ensure_cli_context
 from ..exit_codes import ExitCode
-from ..options import apply_options, force_option, network_option, output_option
+from ..options import apply_options, common_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ..transformers import extract_data, extract_devices, normalize_device
@@ -83,6 +83,7 @@ def device_group(ctx: click.Context) -> None:
       unblock - Unblock a device
       pause   - Pause a device
       unpause - Unpause a device
+      labels  - Device labels (read only)
 
     \b
     Examples:
@@ -523,5 +524,68 @@ def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: 
             )
 
         await run_with_client(toggle_pause)
+
+    asyncio.run(run_cmd())
+
+
+# ==================== Device Labels (read-only) ====================
+#
+# get_device_labels (client.py:879) is a plain GET; set_device_labels is a
+# documented no-op write (HTTP 200, never applies -- api/devices.py:381-387,
+# migration plan §3.2), so there is no `device labels set` command.
+
+
+@device_group.group(name="labels")
+@click.pass_context
+def device_labels_group(ctx: click.Context) -> None:
+    """View device labels.
+
+    \b
+    Commands:
+      show <device-identifier> - Show a device's labels
+    """
+    pass
+
+
+@device_labels_group.command(name="show")
+@click.argument("device_identifier")
+@common_options
+@click.pass_context
+def device_labels_show(
+    ctx: click.Context,
+    device_identifier: str,
+    output: Optional[str],
+    network_id: Optional[str],
+) -> None:
+    """Show a device's labels.
+
+    \b
+    Arguments:
+      DEVICE_IDENTIFIER  Device ID, MAC address, or name
+    """
+    from ..formatting.generic import render_generic
+
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
+    console = cli_ctx.console
+
+    async def run_cmd() -> None:
+        async def get_labels(client: EeroClient) -> None:
+            with cli_ctx.status("Finding device..."):
+                raw_devices = await client.get_devices(cli_ctx.network_id)
+
+            devices = extract_devices(raw_devices)
+            target = _find_device(devices, device_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Device '{device_identifier}' not found[/red]")
+                console.print("[dim]Try: eero device list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            with cli_ctx.status("Getting device labels..."):
+                raw = await client.get_device_labels(target["id"], cli_ctx.network_id)
+
+            render_generic(cli_ctx, extract_data(raw), "eero.device.labels.show/v1")
+
+        await run_with_client(get_labels)
 
     asyncio.run(run_cmd())

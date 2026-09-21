@@ -61,6 +61,7 @@ def network_group(ctx: click.Context) -> None:
       power-saving - Power-saving schedules (read-only in phase A)
       subnets   - Subnet configuration and content filters
       wan       - WAN configuration (multi-static-IP)
+      ouicheck  - OUI check for a specific Eero node
 
     \b
     Examples:
@@ -376,6 +377,7 @@ from .forwards import forwards_group  # noqa: E402
 from .guest import guest_group  # noqa: E402
 from .members import members_group  # noqa: E402
 from .notifications import notifications_group  # noqa: E402
+from .ouicheck import network_ouicheck  # noqa: E402
 from .permissions import network_permissions  # noqa: E402
 from .power_saving import power_saving_group  # noqa: E402
 from .security import security_group  # noqa: E402
@@ -408,3 +410,4 @@ network_group.add_command(wpa3_per_band_group)
 network_group.add_command(power_saving_group)
 network_group.add_command(subnets_group)
 network_group.add_command(wan_group)
+network_group.add_command(network_ouicheck)
