@@ -77,6 +77,9 @@ from .notifications import print_notification_history, print_notification_settin
 # Permissions formatting
 from .permissions import print_permissions
 
+# Power-saving formatting
+from .power_saving import print_power_saving_schedules
+
 # Profile formatting
 from .profile import (
     create_profile_devices_table,
@@ -146,4 +149,6 @@ __all__ = [
     # WPA3 / fast transition
     "print_wpa3_per_band",
     "print_fast_transition",
+    # Power saving
+    "print_power_saving_schedules",
 ]
