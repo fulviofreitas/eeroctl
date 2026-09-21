@@ -109,7 +109,11 @@ class TestNetworkRename:
 
 
 class TestSQM:
-    """Tests for ``eero network sqm enable/disable`` → ``client.set_sqm_enabled``."""
+    """Tests for ``eero network sqm enable/disable`` → ``client.set_sqm``.
+
+    eero-api 8.0.1 removed `set_sqm_enabled`; `set_sqm` is its replacement
+    (client.py:2174, migration plan §2.3).
+    """
 
     @pytest.fixture
     def runner(self) -> CliRunner:
@@ -118,18 +122,18 @@ class TestSQM:
 
     @pytest.fixture
     def mock_client_true(self) -> MagicMock:
-        """Mock client returning truthy response for set_sqm_enabled."""
-        return _make_mock_client(set_sqm_enabled=_OK_RESPONSE)
+        """Mock client returning truthy response for set_sqm."""
+        return _make_mock_client(set_sqm=_OK_RESPONSE)
 
     @pytest.fixture
     def mock_client_false(self) -> MagicMock:
-        """Mock client returning truthy response for set_sqm_enabled (disable path)."""
-        return _make_mock_client(set_sqm_enabled=_OK_RESPONSE)
+        """Mock client returning truthy response for set_sqm (disable path)."""
+        return _make_mock_client(set_sqm=_OK_RESPONSE)
 
-    def test_sqm_enable_calls_set_sqm_enabled_with_boolean(
+    def test_sqm_enable_calls_set_sqm_with_boolean(
         self, runner: CliRunner, mock_client_true: MagicMock
     ):
-        """sqm enable passes bare True boolean to set_sqm_enabled (locks eero-api 4.1.2 contract)."""
+        """sqm enable passes bare True boolean to set_sqm."""
         with patch(
             "eeroctl.commands.network.sqm.run_with_client",
             side_effect=_make_run_with_client(mock_client_true),
@@ -138,11 +142,11 @@ class TestSQM:
                 cli, ["--network-id", NID, "network", "sqm", "enable", "--force"]
             )
 
-        mock_client_true.set_sqm_enabled.assert_called_once_with(True, NID)
+        mock_client_true.set_sqm.assert_called_once_with(True, NID)
         assert result.exit_code == 0
 
     def test_sqm_disable_passes_false(self, runner: CliRunner, mock_client_false: MagicMock):
-        """sqm disable passes bare False boolean to set_sqm_enabled."""
+        """sqm disable passes bare False boolean to set_sqm."""
         with patch(
             "eeroctl.commands.network.sqm.run_with_client",
             side_effect=_make_run_with_client(mock_client_false),
@@ -151,7 +155,7 @@ class TestSQM:
                 cli, ["--network-id", NID, "network", "sqm", "disable", "--force"]
             )
 
-        mock_client_false.set_sqm_enabled.assert_called_once_with(False, NID)
+        mock_client_false.set_sqm.assert_called_once_with(False, NID)
         assert result.exit_code == 0
 
 

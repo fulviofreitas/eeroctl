@@ -655,20 +655,11 @@ class TestNetworkSQM:
         assert result.exit_code == 0
         assert "Smart Queue Management" in result.output or "SQM" in result.output
 
-    def test_sqm_set_help(self, runner):
-        """Test sqm set shows help."""
+    def test_sqm_set_is_removed(self, runner):
+        """`network sqm set` was removed in eero-api 8.0.1 -- no bandwidth
+        fields exist on SQM (BREAKING CHANGE). The subcommand must not exist.
+        """
         result = runner.invoke(cli, ["network", "sqm", "set", "--help"])
 
-        assert result.exit_code == 0
-        assert "--upload" in result.output
-        assert "--download" in result.output
-
-    def test_sqm_set_requires_bandwidth(self, runner):
-        """Test sqm set requires at least one bandwidth option."""
-        result = runner.invoke(cli, ["--force", "network", "sqm", "set"])
-
-        assert (
-            result.exit_code != 0
-            or "upload" in result.output.lower()
-            or "download" in result.output.lower()
-        )
+        assert result.exit_code == 2
+        assert "No such command" in result.output

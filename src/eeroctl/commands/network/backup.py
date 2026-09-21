@@ -1,13 +1,19 @@
-"""Backup network commands for the Eero CLI (Eero Plus feature).
+"""Backup internet commands for the Eero CLI (Eero Plus feature).
 
 Commands:
-- eero network backup show: Show backup network settings
-- eero network backup enable: Enable backup network
-- eero network backup disable: Disable backup network
-- eero network backup status: Show current backup status
+- eero network backup show: Show backup internet configuration
+- eero network backup enable: Enable backup internet
+- eero network backup disable: Disable backup internet
+- eero network backup status: Show cellular backup usage and events
+
+Note: eero-api 8.0.1 removed `get_backup_network`, `get_backup_status`,
+`set_backup_network` and `is_using_backup`; this module is rewired to the new
+`get_backup_internet` / `set_backup_internet` / `get_cellular_backup_usage` /
+`get_cellular_backup_events` family (client.py:1950-1976).
 """
 
 import asyncio
+import json
 import sys
 
 import click
@@ -18,20 +24,21 @@ from ...context import EeroCliContext, get_cli_context
 from ...errors import is_premium_error
 from ...exit_codes import ExitCode
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...transformers import extract_data
 from ...utils import run_with_client
 
 
 @click.group(name="backup")
 @click.pass_context
 def backup_group(ctx: click.Context) -> None:
-    """Manage backup network (Eero Plus feature).
+    """Manage backup internet (Eero Plus feature).
 
     \b
     Commands:
-      show    - Show backup network settings
-      enable  - Enable backup network
-      disable - Disable backup network
-      status  - Show current backup status
+      show    - Show backup internet configuration
+      enable  - Enable backup internet
+      disable - Disable backup internet
+      status  - Show cellular backup usage and events
     """
     pass
 
@@ -39,32 +46,34 @@ def backup_group(ctx: click.Context) -> None:
 @backup_group.command(name="show")
 @click.pass_context
 def backup_show(ctx: click.Context) -> None:
-    """Show backup network configuration."""
+    """Show backup internet configuration."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 
     async def run_cmd() -> None:
         async def get_backup(client: EeroClient) -> None:
-            with cli_ctx.status("Getting backup network settings..."):
+            with cli_ctx.status("Getting backup internet settings..."):
                 try:
-                    backup_data = await client.get_backup_network(cli_ctx.network_id)
+                    raw_backup = await client.get_backup_internet(cli_ctx.network_id)
                 except Exception as e:
                     if is_premium_error(e):
-                        console.print("[yellow]Backup network requires Eero Plus[/yellow]")
+                        console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
+
+            backup_data = extract_data(raw_backup) if isinstance(raw_backup, dict) else {}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(backup_data, "eero.network.backup.show/v1")
             elif cli_ctx.is_list_output():
                 renderer.render_text(backup_data, "eero.network.backup.show/v1")
             else:
-                enabled = backup_data.get("enabled", False)
+                enabled = backup_data.get("backup_internet_enabled", backup_data.get("enabled"))
                 content = (
                     f"[bold]Enabled:[/bold] {'[green]Yes[/green]' if enabled else '[dim]No[/dim]'}"
                 )
-                console.print(Panel(content, title="Backup Network", border_style="blue"))
+                console.print(Panel(content, title="Backup Internet", border_style="blue"))
 
         await run_with_client(get_backup)
 
@@ -75,7 +84,7 @@ def backup_show(ctx: click.Context) -> None:
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
 @click.pass_context
 def backup_enable(ctx: click.Context, force: bool) -> None:
-    """Enable backup network."""
+    """Enable backup internet."""
     cli_ctx = get_cli_context(ctx)
     _set_backup(cli_ctx, True, force)
 
@@ -84,19 +93,19 @@ def backup_enable(ctx: click.Context, force: bool) -> None:
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
 @click.pass_context
 def backup_disable(ctx: click.Context, force: bool) -> None:
-    """Disable backup network."""
+    """Disable backup internet."""
     cli_ctx = get_cli_context(ctx)
     _set_backup(cli_ctx, False, force)
 
 
 def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
-    """Set backup network state."""
+    """Set backup internet state."""
     console = cli_ctx.console
     action = "enable" if enable else "disable"
 
     try:
         confirm_or_fail(
-            action=f"{action} backup network",
+            action=f"{action} backup internet",
             target="network",
             risk=OperationRisk.MEDIUM,
             force=force or cli_ctx.force,
@@ -109,19 +118,19 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
 
     async def run_cmd() -> None:
         async def set_backup(client: EeroClient) -> None:
-            with cli_ctx.status(f"{action.capitalize()}ing backup network..."):
+            with cli_ctx.status(f"{action.capitalize()}ing backup internet..."):
                 try:
-                    result = await client.set_backup_network(enable, cli_ctx.network_id)
+                    result = await client.set_backup_internet(enable, cli_ctx.network_id)
                 except Exception as e:
                     if is_premium_error(e):
-                        console.print("[yellow]Backup network requires Eero Plus[/yellow]")
+                        console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
 
             if result:
-                console.print(f"[bold green]Backup network {action}d[/bold green]")
+                console.print(f"[bold green]Backup internet {action}d[/bold green]")
             else:
-                console.print(f"[red]Failed to {action} backup network[/red]")
+                console.print(f"[red]Failed to {action} backup internet[/red]")
                 sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(set_backup)
@@ -132,35 +141,42 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
 @backup_group.command(name="status")
 @click.pass_context
 def backup_status(ctx: click.Context) -> None:
-    """Show current backup network status."""
+    """Show cellular backup usage and events."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
 
     async def run_cmd() -> None:
         async def get_status(client: EeroClient) -> None:
-            with cli_ctx.status("Getting backup status..."):
+            with cli_ctx.status("Getting cellular backup status..."):
                 try:
-                    status_data = await client.get_backup_status(cli_ctx.network_id)
-                    # TODO: is_using_backup method not yet implemented in eero-api
-                    is_using = await client.is_using_backup(cli_ctx.network_id)  # type: ignore[attr-defined]
+                    raw_usage = await client.get_cellular_backup_usage(cli_ctx.network_id)
+                    raw_events = await client.get_cellular_backup_events(cli_ctx.network_id)
                 except Exception as e:
                     if is_premium_error(e):
-                        console.print("[yellow]Backup network requires Eero Plus[/yellow]")
+                        console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
 
-            status_output = {**status_data, "using_backup": is_using}
+            usage_data = extract_data(raw_usage) if isinstance(raw_usage, dict) else {}
+            events_data = extract_data(raw_events) if isinstance(raw_events, dict) else {}
+            status_output = {"usage": usage_data, "events": events_data}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(status_output, "eero.network.backup.status/v1")
             elif cli_ctx.is_list_output():
                 renderer.render_text(status_output, "eero.network.backup.status/v1")
             else:
-                style = "yellow" if is_using else "green"
-                status = "Using Backup" if is_using else "Primary Connection"
-                content = f"[bold]Status:[/bold] [{style}]{status}[/{style}]"
-                console.print(Panel(content, title="Backup Status", border_style=style))
+                # Shapes are undocumented (eero-api 8.0.1); render with the
+                # same generic key/value dump used elsewhere for undocumented
+                # data instead of f-string `repr()`-ing the raw dicts.
+                console.print(
+                    Panel(
+                        json.dumps(status_output, indent=2, default=str),
+                        title="Backup Status",
+                        border_style="blue",
+                    )
+                )
 
         await run_with_client(get_status)
 

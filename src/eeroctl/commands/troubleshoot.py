@@ -298,11 +298,13 @@ async def troubleshoot_doctor(
 
         # Check premium status
         try:
-            # TODO: is_premium method not yet implemented in eero-api
-            raw_premium = await client.is_premium(cli_ctx.network_id)  # type: ignore[attr-defined]
-            is_premium = raw_premium if isinstance(raw_premium, bool) else False
-            if isinstance(raw_premium, dict):
-                is_premium = raw_premium.get("data", {}).get("premium", False)
+            raw_premium = await client.get_premium_status(cli_ctx.network_id)
+            premium_data = raw_premium.get("data", {}) if isinstance(raw_premium, dict) else {}
+            is_premium = bool(
+                premium_data.get("premium_status")
+                or premium_data.get("eero_plus")
+                or premium_data.get("premium_dns")
+            )
             checks.append(("Eero Plus", "info", "Active" if is_premium else "Not active"))
         except Exception:
             checks.append(("Eero Plus", "info", "Unknown"))

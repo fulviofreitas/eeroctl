@@ -73,7 +73,14 @@ def nightlight_show(ctx: click.Context, eero_identifier: str) -> None:
                         sys.exit(ExitCode.FEATURE_UNAVAILABLE)
                     raise
 
-            nl_data = extract_data(raw_nl) if isinstance(raw_nl, dict) else {}
+            # `get_nightlight` now GETs the `data.nightlight.url` sub-resource and
+            # returns the nightlight object itself, so the settings usually live at
+            # `data.*`; tolerate the old `data.nightlight.*` shape too (eero-api
+            # 8.0.1, unverified — no Beacon available to confirm).
+            _data = extract_data(raw_nl) if isinstance(raw_nl, dict) else {}
+            nl_data = _data.get("nightlight", _data) if isinstance(_data, dict) else {}
+            if not isinstance(nl_data, dict):
+                nl_data = {}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(nl_data, "eero.eero.nightlight.show/v1")
@@ -187,8 +194,7 @@ def nightlight_brightness(ctx: click.Context, eero_identifier: str, value: int) 
             eero_id_str = str(resolved_id)
             with cli_ctx.status(f"Setting nightlight brightness to {value}%..."):
                 try:
-                    # TODO: set_nightlight_brightness method not yet implemented in eero-api
-                    result = await client.set_nightlight_brightness(  # type: ignore[attr-defined]
+                    result = await client.set_nightlight_brightness(
                         eero_id_str, value, cli_ctx.network_id
                     )
                 except Exception as e:
@@ -237,11 +243,16 @@ def nightlight_schedule(
                 sys.exit(ExitCode.NOT_FOUND)
 
             eero_id_str = str(resolved_id)
+            # `set_nightlight_schedule` forwards `schedule` to the API verbatim,
+            # with no interpretation of its shape (eero-api 8.0.1). This is the
+            # v7 field shape; unverified -- no Beacon available to confirm
+            # (migration plan Q4). `--schedule-json` for a raw override lands in
+            # a later phase-C commit.
+            schedule = {"enabled": True, "on": on_time, "off": off_time}
             with cli_ctx.status("Setting nightlight schedule..."):
                 try:
-                    # TODO: set_nightlight_schedule method not yet implemented in eero-api
-                    result = await client.set_nightlight_schedule(  # type: ignore[attr-defined]
-                        eero_id_str, True, on_time, off_time, cli_ctx.network_id
+                    result = await client.set_nightlight_schedule(
+                        eero_id_str, schedule, cli_ctx.network_id
                     )
                 except Exception as e:
                     if is_feature_unavailable_error(e, "beacon"):

@@ -19,6 +19,7 @@ from rich.table import Table
 from ...context import get_cli_context
 from ...exit_codes import ExitCode
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...transformers import extract_data
 from ...utils import run_with_client
 
 
@@ -56,7 +57,9 @@ def security_show(ctx: click.Context) -> None:
     async def run_cmd() -> None:
         async def get_security(client: EeroClient) -> None:
             with cli_ctx.status("Getting security settings..."):
-                sec_data = await client.get_security_settings(cli_ctx.network_id)
+                raw_security = await client.get_security_settings(cli_ctx.network_id)
+
+            sec_data = extract_data(raw_security) if isinstance(raw_security, dict) else {}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(sec_data, "eero.network.security.show/v1")

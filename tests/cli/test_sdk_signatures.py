@@ -6,10 +6,11 @@ exist to catch signature drift that mypy cannot see (e.g. the string-dispatch
 call sites in ``network/security.py``) and to give a single, auditable inventory
 of every facade method eeroctl depends on.
 
-This module is pinned to eero-api **7.0.0** (the version installed today). The
-``feat(deps)!: update eero-api to 8.0.1`` commit rewrites the rows that change
-and removes the ones that go away; see
-``eero-api-8-migration-plan.md`` §1.3/§2.3/§2.4 for the v8 target shape.
+This module is pinned to eero-api **8.0.1** (the version installed since the
+``feat(deps)!: update eero-api to 8.0.1`` commit). Signatures are cited against
+``/tmp/eero-api-v8.0.1/src/eero/client.py`` (see the DIGEST at
+``/tmp/eero-api-v8.0.1/DIGEST.md``) and the migration plan's
+``eero-api-8-migration-plan.md`` §1.3/§2.3/§2.4.
 """
 
 from __future__ import annotations
@@ -21,8 +22,10 @@ import pytest
 from eero import EeroClient
 from eero.api.auth_storage import KeyringStorage
 from eero.exceptions import (
+    EeroAccessDeniedException,
     EeroAPIException,
     EeroAuthenticationException,
+    EeroClientBlockedException,
     EeroException,
     EeroFeatureUnavailableException,
     EeroNetworkException,
@@ -78,18 +81,33 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("get_devices", ("nid",), {}, "device.py:108,192,255,326,417; dhcp.py:93"),
     ("get_device", ("did", "nid"), {}, "device.py:204"),
     ("set_device_nickname", ("did", "New Name", "nid"), {}, "device.py:266"),
-    ("block_device", ("did", True, "nid"), {}, "device.py:358"),
+    # `block_device`/`unblock_device` split in eero-api 8.0.1 -- no more
+    # `blocked: bool` param (client.py:768,788).
+    ("block_device", ("did", "nid"), {}, "device.py:358"),
+    ("unblock_device", ("did", "nid"), {}, "device.py:358"),
     ("pause_device", ("did", True, "nid"), {}, "device.py:449"),
     # -- profile.py ---------------------------------------------------------
     ("get_profiles", ("nid",), {}, "profile.py:95,176,287,349,443,516,586,641,708,788,845"),
     ("get_profile", ("pid", "nid"), {}, "profile.py:187"),
-    ("create_profile", ("New Profile", "nid"), {}, "profile.py:233"),
+    # `create_profile` gains keyword-only params in 8.0.1; `network_id` must be
+    # passed by keyword (client.py:1038).
+    ("create_profile", ("New Profile",), {"network_id": "nid"}, "profile.py:233"),
     ("rename_profile", ("pid", "New Name", "nid"), {}, "profile.py:312"),
     ("delete_profile", ("pid", "nid"), {}, "profile.py:375"),
     ("pause_profile", ("pid", True, "nid"), {}, "profile.py:468"),
-    ("get_blocked_applications", ("pid", "nid"), {}, "profile.py:528"),
+    # `get_blocked_applications` was removed in 8.0.0; replaced by
+    # `get_dns_policy_applications` (client.py:2552).
+    ("get_dns_policy_applications", ("pid", "nid"), {}, "profile.py:528,586,641"),
+    (
+        "set_profile_blocked_applications",
+        ("pid", ["app1", "app2"], "nid"),
+        {},
+        "profile.py:600,655 (client.py:2559)",
+    ),
     ("enable_bedtime", ("pid", "22:00", "07:00", ["mon", "tue"], "nid"), {}, "profile.py:813"),
-    ("get_profile_schedule", ("pid", "nid"), {}, "profile.py:719"),
+    # `get_profile_schedule` was removed in 8.0.0; replaced by `get_schedules`,
+    # which returns a *list* of pause sub-resources (client.py:1983).
+    ("get_schedules", ("pid", "nid"), {}, "profile.py:719"),
     ("clear_profile_schedule", ("pid", "nid"), {}, "profile.py:870"),
     # -- troubleshoot.py ------------------------------------------------
     (
@@ -111,10 +129,20 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("set_led_brightness", ("eid", 50, "nid"), {}, "eero/led.py:165"),
     ("get_nightlight", ("eid", "nid"), {}, "eero/nightlight.py:67"),
     ("set_nightlight", ("eid",), {"enabled": True, "network_id": "nid"}, "eero/nightlight.py:142"),
+    # `set_nightlight_brightness` now exists on 8.0.1: `(eero_id,
+    # brightness_percentage, network_id=None)` (client.py:1920).
+    ("set_nightlight_brightness", ("eid", 50, "nid"), {}, "eero/nightlight.py:191"),
+    # `set_nightlight_schedule` now exists on 8.0.1: `(eero_id, schedule: Dict,
+    # network_id=None)` (client.py:1935); the schedule dict is forwarded to the
+    # API verbatim, uninterpreted by the SDK (DIGEST §10). This pins the v7
+    # field shape the CLI still sends (Q4, unverified -- no Beacon available).
+    (
+        "set_nightlight_schedule",
+        ("eid", {"enabled": True, "on": "20:00", "off": "06:00"}, "nid"),
+        {},
+        "eero/nightlight.py:243",
+    ),
     ("get_updates", ("nid",), {}, "eero/updates.py:43,77"),
-    # `set_nightlight_brightness` (eero/nightlight.py:191) and
-    # `set_nightlight_schedule` (eero/nightlight.py:243) never existed on
-    # 7.0.0 — see KNOWN_DEAD_CALL_SITES below.
     # -- network/base.py --------------------------------------------------
     ("set_preferred_network", ("nid",), {}, "network/base.py:176"),
     ("set_network_name", ("New Name", "nid"), {}, "network/base.py:279"),
@@ -134,26 +162,28 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("get_forwards", ("nid",), {}, "network/forwards.py:48,97"),
     # -- network/sqm.py -----------------------------------------------------
     ("get_sqm_settings", ("nid",), {}, "network/sqm.py:56"),
-    ("set_sqm_enabled", (True, "nid"), {}, "network/sqm.py:121"),
-    (
-        "configure_sqm",
-        (),
-        {"enabled": True, "upload_mbps": 10, "download_mbps": 20, "network_id": "nid"},
-        "network/sqm.py:176",
-    ),
+    # `set_sqm_enabled`/`configure_sqm` were removed in 8.0.0; `set_sqm`
+    # replaces `set_sqm_enabled` (client.py:2174). `configure_sqm` has no
+    # replacement -- `network sqm set` is removed (BREAKING CHANGE).
+    ("set_sqm", (True, "nid"), {}, "network/sqm.py:121"),
     # -- network/backup.py --------------------------------------------------
-    ("get_backup_network", ("nid",), {}, "network/backup.py:51"),
-    ("set_backup_network", (True, "nid"), {}, "network/backup.py:114"),
-    ("get_backup_status", ("nid",), {}, "network/backup.py:144"),
-    # `is_using_backup` (network/backup.py:146) never existed on 7.0.0 — see
-    # KNOWN_DEAD_CALL_SITES below.
+    # `get_backup_network`/`set_backup_network`/`get_backup_status`/
+    # `is_using_backup` were all removed in 8.0.0; replaced by the backup
+    # internet + cellular backup family (client.py:1950-1976).
+    ("get_backup_internet", ("nid",), {}, "network/backup.py:51"),
+    ("set_backup_internet", (True, "nid"), {}, "network/backup.py:114"),
+    ("get_cellular_backup_usage", ("nid",), {}, "network/backup.py:144"),
+    ("get_cellular_backup_events", ("nid",), {}, "network/backup.py:144"),
     # -- network/guest.py -----------------------------------------------
+    # `set_guest_network` drops `password` in 8.0.1; password writes go
+    # through the dedicated `set_guest_password` endpoint (client.py:1125,1157).
     (
         "set_guest_network",
         (),
-        {"enabled": True, "name": "Guest", "password": "hunter2", "network_id": "nid"},
+        {"enabled": True, "name": "Guest", "network_id": "nid"},
         "network/guest.py:153",
     ),
+    ("set_guest_password", ("hunter2", "nid"), {}, "network/guest.py:153"),
     # -- network/security.py: dynamic dispatch, invisible to mypy -----------
     ("get_security_settings", ("nid",), {}, "network/security.py:59"),
     ("set_wpa3", (True, "nid"), {}, "network/security.py:138 (getattr dispatch)"),
@@ -163,6 +193,9 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("set_thread_enabled", (True, "nid"), {}, "network/security.py:138 (getattr dispatch)"),
     # -- network/speedtest.py ------------------------------------------------
     ("run_speed_test", ("nid",), {}, "network/speedtest.py:43"),
+    # `run_speed_test` returns 202 with `data: null` (8.0.1); `speedtest show`
+    # now reads `get_speed_tests(limit=1)` (client.py:1206).
+    ("get_speed_tests", ("nid",), {"limit": 1}, "network/speedtest.py:77"),
 ]
 
 
@@ -201,29 +234,28 @@ def test_sdk_call_site_binds(
 # ---------------------------------------------------------------------------
 # 2. Known-dead call sites
 # ---------------------------------------------------------------------------
-# eeroctl calls these methods today (masked by broad `except Exception` /
-# `type: ignore[attr-defined]`), but they never existed on the SDK, on 7.0.0
-# or 8.0.0/8.0.1. Commit 5 (`feat(deps)!: update eero-api to 8.0.1`) rewires
-# each of these to its real v8 replacement (see migration plan §1.3/§2.2).
+# These methods do not exist on the installed SDK (8.0.1) and never did on
+# 7.0.0 either. `is_premium`, `is_using_backup`, `add_blocked_application` and
+# `remove_blocked_application` were rewired to their v8 replacements by this
+# commit (see SDK_CALL_SITES above and migration plan §1.3/§2.2).
+# `set_nightlight_brightness`/`set_nightlight_schedule` were dead on 7.0.0 but
+# are now real facade methods (moved into SDK_CALL_SITES above).
+# `configure_sqm`/`set_sqm_bandwidth`/`set_sqm_auto` were removed in 8.0.0
+# with no replacement -- `network sqm set` is deleted (BREAKING CHANGE).
 KNOWN_DEAD_CALL_SITES: list[tuple[str, str]] = [
-    (
-        "is_premium",
-        "troubleshoot.py:302 -> replaced by get_premium_status / get_entitlement_features",
-    ),
-    ("is_using_backup", "network/backup.py:146 -> replaced by get_cellular_backup_usage/events"),
-    ("add_blocked_application", "profile.py:600 -> replaced by set_profile_blocked_applications"),
-    (
-        "remove_blocked_application",
-        "profile.py:655 -> replaced by set_profile_blocked_applications",
-    ),
-    (
-        "set_nightlight_brightness",
-        "eero/nightlight.py:191 -> replaced by set_nightlight(brightness_percentage=)",
-    ),
-    (
-        "set_nightlight_schedule",
-        "eero/nightlight.py:243 -> gains a real signature on v8: (eero_id, schedule, network_id)",
-    ),
+    ("is_premium", "removed on 7.0.0 and 8.0.1 -- no `network sqm set` equivalent either"),
+    ("is_using_backup", "removed on 7.0.0 and 8.0.1"),
+    ("add_blocked_application", "removed on 7.0.0 and 8.0.1"),
+    ("remove_blocked_application", "removed on 7.0.0 and 8.0.1"),
+    ("set_sqm_enabled", "removed in eero-api 8.0.0 -- see set_sqm"),
+    ("configure_sqm", "removed in eero-api 8.0.0; no bandwidth-limit replacement exists"),
+    ("set_sqm_bandwidth", "removed in eero-api 8.0.0; no bandwidth-limit replacement exists"),
+    ("set_sqm_auto", "removed in eero-api 8.0.0; no bandwidth-limit replacement exists"),
+    ("get_blocked_applications", "removed in eero-api 8.0.0 -- see get_dns_policy_applications"),
+    ("get_profile_schedule", "removed in eero-api 8.0.0 -- see get_schedules"),
+    ("get_backup_network", "removed in eero-api 8.0.0 -- see get_backup_internet"),
+    ("set_backup_network", "removed in eero-api 8.0.0 -- see set_backup_internet"),
+    ("get_backup_status", "removed in eero-api 8.0.0 -- see get_cellular_backup_usage/events"),
 ]
 
 
@@ -250,14 +282,28 @@ def test_known_dead_call_site_is_absent(method_name: str, note: str) -> None:
 # 3. Constructor binding
 # ---------------------------------------------------------------------------
 def test_eeroclient_constructor_binds_cookie_file_and_use_keyring() -> None:
-    """`EeroClient(cookie_file=..., use_keyring=...)` binds on 7.0.0.
-
-    The three v8-only kwargs (`send_legacy_cookie`, `accept_language`,
-    `get_retries`) are added by commit 9 of the migration plan; they do not
-    exist on 7.0.0 and are intentionally not bound here.
-    """
+    """`EeroClient(cookie_file=..., use_keyring=...)` binds on 8.0.1."""
     signature = inspect.signature(EeroClient.__init__)
     signature.bind(object(), cookie_file="x", use_keyring=True)
+
+
+def test_eeroclient_constructor_binds_v8_keyword_only_args() -> None:
+    """`EeroClient` gained three keyword-only kwargs in 8.0.1 (DIGEST §1,
+    `client.py:49-59`): `send_legacy_cookie`, `accept_language`, `get_retries`.
+
+    They are not wired into eeroctl's CLI/config surface yet (that is a later
+    phase-C commit, migration plan §6.4 row 9); this test only pins that the
+    installed SDK still accepts them.
+    """
+    signature = inspect.signature(EeroClient.__init__)
+    signature.bind(
+        object(),
+        cookie_file="x",
+        use_keyring=True,
+        send_legacy_cookie=True,
+        accept_language="en-US",
+        get_retries=0,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -266,9 +312,11 @@ def test_eeroclient_constructor_binds_cookie_file_and_use_keyring() -> None:
 def test_exception_names_import_and_subclass_eero_exception() -> None:
     """Every name `errors.py` imports from `eero.exceptions` subclasses `EeroException`.
 
-    Covers the nine names `errors.py` imports plus `EeroNetworkException`
-    (not imported today; added to the isinstance chain in a later commit,
-    per migration plan §2.6).
+    Covers the nine names `errors.py` imports today plus `EeroNetworkException`
+    (not imported by `errors.py` yet; added to the isinstance chain by commit 6,
+    per migration plan §2.6) and the two new 8.0.0 classes,
+    `EeroAccessDeniedException`/`EeroClientBlockedException`
+    (DIGEST §2, exceptions.py:101,113), also wired up by commit 6.
     """
     names_and_classes = {
         "EeroAPIException": EeroAPIException,
@@ -281,6 +329,8 @@ def test_exception_names_import_and_subclass_eero_exception() -> None:
         "EeroTimeoutException": EeroTimeoutException,
         "EeroValidationException": EeroValidationException,
         "EeroNetworkException": EeroNetworkException,
+        "EeroAccessDeniedException": EeroAccessDeniedException,
+        "EeroClientBlockedException": EeroClientBlockedException,
     }
     for name, cls in names_and_classes.items():
         if name == "EeroException":
@@ -288,28 +338,38 @@ def test_exception_names_import_and_subclass_eero_exception() -> None:
         assert issubclass(cls, EeroException), f"{name} must subclass EeroException"
 
 
-def test_validation_exception_is_not_an_api_exception_on_installed_sdk() -> None:
-    """Pin the installed (7.0.0) hierarchy shape: `EeroValidationException` is a
-    direct `EeroException` subclass, NOT an `EeroAPIException` subclass.
+def test_v8_exception_hierarchy_rebases_three_classes_under_api_exception() -> None:
+    """Pin the installed (8.0.1) hierarchy shape (DIGEST §2, `exceptions.py`):
 
-    On 7.0.0 the hierarchy is flat: every exception subclasses `EeroException`
-    directly. v8 re-bases `EeroNotFoundException`, `EeroPremiumRequiredException`
-    and `EeroFeatureUnavailableException` under `EeroAPIException`, but
+    ```
+    EeroException
+    +-- EeroAuthenticationException / EeroRateLimitException /
+    |   EeroNetworkException / EeroTimeoutException
+    +-- EeroValidationException            (NOT an EeroAPIException)
+    +-- EeroAPIException
+        +-- EeroAccessDeniedException      (new in 8.0.0)
+        +-- EeroClientBlockedException     (new in 8.0.0)
+        +-- EeroNotFoundException          (re-based in 8.0.0)
+        +-- EeroPremiumRequiredException   (re-based in 8.0.0)
+        +-- EeroFeatureUnavailableException (re-based in 8.0.0)
+    ```
+
+    Unlike on 7.0.0 (flat hierarchy, every exception a direct `EeroException`
+    subclass), `EeroNotFoundException`, `EeroPremiumRequiredException` and
+    `EeroFeatureUnavailableException` are now `EeroAPIException` subclasses;
     `EeroValidationException` stays a direct `EeroException` subclass in both
-    versions (verified against the plan's §2.6 v8 hierarchy diagram). The v8
-    migration commit (`fix(cli): map the v8 exception hierarchy to exit codes`)
-    re-pins this test for the re-based classes.
+    versions.
     """
     assert issubclass(EeroValidationException, EeroException)
     assert not issubclass(EeroValidationException, EeroAPIException)
-    # On 7.0.0 the three "re-based in v8" classes are still flat siblings of
-    # EeroAPIException, not subclasses of it.
     for cls in (
         EeroNotFoundException,
         EeroPremiumRequiredException,
         EeroFeatureUnavailableException,
+        EeroAccessDeniedException,
+        EeroClientBlockedException,
     ):
-        assert not issubclass(cls, EeroAPIException)
+        assert issubclass(cls, EeroAPIException)
 
 
 # ---------------------------------------------------------------------------

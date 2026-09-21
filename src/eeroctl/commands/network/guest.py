@@ -153,12 +153,22 @@ def _set_guest_network(
                 result = await client.set_guest_network(
                     enabled=enable,
                     name=name,
-                    password=password,
                     network_id=cli_ctx.network_id,
                 )
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
+            network_ok = meta.get("code") == 200 or bool(result)
+
+            password_ok = True
+            if password is not None:
+                with cli_ctx.status("Setting guest network password..."):
+                    password_result = await client.set_guest_password(password, cli_ctx.network_id)
+                password_meta = (
+                    password_result.get("meta", {}) if isinstance(password_result, dict) else {}
+                )
+                password_ok = password_meta.get("code") == 200 or bool(password_result)
+
+            if network_ok and password_ok:
                 console.print(f"[bold green]Guest network {action}d[/bold green]")
             else:
                 console.print(f"[red]Failed to {action} guest network[/red]")

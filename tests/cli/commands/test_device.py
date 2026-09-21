@@ -170,9 +170,11 @@ class TestDeviceBlock:
 
         assert result.exit_code == 0
         assert "blocked" in result.output.lower()
+        # eero-api 8.0.1 split block/unblock into two methods; neither takes a
+        # bare `blocked: bool` positional anymore (device.py:358).
         mock_client.block_device.assert_awaited_once()
         call_args = mock_client.block_device.call_args
-        assert call_args[0][1] is True  # blocked=True
+        assert len(call_args[0]) == 2  # (device_id, network_id) -- no blocked bool
 
 
 class TestDeviceUnblock:

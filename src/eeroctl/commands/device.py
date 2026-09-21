@@ -355,7 +355,10 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked
                 sys.exit(e.exit_code)
 
             with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
-                result = await client.block_device(target["id"], blocked, cli_ctx.network_id)
+                if blocked:
+                    result = await client.block_device(target["id"], cli_ctx.network_id)
+                else:
+                    result = await client.unblock_device(target["id"], cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:

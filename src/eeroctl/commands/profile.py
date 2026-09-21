@@ -14,10 +14,11 @@ Commands:
 
 import asyncio
 import sys
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Set, Union
 
 import click
 from eero import EeroClient
+from eero.exceptions import EeroException
 from rich.panel import Panel
 from rich.table import Table
 
@@ -48,6 +49,69 @@ def _find_profile(profiles: list, identifier: str) -> Optional[Dict[str, Any]]:
             return prof
 
     return None
+
+
+_UNRECOGNISED_APPLICATIONS_SHAPE = (
+    "Unrecognised application list shape from the API; refusing to rewrite the blocked list"
+)
+
+
+def _extract_dns_policy_applications(raw: Any) -> List[Union[str, Dict[str, Any]]]:
+    """Extract the ``applications`` list from a `get_dns_policy_applications` envelope.
+
+    Shape (`eero-api` 8.0.1, `DnsPoliciesAPI.get_profile_applications`):
+    ``{"meta": {...}, "data": {"applications": [...], "categories_list": [...]}}``.
+
+    Fails closed: `set_profile_blocked_applications` REPLACES the full blocked
+    list, so guessing wrong here can silently unblock (or re-block) every
+    other application. Raises `EeroException` -- rather than defaulting to an
+    empty list -- when `data.applications` is missing or not a list, so a
+    caller never proceeds to a write with a guessed-empty starting point.
+    """
+    data = extract_data(raw) if isinstance(raw, dict) else raw
+    if not isinstance(data, dict) or "applications" not in data:
+        raise EeroException(_UNRECOGNISED_APPLICATIONS_SHAPE)
+    applications = data["applications"]
+    if not isinstance(applications, list):
+        raise EeroException(_UNRECOGNISED_APPLICATIONS_SHAPE)
+    return applications
+
+
+def _blocked_app_ids(applications: List[Union[str, Dict[str, Any]]]) -> Set[str]:
+    """Return the set of currently-blocked application identifiers.
+
+    Each entry is either a bare app id/name (string, treated as already
+    blocked -- mirrors the v7 `blocked_apps` list shape) or a dict carrying
+    an `"id"`/`"name"` and a boolean `"blocked"` flag.
+
+    Fails closed: raises `EeroException` if any entry matches neither shape,
+    or if the list contains dict entries but none of them carry a `"blocked"`
+    key at all -- an all-dict, no-`blocked`-key list would otherwise silently
+    look like "nothing is blocked" and a block/unblock write would replace
+    the real list with a wrong guess.
+    """
+    blocked: Set[str] = set()
+    dict_entries = 0
+    entries_with_blocked_key = 0
+    for entry in applications:
+        if isinstance(entry, str):
+            blocked.add(entry)
+        elif isinstance(entry, dict) and (
+            entry.get("id") is not None or entry.get("name") is not None
+        ):
+            dict_entries += 1
+            if isinstance(entry.get("blocked"), bool):
+                entries_with_blocked_key += 1
+                if entry["blocked"]:
+                    app_id = entry.get("id") or entry.get("name")
+                    blocked.add(str(app_id))
+        else:
+            raise EeroException(_UNRECOGNISED_APPLICATIONS_SHAPE)
+
+    if dict_entries and not entries_with_blocked_key:
+        raise EeroException(_UNRECOGNISED_APPLICATIONS_SHAPE)
+
+    return blocked
 
 
 @click.group(name="profile")
@@ -230,7 +294,7 @@ def profile_create(
     async def run_cmd() -> None:
         async def create_profile(client: EeroClient) -> None:
             with cli_ctx.status("Creating profile..."):
-                result = await client.create_profile(name, cli_ctx.network_id)
+                result = await client.create_profile(name, network_id=cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200:
@@ -525,7 +589,7 @@ def apps_list(
 
             with cli_ctx.status("Getting blocked apps..."):
                 try:
-                    raw_apps = await client.get_blocked_applications(
+                    raw_apps = await client.get_dns_policy_applications(
                         target["id"], cli_ctx.network_id
                     )
                 except Exception as e:
@@ -534,9 +598,8 @@ def apps_list(
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
 
-            apps = extract_data(raw_apps) if isinstance(raw_apps, dict) else raw_apps
-            if isinstance(apps, dict):
-                apps = apps.get("applications", [])
+            applications = _extract_dns_policy_applications(raw_apps)
+            apps = sorted(_blocked_app_ids(applications))
 
             apps_data = {"profile": target.get("name"), "blocked_apps": apps}
 
@@ -593,23 +656,45 @@ def apps_block(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            for app in apps:
-                with cli_ctx.status(f"Blocking {app}..."):
-                    try:
-                        # TODO: add_blocked_application method not yet implemented in eero-api
-                        result = await client.add_blocked_application(  # type: ignore[attr-defined]
-                            target["id"], app, cli_ctx.network_id
-                        )
-                        meta = result.get("meta", {}) if isinstance(result, dict) else {}
-                        if meta.get("code") == 200 or result:
-                            console.print(f"[green]✓[/green] {app} blocked")
-                        else:
-                            console.print(f"[red]✗[/red] Failed to block {app}")
-                    except Exception as e:
-                        if is_premium_error(e):
-                            console.print("[yellow]This feature requires Eero Plus[/yellow]")
-                            sys.exit(ExitCode.PREMIUM_REQUIRED)
-                        console.print(f"[red]✗[/red] Error blocking {app}: {e}")
+            with cli_ctx.status("Getting current blocked apps..."):
+                try:
+                    raw_apps = await client.get_dns_policy_applications(
+                        target["id"], cli_ctx.network_id
+                    )
+                except Exception as e:
+                    if is_premium_error(e):
+                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                        sys.exit(ExitCode.PREMIUM_REQUIRED)
+                    raise
+
+            applications = _extract_dns_policy_applications(raw_apps)
+            new_blocked = _blocked_app_ids(applications) | set(apps)
+
+            # `set_profile_blocked_applications` REPLACES the full list -- show
+            # the user exactly what will be sent before issuing the write.
+            cli_ctx.err_console.print(
+                f"Blocked applications after this change: {sorted(new_blocked)}"
+            )
+
+            with cli_ctx.status("Blocking apps..."):
+                try:
+                    result = await client.set_profile_blocked_applications(
+                        target["id"], sorted(new_blocked), cli_ctx.network_id
+                    )
+                except Exception as e:
+                    if is_premium_error(e):
+                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                        sys.exit(ExitCode.PREMIUM_REQUIRED)
+                    console.print(f"[red]✗[/red] Error blocking apps: {e}")
+                    sys.exit(ExitCode.GENERIC_ERROR)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                for app in apps:
+                    console.print(f"[green]✓[/green] {app} blocked")
+            else:
+                console.print("[red]✗[/red] Failed to block apps")
+                sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(block_apps)
 
@@ -648,23 +733,45 @@ def apps_unblock(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
-            for app in apps:
-                with cli_ctx.status(f"Unblocking {app}..."):
-                    try:
-                        # TODO: remove_blocked_application method not yet implemented in eero-api
-                        result = await client.remove_blocked_application(  # type: ignore[attr-defined]
-                            target["id"], app, cli_ctx.network_id
-                        )
-                        meta = result.get("meta", {}) if isinstance(result, dict) else {}
-                        if meta.get("code") == 200 or result:
-                            console.print(f"[green]✓[/green] {app} unblocked")
-                        else:
-                            console.print(f"[red]✗[/red] Failed to unblock {app}")
-                    except Exception as e:
-                        if is_premium_error(e):
-                            console.print("[yellow]This feature requires Eero Plus[/yellow]")
-                            sys.exit(ExitCode.PREMIUM_REQUIRED)
-                        console.print(f"[red]✗[/red] Error unblocking {app}: {e}")
+            with cli_ctx.status("Getting current blocked apps..."):
+                try:
+                    raw_apps = await client.get_dns_policy_applications(
+                        target["id"], cli_ctx.network_id
+                    )
+                except Exception as e:
+                    if is_premium_error(e):
+                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                        sys.exit(ExitCode.PREMIUM_REQUIRED)
+                    raise
+
+            applications = _extract_dns_policy_applications(raw_apps)
+            new_blocked = _blocked_app_ids(applications) - set(apps)
+
+            # `set_profile_blocked_applications` REPLACES the full list -- show
+            # the user exactly what will be sent before issuing the write.
+            cli_ctx.err_console.print(
+                f"Blocked applications after this change: {sorted(new_blocked)}"
+            )
+
+            with cli_ctx.status("Unblocking apps..."):
+                try:
+                    result = await client.set_profile_blocked_applications(
+                        target["id"], sorted(new_blocked), cli_ctx.network_id
+                    )
+                except Exception as e:
+                    if is_premium_error(e):
+                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                        sys.exit(ExitCode.PREMIUM_REQUIRED)
+                    console.print(f"[red]✗[/red] Error unblocking apps: {e}")
+                    sys.exit(ExitCode.GENERIC_ERROR)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                for app in apps:
+                    console.print(f"[green]✓[/green] {app} unblocked")
+            else:
+                console.print("[red]✗[/red] Failed to unblock apps")
+                sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(unblock_apps)
 
@@ -716,28 +823,32 @@ def schedule_show(
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting schedule..."):
-                raw_schedule = await client.get_profile_schedule(target["id"], cli_ctx.network_id)
+                raw_schedule = await client.get_schedules(target["id"], cli_ctx.network_id)
 
-            schedule_data = extract_data(raw_schedule) if isinstance(raw_schedule, dict) else {}
+            # `get_schedules` returns `data` as a *list* of pause sub-resources
+            # (eero-api 8.0.1), not the old `{"enabled": ..., "time_blocks": [...]}`
+            # object.
+            data = extract_data(raw_schedule) if isinstance(raw_schedule, dict) else raw_schedule
+            schedules = data if isinstance(data, list) else []
 
             if cli_ctx.is_json_output():
-                renderer.render_json(schedule_data, "eero.profile.schedule.show/v1")
+                renderer.render_json({"schedules": schedules}, "eero.profile.schedule.show/v1")
             elif cli_ctx.is_list_output():
-                renderer.render_text(schedule_data, "eero.profile.schedule.show/v1")
+                renderer.render_text({"schedules": schedules}, "eero.profile.schedule.show/v1")
             else:
-                enabled = schedule_data.get("enabled", False)
-                time_blocks = schedule_data.get("time_blocks", [])
-
-                content = (
-                    f"[bold]Enabled:[/bold] {'[green]Yes[/green]' if enabled else '[dim]No[/dim]'}"
-                )
-                if time_blocks:
-                    content += f"\n[bold]Time Blocks:[/bold] {len(time_blocks)}"
-                    for i, block in enumerate(time_blocks, 1):
-                        days = ", ".join(block.get("days", []))
-                        start = block.get("start", "?")
-                        end = block.get("end", "?")
-                        content += f"\n  {i}. {days}: {start} - {end}"
+                if not schedules:
+                    content = "[dim]No schedules set[/dim]"
+                else:
+                    lines = []
+                    for i, pause in enumerate(schedules, 1):
+                        name = pause.get("name", "?")
+                        days = ", ".join(pause.get("days", []))
+                        start = pause.get("start", "?")
+                        end = pause.get("end", "?")
+                        enabled = pause.get("enabled", False)
+                        status = "[green]enabled[/green]" if enabled else "[dim]disabled[/dim]"
+                        lines.append(f"{i}. {name} ({status}) {days}: {start} - {end}")
+                    content = "\n".join(lines)
 
                 console.print(Panel(content, title="Schedule", border_style="blue"))
 
@@ -867,11 +978,21 @@ def schedule_clear(
                 sys.exit(e.exit_code)
 
             with cli_ctx.status("Clearing schedule..."):
-                result = await client.clear_profile_schedule(target["id"], cli_ctx.network_id)
+                results = await client.clear_profile_schedule(target["id"], cli_ctx.network_id)
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print("[bold green]Schedule cleared[/bold green]")
+            # `clear_profile_schedule` returns a list of raw responses, one per
+            # deleted pause (eero-api 8.0.1); success = every element's
+            # `meta.code` is 2xx (an empty list means there was nothing to clear).
+            results_list = results if isinstance(results, list) else []
+            all_succeeded = all(
+                200 <= r.get("meta", {}).get("code", 0) < 300
+                for r in results_list
+                if isinstance(r, dict)
+            )
+            if all_succeeded:
+                console.print(
+                    f"[bold green]Schedule cleared ({len(results_list)} entry(ies))[/bold green]"
+                )
             else:
                 console.print("[red]Failed to clear schedule[/red]")
                 sys.exit(ExitCode.GENERIC_ERROR)
