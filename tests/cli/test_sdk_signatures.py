@@ -197,6 +197,24 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {"delete_forwards": True},
         "network/dhcp.py:reservation_delete",
     ),
+    (
+        "set_dhcp",
+        ("nid",),
+        {"mode": "manual", "custom": {"start_ip": "10.0.0.10"}, "custom_v2": None},
+        "network/dhcp.py:dhcp_set (client.py:2680)",
+    ),
+    (
+        "set_connection_mode",
+        ("BRIDGE", "nid"),
+        {},
+        "network/dhcp.py:connection_mode_set (client.py:2704)",
+    ),
+    (
+        "set_nat_port_randomization",
+        (True, "nid"),
+        {},
+        "network/dhcp.py:nat_randomization (client.py:2715)",
+    ),
     ("get_forwards", ("nid",), {}, "network/forwards.py:48,97"),
     # `forward_data`/`forward_id` are plain values (client.py:1543,1552,1562),
     # not an envelope -- unlike schedules, `update_forward`/`delete_forward`

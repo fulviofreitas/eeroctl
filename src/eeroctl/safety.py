@@ -942,6 +942,40 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network dhcp reservations",
         ),
+        # -- network dhcp set/connection-mode/nat-randomization: all
+        # mesh-reboot writes (migration plan §4 phase C row 35). --
+        "network dhcp set": WriteSpec(
+            command="network dhcp set",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network show",
+            phrase="REBOOT",
+        ),
+        "network dhcp connection-mode set": WriteSpec(
+            command="network dhcp connection-mode set",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network show",
+            phrase="REBOOT",
+        ),
+        "network dhcp nat-randomization enable": WriteSpec(
+            command="network dhcp nat-randomization enable",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network show",
+            phrase="REBOOT",
+        ),
+        "network dhcp nat-randomization disable": WriteSpec(
+            command="network dhcp nat-randomization disable",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network show",
+            phrase="REBOOT",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.

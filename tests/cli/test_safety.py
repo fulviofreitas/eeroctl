@@ -509,6 +509,10 @@ class TestWriteSpecsRegistry:
         "network dhcp reservation create",
         "network dhcp reservation update",
         "network dhcp reservation delete",
+        "network dhcp set",
+        "network dhcp connection-mode set",
+        "network dhcp nat-randomization enable",
+        "network dhcp nat-randomization disable",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -613,6 +617,12 @@ class TestWriteSpecsRegistry:
         "update_reservation": ["network dhcp reservation update"],
         "delete_reservation": ["network dhcp reservation delete"],
         "set_mlo_mode": ["network security mlo set"],
+        "set_dhcp": ["network dhcp set"],
+        "set_connection_mode": ["network dhcp connection-mode set"],
+        "set_nat_port_randomization": [
+            "network dhcp nat-randomization enable",
+            "network dhcp nat-randomization disable",
+        ],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
