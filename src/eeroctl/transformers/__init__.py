@@ -16,6 +16,7 @@ from .events import (
     extract_next_cursor,
     extract_scan,
 )
+from .members import extract_invites, extract_members, extract_members_list
 from .network import extract_network, extract_networks, normalize_network, normalize_network_status
 from .notifications import (
     extract_history_next_cursor,
@@ -71,4 +72,8 @@ __all__ = [
     "extract_history_next_cursor",
     # DNS policy
     "extract_dns_policy",
+    # Members
+    "extract_members",
+    "extract_members_list",
+    "extract_invites",
 ]

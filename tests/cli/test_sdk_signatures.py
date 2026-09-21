@@ -196,6 +196,16 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     # `run_speed_test` returns 202 with `data: null` (8.0.1); `speedtest show`
     # now reads `get_speed_tests(limit=1)` (client.py:1206).
     ("get_speed_tests", ("nid",), {"limit": 1}, "network/speedtest.py:77"),
+    # -- network/members.py (phase A, commit 16) ----------------------------
+    # get_advanced_content_filter (commit 15) and the eleven batch-1 methods
+    # (get_entitlement_features, get_upsell_features, get_model_capabilities,
+    # get_premium_customer, get_app_events, get_network_scan,
+    # get_channel_utilization, get_permissions, get_notification_settings,
+    # has_unread_notifications, get_notification_history) are added in the
+    # catch-up commit `test(cli): bind the phase-A batch 1 read call sites`
+    # immediately after commit 18, per the test-audit standing rule.
+    ("get_members", ("nid",), {}, "network/members.py:47 (client.py:2572, verified)"),
+    ("get_invites", ("nid",), {}, "network/members.py:71 (client.py:2579, unverified)"),
 ]
 
 

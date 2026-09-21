@@ -55,6 +55,9 @@ from .events import print_channels, print_events, print_scan
 # Generic key/value renderer (undocumented response shapes)
 from .generic import render_generic
 
+# Members formatting
+from .members import print_invites, print_members
+
 # Miscellaneous formatting
 from .misc import (
     create_blacklist_table,
@@ -132,4 +135,7 @@ __all__ = [
     "print_notification_history",
     # DNS policy
     "print_dns_policy",
+    # Members
+    "print_members",
+    "print_invites",
 ]
