@@ -715,6 +715,13 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero profile schedule show",
         ),
+        "profile schedule delete": WriteSpec(
+            command="profile schedule delete",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero profile schedule show <profile>",
+        ),
         # -- eero: `reboot_eero` is live-verified; it is the "eero" reboot
         # class by definition, not "mesh" -- only the targeted node moves. --
         "eero reboot": WriteSpec(

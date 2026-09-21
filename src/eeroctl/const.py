@@ -98,3 +98,47 @@ class EeroDeviceStatus(str, Enum):
     DISCONNECTED = "disconnected"
     BLOCKED = "blocked"
     UNKNOWN = "unknown"
+
+
+# ---------------------------------------------------------------------------
+# Phase C choice sets (migration plan §7)
+#
+# The SDK has no `Literal[...]` types anywhere (DIGEST.md §7 confirms a
+# repo-wide search for `Literal[` returns nothing); every choice-set
+# parameter is typed plain `str` and validated at runtime against a
+# frozenset/tuple the SDK keeps private or public. eeroctl defines its own
+# `click.Choice` tuples here, citing the SDK constant each mirrors, so a
+# future SDK rename of these values is a visible diff here instead of a
+# silent runtime EeroValidationException.
+# ---------------------------------------------------------------------------
+
+# eero.api.security.MLO_MODE_DISABLED / MLO_MODE_SINGLE / MLO_MODE_MULTI
+# (security.py:20-22).
+MLO_MODES = ("disabled", "single", "multi")
+
+# eero.api.wpa3.WPA3_MODE_WPA2 / WPA3_MODE_WPA2_WPA3 / WPA3_MODE_WPA3
+# (wpa3.py:21-23).
+WPA3_MODES = ("WPA2", "WPA2_WPA3", "WPA3")
+
+# eero.api.dhcp.DHCP_MODE_AUTOMATIC / DHCP_MODE_MANUAL (dhcp.py:32-33).
+DHCP_MODES = ("automatic", "manual")
+
+# eero.api.dhcp's local `valid_modes` frozenset (dhcp.py:207, not a module
+# constant -- documented at dhcp.py:188,199).
+CONNECTION_MODES = ("BRIDGE", "NAT")
+
+# eero.api.eeros._NODE_ACTIONS (eeros.py:34) -- private, no public export.
+NODE_ACTIONS = ("POWER_CYCLE_ALL_PORTS", "POWER_CYCLE_ALL_PORTS_AND_REBOOT")
+
+# eero.api.eeros._PORT_ACTIONS (eeros.py:37-49) -- private, no public export.
+PORT_ACTIONS = (
+    "ENABLE_DATA",
+    "DISABLE_DATA",
+    "ENABLE_POE",
+    "DISABLE_POE",
+    "ENABLE_PORT",
+    "DISABLE_PORT",
+    "RESTART_POWER",
+    "ENABLE_PORT_SECURITY",
+    "DISABLE_PORT_SECURITY",
+)

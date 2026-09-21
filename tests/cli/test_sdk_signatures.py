@@ -112,6 +112,14 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     # which returns a *list* of pause sub-resources (client.py:1983).
     ("get_schedules", ("pid", "nid"), {}, "profile.py:719"),
     ("clear_profile_schedule", ("pid", "nid"), {}, "profile.py:870"),
+    # `delete_schedule` takes the schedule envelope/URL, not a bare id
+    # (migration plan §2.5 decision 4; client.py:2042).
+    (
+        "delete_schedule",
+        ({"url": "/2.2/networks/nid/profiles/pid/schedules/sid"},),
+        {},
+        "profile.py:schedule_delete",
+    ),
     # -- troubleshoot.py ------------------------------------------------
     (
         "get_network",

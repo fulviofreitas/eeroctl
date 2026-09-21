@@ -27,7 +27,7 @@ from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
-from ..transformers import extract_data, extract_profiles, normalize_profile
+from ..transformers import extract_data, extract_id_from_url, extract_profiles, normalize_profile
 from ..utils import looks_like_sdk_reference, run_with_client, write_if_changed
 
 
@@ -48,6 +48,21 @@ def _find_profile(profiles: list, identifier: str) -> Optional[Dict[str, Any]]:
             return prof
 
     return None
+
+
+# eero.api.schedule.ALL_DAYS (schedule.py:34-42) -- default days scope
+# `enable_bedtime` uses server-side when `days` is omitted. Mirrored here so
+# `schedule set`'s read-first comparison can tell "no --days given" from "an
+# existing Bedtime schedule that already covers every day" apart.
+_SCHEDULE_ALL_DAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
 
 
 _UNRECOGNISED_APPLICATIONS_SHAPE = (
@@ -891,9 +906,10 @@ def schedule_group(ctx: click.Context) -> None:
 
     \b
     Commands:
-      show - Show schedule
-      set  - Set bedtime schedule
-      clear - Clear all schedules
+      show   - Show schedule
+      set    - Set bedtime schedule
+      clear  - Clear all schedules
+      delete - Delete one schedule entry
     """
     pass
 
@@ -1026,17 +1042,40 @@ def schedule_set(
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with cli_ctx.status("Setting schedule..."):
-                result = await client.enable_bedtime(
-                    target["id"], start, end, days_list, cli_ctx.network_id
-                )
+            desired_days = tuple(sorted(d.lower() for d in (days_list or _SCHEDULE_ALL_DAYS)))
+            desired = (start, end, desired_days)
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print(f"[bold green]Schedule set: {start} - {end}[/bold green]")
-            else:
-                console.print("[red]Failed to set schedule[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def read() -> Any:
+                with cli_ctx.status("Reading current schedule..."):
+                    raw_schedule = await client.get_schedules(target["id"], cli_ctx.network_id)
+                data = (
+                    extract_data(raw_schedule) if isinstance(raw_schedule, dict) else raw_schedule
+                )
+                schedules = data if isinstance(data, list) else []
+                for entry in schedules:
+                    if isinstance(entry, dict) and entry.get("name") == "Bedtime":
+                        return (
+                            entry.get("start"),
+                            entry.get("end"),
+                            tuple(sorted(entry.get("days") or [])),
+                        )
+                # Sentinel: no existing "Bedtime" schedule to compare against.
+                return ("", "", ())
+
+            async def write() -> Any:
+                with cli_ctx.status("Setting schedule..."):
+                    return await client.enable_bedtime(
+                        target["id"], start, end, days_list, cli_ctx.network_id
+                    )
+
+            await write_if_changed(
+                read,
+                desired,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(set_schedule)
 
@@ -1107,5 +1146,99 @@ def schedule_clear(
                 sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(clear_schedule)
+
+    asyncio.run(run_cmd())
+
+
+@schedule_group.command(name="delete")
+@click.argument("profile_identifier")
+@click.argument("schedule_id")
+@force_option
+@network_option
+@click.pass_context
+def schedule_delete(
+    ctx: click.Context,
+    profile_identifier: str,
+    schedule_id: str,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Delete one schedule entry for a profile.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      SCHEDULE_ID          Schedule id, or the tail of its `url`
+                            (see `eero profile schedule show`)
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+
+    async def run_cmd() -> None:
+        async def delete_one(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_response = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            with cli_ctx.status("Finding schedule..."):
+                raw_schedule = await client.get_schedules(target["id"], cli_ctx.network_id)
+
+            data = extract_data(raw_schedule) if isinstance(raw_schedule, dict) else raw_schedule
+            schedules = data if isinstance(data, list) else []
+
+            # `update_schedule`/`delete_schedule` reject a bare id (migration
+            # plan §2.5 decision 4); the caller must pass the envelope. Match
+            # on the schedule's own `id` field when present, else the tail of
+            # its `url`, and hand the whole entry to `delete_schedule`.
+            match = None
+            for entry in schedules:
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("id") == schedule_id or (
+                    extract_id_from_url(entry.get("url")) == schedule_id
+                ):
+                    match = entry
+                    break
+
+            if match is None:
+                console.print(f"[red]Schedule '{schedule_id}' not found[/red]")
+                console.print(f"[dim]Try: eero profile schedule show {profile_identifier}[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            spec = get_write_spec("profile schedule delete")
+            cli_ctx.active_write_spec = spec
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=match.get("name") or schedule_id,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status("Deleting schedule..."):
+                result = await client.delete_schedule(match)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print("[bold green]Schedule deleted[/bold green]")
+            else:
+                console.print("[red]Failed to delete schedule[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(delete_one)
 
     asyncio.run(run_cmd())
