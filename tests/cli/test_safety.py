@@ -494,6 +494,8 @@ class TestWriteSpecsRegistry:
         "profile schedule clear",
         "profile schedule delete",
         "profile devices set",
+        "profile dns allow",
+        "profile dns block",
         "eero reboot",
         "eero led on",
         "eero led off",
@@ -647,6 +649,8 @@ class TestWriteSpecsRegistry:
         "clear_network_password": ["network password clear"],
         "update_thread": ["network thread set"],
         "regenerate_thread_credentials": ["network thread set"],
+        "allow_domain_for_profiles": ["profile dns allow"],
+        "block_domain_for_profiles": ["profile dns block"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

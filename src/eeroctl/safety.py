@@ -790,6 +790,22 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero profile show <profile>",
         ),
+        # -- profile dns: per-profile domain allow/block (Eero Plus),
+        # migration plan §4 phase C row 41. --
+        "profile dns allow": WriteSpec(
+            command="profile dns allow",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero profile show <profile>",
+        ),
+        "profile dns block": WriteSpec(
+            command="profile dns block",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero profile show <profile>",
+        ),
         "profile schedule set": WriteSpec(
             command="profile schedule set",
             risk=OperationRisk.MEDIUM,

@@ -115,6 +115,18 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "profile.py:devices_set (client.py:2278)",
     ),
+    (
+        "allow_domain_for_profiles",
+        ("example.com", "nid"),
+        {"profiles": ["pid"], "override": None, "is_delete": None},
+        "profile.py:profile_dns_allow (client.py:2493)",
+    ),
+    (
+        "block_domain_for_profiles",
+        ("example.com", "nid"),
+        {"profiles": ["pid"], "override": None, "is_delete": None},
+        "profile.py:profile_dns_block (client.py:2530)",
+    ),
     # `get_profile_schedule` was removed in 8.0.0; replaced by `get_schedules`,
     # which returns a *list* of pause sub-resources (client.py:1983).
     ("get_schedules", ("pid", "nid"), {}, "profile.py:719"),

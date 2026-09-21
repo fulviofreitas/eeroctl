@@ -152,6 +152,7 @@ def profile_group(ctx: click.Context) -> None:
       apps     - Blocked apps management
       schedule - Schedule management
       devices  - Device assignment management
+      dns      - Per-profile DNS domain policy (Eero Plus)
 
     \b
     Examples:
@@ -1383,5 +1384,189 @@ def devices_set(
             )
 
         await run_with_client(set_devices)
+
+    asyncio.run(run_cmd())
+
+
+# ==================== DNS Subcommand Group ====================
+
+
+@profile_group.group(name="dns")
+@click.pass_context
+def profile_dns_group(ctx: click.Context) -> None:
+    """Per-profile DNS domain policy (Eero Plus).
+
+    \b
+    Commands:
+      allow - Allow a domain for a profile
+      block - Block a domain for a profile
+    """
+    pass
+
+
+@profile_dns_group.command(name="allow")
+@click.argument("profile_identifier")
+@click.argument("domain")
+@click.option("--override", is_flag=True, help="Override an existing block for this domain")
+@click.option("--delete", "is_delete", is_flag=True, help="Remove domain from the allow list")
+@force_option
+@network_option
+@click.pass_context
+def profile_dns_allow(
+    ctx: click.Context,
+    profile_identifier: str,
+    domain: str,
+    override: bool,
+    is_delete: bool,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Allow a domain for a profile.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      DOMAIN               Domain to allow
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+
+    async def run_cmd() -> None:
+        async def allow(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_response = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            spec = get_write_spec("profile dns allow")
+            cli_ctx.active_write_spec = spec
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=f"{domain} for {target.get('name') or profile_identifier}",
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status(f"Allowing '{domain}'..."):
+                try:
+                    result = await client.allow_domain_for_profiles(
+                        domain,
+                        cli_ctx.network_id,
+                        profiles=[target["id"]],
+                        override=override or None,
+                        is_delete=is_delete or None,
+                    )
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
+                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                        sys.exit(ExitCode.PREMIUM_REQUIRED)
+                    raise
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print(f"[bold green]'{domain}' allowed[/bold green]")
+            else:
+                console.print(f"[red]Failed to allow '{domain}'[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(allow)
+
+    asyncio.run(run_cmd())
+
+
+@profile_dns_group.command(name="block")
+@click.argument("profile_identifier")
+@click.argument("domain")
+@click.option("--override", is_flag=True, help="Override an existing allow for this domain")
+@click.option("--delete", "is_delete", is_flag=True, help="Remove domain from the block list")
+@force_option
+@network_option
+@click.pass_context
+def profile_dns_block(
+    ctx: click.Context,
+    profile_identifier: str,
+    domain: str,
+    override: bool,
+    is_delete: bool,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Block a domain for a profile.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      DOMAIN               Domain to block
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+
+    async def run_cmd() -> None:
+        async def block(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_response = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            spec = get_write_spec("profile dns block")
+            cli_ctx.active_write_spec = spec
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=f"{domain} for {target.get('name') or profile_identifier}",
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status(f"Blocking '{domain}'..."):
+                try:
+                    result = await client.block_domain_for_profiles(
+                        domain,
+                        cli_ctx.network_id,
+                        profiles=[target["id"]],
+                        override=override or None,
+                        is_delete=is_delete or None,
+                    )
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
+                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                        sys.exit(ExitCode.PREMIUM_REQUIRED)
+                    raise
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print(f"[bold green]'{domain}' blocked[/bold green]")
+            else:
+                console.print(f"[red]Failed to block '{domain}'[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(block)
 
     asyncio.run(run_cmd())
