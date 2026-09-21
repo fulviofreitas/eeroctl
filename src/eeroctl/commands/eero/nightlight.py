@@ -10,7 +10,9 @@ Commands:
 """
 
 import asyncio
+import json
 import sys
+from typing import Optional
 
 import click
 from eero import EeroClient
@@ -248,15 +250,70 @@ def nightlight_brightness(ctx: click.Context, eero_identifier: str, value: int) 
 
 @nightlight_group.command(name="schedule")
 @click.argument("eero_identifier")
-@click.option("--on-time", required=True, help="Time to turn on (HH:MM)")
-@click.option("--off-time", required=True, help="Time to turn off (HH:MM)")
+@click.option("--on", "on_time", help="Time to turn on (HH:MM)")
+@click.option("--off", "off_time", help="Time to turn off (HH:MM)")
+@click.option("--disable", is_flag=True, help="Disable the schedule")
+@click.option(
+    "--schedule-json",
+    help="Raw schedule object as JSON, forwarded to the API unchanged",
+)
 @click.pass_context
 def nightlight_schedule(
-    ctx: click.Context, eero_identifier: str, on_time: str, off_time: str
+    ctx: click.Context,
+    eero_identifier: str,
+    on_time: Optional[str],
+    off_time: Optional[str],
+    disable: bool,
+    schedule_json: Optional[str],
 ) -> None:
-    """Set nightlight schedule."""
+    """Set (or disable) an eero's nightlight schedule.
+
+    The schedule shape is unverified -- no Beacon was available to confirm
+    it (migration plan Q4). Exactly one of --on/--off together,
+    --disable, or --schedule-json is required.
+
+    \b
+    Options:
+      --on TEXT             Time to turn on (HH:MM); requires --off
+      --off TEXT            Time to turn off (HH:MM); requires --on
+      --disable              Disable the schedule
+      --schedule-json TEXT   Raw schedule object as JSON, forwarded to the
+                              API unchanged -- for shapes --on/--off/
+                              --disable do not cover
+    """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+
+    on_off_given = on_time is not None or off_time is not None
+    modes_given = sum([on_off_given, disable, schedule_json is not None])
+
+    if modes_given == 0:
+        console.print("[red]One of --on/--off, --disable, or --schedule-json is required[/red]")
+        sys.exit(ExitCode.USAGE_ERROR)
+    if modes_given > 1:
+        console.print(
+            "[red]--on/--off, --disable, and --schedule-json are mutually exclusive[/red]"
+        )
+        sys.exit(ExitCode.USAGE_ERROR)
+
+    if schedule_json is not None:
+        try:
+            schedule = json.loads(schedule_json)
+        except json.JSONDecodeError as e:
+            console.print(f"[red]Invalid --schedule-json: {e}[/red]")
+            sys.exit(ExitCode.USAGE_ERROR)
+        if not isinstance(schedule, dict) or not schedule:
+            console.print("[red]--schedule-json must be a non-empty JSON object[/red]")
+            sys.exit(ExitCode.USAGE_ERROR)
+    elif disable:
+        schedule = {"enabled": False}
+    else:
+        if on_time is None or off_time is None:
+            console.print("[red]--on and --off are required together[/red]")
+            sys.exit(ExitCode.USAGE_ERROR)
+        # v7 field shape; the SDK forwards `schedule` verbatim, with no
+        # interpretation of its shape (eero-api 8.0.1, DIGEST §10).
+        schedule = {"enabled": True, "on": on_time, "off": off_time}
 
     spec = get_write_spec("eero nightlight schedule")
     cli_ctx.active_write_spec = spec
@@ -285,12 +342,6 @@ def nightlight_schedule(
                 sys.exit(ExitCode.NOT_FOUND)
 
             eero_id_str = str(resolved_id)
-            # `set_nightlight_schedule` forwards `schedule` to the API verbatim,
-            # with no interpretation of its shape (eero-api 8.0.1). This is the
-            # v7 field shape; unverified -- no Beacon available to confirm
-            # (migration plan Q4). `--schedule-json` for a raw override lands in
-            # a later phase-C commit.
-            schedule = {"enabled": True, "on": on_time, "off": off_time}
             with cli_ctx.status("Setting nightlight schedule..."):
                 try:
                     result = await client.set_nightlight_schedule(
@@ -306,7 +357,7 @@ def nightlight_schedule(
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:
-                console.print(f"[bold green]Schedule set: {on_time} - {off_time}[/bold green]")
+                console.print("[bold green]Nightlight schedule updated.[/bold green]")
             else:
                 console.print("[red]Failed to set schedule[/red]")
                 sys.exit(ExitCode.GENERIC_ERROR)

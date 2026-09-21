@@ -207,13 +207,20 @@ class TestEeroNightlight:
         assert "Show nightlight settings" in result.output
 
     def test_nightlight_schedule_help(self, runner):
-        """Test nightlight schedule shows help."""
+        """Test nightlight schedule shows help.
+
+        `--on-time`/`--off-time` were renamed to `--on`/`--off` (Q4,
+        BREAKING CHANGE); `--schedule-json` and `--disable` were added.
+        """
         result = runner.invoke(cli, ["eero", "nightlight", "schedule", "--help"])
 
         assert result.exit_code == 0
-        assert "Set nightlight schedule" in result.output
-        assert "--on-time" in result.output
-        assert "--off-time" in result.output
+        assert "--on " in result.output or "--on TEXT" in result.output
+        assert "--off " in result.output or "--off TEXT" in result.output
+        assert "--disable" in result.output
+        assert "--schedule-json" in result.output
+        assert "--on-time" not in result.output
+        assert "--off-time" not in result.output
 
 
 class TestEeroLEDBrightnessBehavior:
@@ -314,7 +321,7 @@ class TestEeroNightlightShowRendersBothShapes:
 
 
 class TestEeroNightlightScheduleBehavior:
-    """`nightlight schedule --on-time/--off-time` builds the v7 schedule
+    """`nightlight schedule --on/--off` builds the v7 schedule
     shape and forwards it verbatim (migration plan Q4, unverified)."""
 
     @pytest.fixture
@@ -337,9 +344,9 @@ class TestEeroNightlightScheduleBehavior:
                     "nightlight",
                     "schedule",
                     "123",
-                    "--on-time",
+                    "--on",
                     "20:00",
-                    "--off-time",
+                    "--off",
                     "06:00",
                 ],
             )
