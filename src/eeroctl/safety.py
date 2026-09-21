@@ -659,6 +659,22 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero troubleshoot doctor",
         ),
+        # -- network ddns: no dedicated GET; state read from `get_network`
+        # (migration plan §4 phase C row 42, §2.7). --
+        "network ddns enable": WriteSpec(
+            command="network ddns enable",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network show",
+        ),
+        "network ddns disable": WriteSpec(
+            command="network ddns disable",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network show",
+        ),
         # -- network guest: `set_guest_network`/`set_guest_password` are
         # both in the SDK's live-verified allowlist. --
         "network guest enable": WriteSpec(

@@ -307,6 +307,8 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     # `is_using_backup` were all removed in 8.0.0; replaced by the backup
     # internet + cellular backup family (client.py:1950-1976).
     ("get_backup_internet", ("nid",), {}, "network/backup.py:51"),
+    ("enable_ddns", ("nid",), {}, "network/ddns.py:ddns_enable (client.py:2890)"),
+    ("disable_ddns", ("nid",), {}, "network/ddns.py:ddns_disable (client.py:2899)"),
     ("set_backup_internet", (True, "nid"), {}, "network/backup.py:114"),
     ("get_cellular_backup_usage", ("nid",), {}, "network/backup.py:144"),
     ("get_cellular_backup_events", ("nid",), {}, "network/backup.py:144"),

@@ -474,6 +474,8 @@ class TestWriteSpecsRegistry:
         "network reboot",
         "network thread set",
         "troubleshoot diagnostics run",
+        "network ddns enable",
+        "network ddns disable",
         "network guest enable",
         "network guest disable",
         "network guest set",

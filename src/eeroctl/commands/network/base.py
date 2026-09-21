@@ -70,6 +70,7 @@ def network_group(ctx: click.Context) -> None:
       ouicheck  - OUI check for a specific Eero node
       transfer  - Transfer statistics (network or one device)
       usage     - Data usage (closes #46)
+      ddns      - Dynamic DNS
 
     \b
     Examples:
@@ -555,6 +556,7 @@ def network_reboot(ctx: click.Context, force: Optional[bool], network_id: Option
 # Import and register subcommand groups after network_group is defined
 from .advanced import routing_show, support_group, thread_cmd_group  # noqa: E402
 from .backup import backup_group  # noqa: E402
+from .ddns import ddns_group  # noqa: E402
 from .dhcp import dhcp_group  # noqa: E402
 from .dns import dns_group  # noqa: E402
 from .entitlements import entitlements_group  # noqa: E402
@@ -584,6 +586,7 @@ network_group.add_command(backup_group)
 network_group.add_command(speedtest_group)
 network_group.add_command(forwards_group)
 network_group.add_command(dhcp_group)
+network_group.add_command(ddns_group)
 network_group.add_command(routing_show)
 network_group.add_command(thread_cmd_group)
 network_group.add_command(support_group)
