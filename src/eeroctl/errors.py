@@ -7,10 +7,13 @@ error messages and appropriate exit codes.
 from typing import Optional, TypeVar
 
 from eero.exceptions import (
+    EeroAccessDeniedException,
     EeroAPIException,
     EeroAuthenticationException,
+    EeroClientBlockedException,
     EeroException,
     EeroFeatureUnavailableException,
+    EeroNetworkException,
     EeroNotFoundException,
     EeroPremiumRequiredException,
     EeroRateLimitException,
@@ -24,6 +27,16 @@ from .exit_codes import ExitCode
 T = TypeVar("T")
 
 
+def _error_code_suffix(e: EeroException) -> str:
+    """Build the ``(error code: ...)`` suffix for a rendered SDK error.
+
+    Every v8 exception carries ``.error_code`` (``envelope["meta"]["error"]``),
+    populated only when the API response included one. Never render
+    ``e.envelope`` itself — it can carry ``user_token``, emails, phones.
+    """
+    return f" (error code: {e.error_code})" if e.error_code else ""
+
+
 def handle_cli_error(
     e: Exception,
     console: Console,
@@ -34,6 +47,13 @@ def handle_cli_error(
 
     This function translates exceptions into user-friendly error messages
     and determines the correct exit code.
+
+    isinstance order matters: every SDK exception that subclasses another
+    (``EeroAccessDeniedException``, ``EeroClientBlockedException``,
+    ``EeroNotFoundException``, ``EeroPremiumRequiredException``,
+    ``EeroFeatureUnavailableException`` all subclass ``EeroAPIException``;
+    ``EeroValidationException`` does not) is checked before its parent, so
+    the parent's branch never shadows it.
 
     Args:
         e: The exception to handle
@@ -50,107 +70,116 @@ def handle_cli_error(
         console.print(f"[red]{prefix}Authentication required. Run 'eero auth login' first.[/red]")
         return ExitCode.AUTH_REQUIRED
 
+    elif isinstance(e, EeroAccessDeniedException):
+        console.print(f"[red]{prefix}Permission denied: {e.message}{_error_code_suffix(e)}[/red]")
+        return ExitCode.FORBIDDEN
+
+    elif isinstance(e, EeroClientBlockedException):
+        console.print(
+            f"[red]{prefix}This client version is blocked by the API: "
+            f"{e.message}{_error_code_suffix(e)}[/red]"
+        )
+        return ExitCode.CLIENT_BLOCKED
+
     elif isinstance(e, EeroNotFoundException):
-        console.print(f"[red]{prefix}{e.resource_type} '{e.resource_id}' not found[/red]")
+        if e.resource_type is not None or e.resource_id is not None:
+            console.print(
+                f"[red]{prefix}{e.resource_type} '{e.resource_id}' "
+                f"not found{_error_code_suffix(e)}[/red]"
+            )
+        else:
+            # Built via `from_response` (no known resource type/ID): the
+            # message is already a complete, human-readable sentence.
+            console.print(f"[red]{prefix}{e.message}{_error_code_suffix(e)}[/red]")
         return ExitCode.NOT_FOUND
 
     elif isinstance(e, EeroPremiumRequiredException):
-        console.print(f"[yellow]{prefix}{e.feature} requires Eero Plus subscription[/yellow]")
+        console.print(
+            f"[yellow]{prefix}{e.feature} requires Eero Plus "
+            f"subscription{_error_code_suffix(e)}[/yellow]"
+        )
         return ExitCode.PREMIUM_REQUIRED
 
     elif isinstance(e, EeroFeatureUnavailableException):
-        console.print(f"[yellow]{prefix}{e.feature} is {e.reason}[/yellow]")
+        console.print(f"[yellow]{prefix}{e.feature} is {e.reason}{_error_code_suffix(e)}[/yellow]")
         return ExitCode.FEATURE_UNAVAILABLE
 
     elif isinstance(e, EeroRateLimitException):
-        console.print(f"[yellow]{prefix}Rate limited. Please wait and try again.[/yellow]")
-        return ExitCode.TIMEOUT
+        # No dedicated exit code for rate limiting (§2.6/Q5 of the v8
+        # migration plan: exit 7 stays TIMEOUT-only); falls to GENERIC_ERROR.
+        console.print(
+            f"[yellow]{prefix}Rate limited. Please wait and "
+            f"try again.{_error_code_suffix(e)}[/yellow]"
+        )
+        return ExitCode.GENERIC_ERROR
+
+    elif isinstance(e, EeroNetworkException):
+        console.print(
+            f"[red]{prefix}Network error: could not reach the eero API{_error_code_suffix(e)}[/red]"
+        )
+        return ExitCode.NETWORK_ERROR
 
     elif isinstance(e, EeroTimeoutException):
-        console.print(f"[red]{prefix}Request timed out. Check your connection and try again.[/red]")
+        console.print(
+            f"[red]{prefix}Request timed out. Check your connection and "
+            f"try again.{_error_code_suffix(e)}[/red]"
+        )
         return ExitCode.TIMEOUT
 
     elif isinstance(e, EeroValidationException):
-        console.print(f"[red]{prefix}Invalid input for '{e.field}': {e.message}[/red]")
+        if e.field == "request":
+            # Built via `from_response`: `e.message` is already
+            # "Validation error for 'request': <detail>"; render the
+            # detail without the generic field-name wrapper.
+            prefix_text = "Validation error for 'request': "
+            detail = (
+                e.message[len(prefix_text) :] if e.message.startswith(prefix_text) else (e.message)
+            )
+            console.print(f"[red]{prefix}Invalid request: {detail}{_error_code_suffix(e)}[/red]")
+        else:
+            console.print(
+                f"[red]{prefix}Invalid input for '{e.field}': "
+                f"{e.message}{_error_code_suffix(e)}[/red]"
+            )
         return ExitCode.USAGE_ERROR
 
     elif isinstance(e, EeroAPIException):
-        # Map HTTP status codes to exit codes
+        # Fallback for statuses not covered by a dedicated exception class
+        # above (403-without-access-denied, 404-without-from_response, 409,
+        # and any other status).
         if e.status_code == 401:
             console.print(
-                f"[red]{prefix}Session expired. Run 'eero auth login' to re-authenticate.[/red]"
+                f"[red]{prefix}Session expired. Run 'eero auth login' to "
+                f"re-authenticate.{_error_code_suffix(e)}[/red]"
             )
             return ExitCode.AUTH_REQUIRED
         elif e.status_code == 403:
-            console.print(f"[red]{prefix}Permission denied: {e.message}[/red]")
+            console.print(
+                f"[red]{prefix}Permission denied: {e.message}{_error_code_suffix(e)}[/red]"
+            )
             return ExitCode.FORBIDDEN
         elif e.status_code == 404:
-            console.print(f"[red]{prefix}Resource not found: {e.message}[/red]")
+            console.print(
+                f"[red]{prefix}Resource not found: {e.message}{_error_code_suffix(e)}[/red]"
+            )
             return ExitCode.NOT_FOUND
         elif e.status_code == 409:
-            console.print(f"[yellow]{prefix}Conflict: {e.message}[/yellow]")
+            console.print(f"[yellow]{prefix}Conflict: {e.message}{_error_code_suffix(e)}[/yellow]")
             return ExitCode.CONFLICT
-        elif e.status_code == 429:
-            console.print(f"[yellow]{prefix}Rate limited. Please wait and try again.[/yellow]")
-            return ExitCode.TIMEOUT
         else:
-            console.print(f"[red]{prefix}API error ({e.status_code}): {e.message}[/red]")
+            # Includes an unmapped 429 (Q5: no dedicated rate-limit code).
+            console.print(
+                f"[red]{prefix}API error ({e.status_code}): "
+                f"{e.message}{_error_code_suffix(e)}[/red]"
+            )
             return ExitCode.GENERIC_ERROR
 
     elif isinstance(e, EeroException):
         # Generic Eero exception
-        console.print(f"[red]{prefix}{e.message}[/red]")
+        console.print(f"[red]{prefix}{e.message}{_error_code_suffix(e)}[/red]")
         return ExitCode.GENERIC_ERROR
 
     else:
         # Unknown exception
         console.print(f"[red]{prefix}Unexpected error: {e}[/red]")
         return ExitCode.GENERIC_ERROR
-
-
-def is_premium_error(e: Exception) -> bool:
-    """Check if an exception indicates a premium feature requirement.
-
-    Args:
-        e: Exception to check
-
-    Returns:
-        True if this is a premium-required error
-    """
-    if isinstance(e, EeroPremiumRequiredException):
-        return True
-    # Fallback string matching for generic exceptions
-    error_str = str(e).lower()
-    return "premium" in error_str or "plus" in error_str or "subscription" in error_str
-
-
-def is_feature_unavailable_error(e: Exception, feature_keyword: str) -> bool:
-    """Check if an exception indicates a feature is unavailable.
-
-    Args:
-        e: Exception to check
-        feature_keyword: Keyword to look for in error message
-
-    Returns:
-        True if this is a feature-unavailable error
-    """
-    if isinstance(e, EeroFeatureUnavailableException):
-        return True
-    # Fallback string matching for generic exceptions
-    return feature_keyword.lower() in str(e).lower()
-
-
-def is_not_found_error(e: Exception) -> bool:
-    """Check if an exception indicates a resource was not found.
-
-    Args:
-        e: Exception to check
-
-    Returns:
-        True if this is a not-found error
-    """
-    if isinstance(e, EeroNotFoundException):
-        return True
-    if isinstance(e, EeroAPIException) and e.status_code == 404:
-        return True
-    return "not found" in str(e).lower()

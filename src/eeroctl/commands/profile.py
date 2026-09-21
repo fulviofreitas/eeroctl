@@ -18,12 +18,11 @@ from typing import Any, Dict, List, Literal, Optional, Set, Union
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroException
+from eero.exceptions import EeroException, EeroPremiumRequiredException
 from rich.panel import Panel
 from rich.table import Table
 
 from ..context import EeroCliContext, ensure_cli_context
-from ..errors import is_premium_error
 from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
@@ -592,8 +591,8 @@ def apps_list(
                     raw_apps = await client.get_dns_policy_applications(
                         target["id"], cli_ctx.network_id
                     )
-                except Exception as e:
-                    if is_premium_error(e):
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]This feature requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
@@ -661,8 +660,8 @@ def apps_block(
                     raw_apps = await client.get_dns_policy_applications(
                         target["id"], cli_ctx.network_id
                     )
-                except Exception as e:
-                    if is_premium_error(e):
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]This feature requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
@@ -681,8 +680,8 @@ def apps_block(
                     result = await client.set_profile_blocked_applications(
                         target["id"], sorted(new_blocked), cli_ctx.network_id
                     )
-                except Exception as e:
-                    if is_premium_error(e):
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]This feature requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     console.print(f"[red]✗[/red] Error blocking apps: {e}")
@@ -738,8 +737,8 @@ def apps_unblock(
                     raw_apps = await client.get_dns_policy_applications(
                         target["id"], cli_ctx.network_id
                     )
-                except Exception as e:
-                    if is_premium_error(e):
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]This feature requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
@@ -758,8 +757,8 @@ def apps_unblock(
                     result = await client.set_profile_blocked_applications(
                         target["id"], sorted(new_blocked), cli_ctx.network_id
                     )
-                except Exception as e:
-                    if is_premium_error(e):
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]This feature requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     console.print(f"[red]✗[/red] Error unblocking apps: {e}")

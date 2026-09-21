@@ -653,7 +653,8 @@ class TestRunWithClientErrorMapping:
 
     @pytest.mark.asyncio
     async def test_auth_exception_keeps_its_bespoke_message(self, tmp_path, monkeypatch):
-        """Authentication keeps exit 1 and the existing login hint.
+        """Authentication exits AUTH_REQUIRED (3), matching with_client,
+        handle_cli_error and auth login -- not the pre-v8 bare 1.
 
         Guards against the new handler swallowing the more specific one.
         """
@@ -661,7 +662,8 @@ class TestRunWithClientErrorMapping:
 
         code = await self._run_raising(tmp_path, monkeypatch, exc)
 
-        assert code == 1
+        assert code == ExitCode.AUTH_REQUIRED
+        assert code == 3
 
     @pytest.mark.asyncio
     async def test_sys_exit_from_command_still_propagates(self, tmp_path, monkeypatch):

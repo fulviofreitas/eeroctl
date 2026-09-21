@@ -14,6 +14,8 @@ from eero import EeroClient
 from eero.exceptions import EeroAuthenticationException, EeroException
 from rich.console import Console
 
+from .exit_codes import ExitCode
+
 if TYPE_CHECKING:
     from .context import EeroCliContext
 
@@ -424,7 +426,7 @@ async def run_with_client(func, cli_ctx: Optional["EeroCliContext"] = None):
     except EeroAuthenticationException:
         console.print("[bold red]Not authenticated[/bold red]")
         console.print("Please login first: [bold]eero auth login[/bold]")
-        raise SystemExit(1)
+        raise SystemExit(ExitCode.AUTH_REQUIRED)
     except EeroException as e:
         # Deliberately not `except Exception`: a bare catch would swallow the
         # SystemExit that commands raise via sys.exit() inside the coroutine,

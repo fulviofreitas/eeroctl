@@ -50,6 +50,13 @@ class ExitCode(IntEnum):
     FEATURE_UNAVAILABLE = 12
     """Feature is not available on this device or network."""
 
+    CLIENT_BLOCKED = 13
+    """The API rejected requests from this client version."""
+
+    NETWORK_ERROR = 14
+    """Network error: could not reach the eero API (unreachable host, DNS
+    failure, connection reset)."""
+
 
 # Exit code descriptions for help text
 EXIT_CODE_DESCRIPTIONS = {
@@ -65,4 +72,6 @@ EXIT_CODE_DESCRIPTIONS = {
     ExitCode.PARTIAL_SUCCESS: "Operation partially completed",
     ExitCode.PREMIUM_REQUIRED: "Feature requires Eero Plus subscription",
     ExitCode.FEATURE_UNAVAILABLE: "Feature not available on this device",
+    ExitCode.CLIENT_BLOCKED: "Client version blocked by the API",
+    ExitCode.NETWORK_ERROR: "Network error: could not reach the eero API",
 }

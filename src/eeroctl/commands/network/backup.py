@@ -18,10 +18,10 @@ import sys
 
 import click
 from eero import EeroClient
+from eero.exceptions import EeroPremiumRequiredException
 from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
-from ...errors import is_premium_error
 from ...exit_codes import ExitCode
 from ...safety import OperationRisk, SafetyError, confirm_or_fail
 from ...transformers import extract_data
@@ -57,7 +57,7 @@ def backup_show(ctx: click.Context) -> None:
                 try:
                     raw_backup = await client.get_backup_internet(cli_ctx.network_id)
                 except Exception as e:
-                    if is_premium_error(e):
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
@@ -122,7 +122,7 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
                 try:
                     result = await client.set_backup_internet(enable, cli_ctx.network_id)
                 except Exception as e:
-                    if is_premium_error(e):
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
@@ -153,7 +153,7 @@ def backup_status(ctx: click.Context) -> None:
                     raw_usage = await client.get_cellular_backup_usage(cli_ctx.network_id)
                     raw_events = await client.get_cellular_backup_events(cli_ctx.network_id)
                 except Exception as e:
-                    if is_premium_error(e):
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise

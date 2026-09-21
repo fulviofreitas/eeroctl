@@ -1,10 +1,13 @@
 """Pytest configuration and fixtures for eeroctl tests."""
 
+import inspect
 import json
 from pathlib import Path
+from typing import Any, Callable, Dict, Optional, Type
 
 import pytest
 from click.testing import CliRunner
+from eero.exceptions import EeroException
 
 
 @pytest.fixture
@@ -43,3 +46,41 @@ def schema1_cookie_file(tmp_path: Path) -> Path:
         )
     )
     return path
+
+
+@pytest.fixture
+def api_error() -> Callable[..., EeroException]:
+    """Factory that builds a v8 SDK exception through its real constructor.
+
+    Prefers the class's own ``from_response`` classmethod when one exists
+    (the shape the transport uses when it has no client-side context — see
+    eero-api ``exceptions.py``) and falls back to the class's direct
+    ``__init__`` otherwise, so tests exercise the exact construction path
+    eeroctl actually meets, rather than hand-rolled attribute assignment
+    that could drift from the real SDK shape.
+
+    Usage: ``api_error(cls, status_code, error_code, envelope=None)``.
+    """
+
+    def _build(
+        cls: Type[EeroException],
+        status_code: Optional[int],
+        error_code: Optional[str],
+        envelope: Optional[Dict[str, Any]] = None,
+        message: str = "error",
+    ) -> EeroException:
+        from_response = getattr(cls, "from_response", None)
+        if from_response is not None:
+            params = inspect.signature(from_response).parameters
+            kwargs: Dict[str, Any] = {"envelope": envelope, "error_code": error_code}
+            if "status_code" in params:
+                kwargs["status_code"] = status_code
+            built: EeroException = from_response(message, **kwargs)
+            return built
+
+        init_params = inspect.signature(cls.__init__).parameters
+        if "status_code" in init_params:
+            return cls(status_code, message, envelope=envelope, error_code=error_code)
+        return cls(message, envelope=envelope, error_code=error_code)
+
+    return _build

@@ -40,6 +40,22 @@ class TestExitCode:
         """Test PREMIUM_REQUIRED is 11."""
         assert ExitCode.PREMIUM_REQUIRED == 11
 
+    def test_feature_unavailable_is_twelve(self):
+        """Test FEATURE_UNAVAILABLE is 12."""
+        assert ExitCode.FEATURE_UNAVAILABLE == 12
+
+    def test_client_blocked_is_thirteen(self):
+        """Test CLIENT_BLOCKED is 13 (new in the v8 migration, §2.6)."""
+        assert ExitCode.CLIENT_BLOCKED == 13
+
+    def test_network_error_is_fourteen(self):
+        """Test NETWORK_ERROR is 14 (new in the v8 migration, §2.6)."""
+        assert ExitCode.NETWORK_ERROR == 14
+
+    def test_nine_is_reserved(self):
+        """9 stays reserved: no member of the enum may take that value."""
+        assert 9 not in {code.value for code in ExitCode}
+
     def test_all_codes_are_integers(self):
         """Test all exit codes are integers."""
         for code in ExitCode:
@@ -59,6 +75,33 @@ class TestExitCode:
         """Test all exit codes are non-negative."""
         for code in ExitCode:
             assert code.value >= 0
+
+
+class TestExitCodeTable:
+    """The full 3.0.0 exit-code table (v8 migration plan §2.6)."""
+
+    EXPECTED = {
+        0: "SUCCESS",
+        1: "GENERIC_ERROR",
+        2: "USAGE_ERROR",
+        3: "AUTH_REQUIRED",
+        4: "FORBIDDEN",
+        5: "NOT_FOUND",
+        6: "CONFLICT",
+        7: "TIMEOUT",
+        8: "SAFETY_RAIL",
+        10: "PARTIAL_SUCCESS",
+        11: "PREMIUM_REQUIRED",
+        12: "FEATURE_UNAVAILABLE",
+        13: "CLIENT_BLOCKED",
+        14: "NETWORK_ERROR",
+    }
+
+    def test_table_matches_the_plan_exactly(self):
+        """Every code in the plan's table exists with the right name, and no
+        other codes exist (9 stays reserved, no stray members)."""
+        actual = {code.value: code.name for code in ExitCode}
+        assert actual == self.EXPECTED
 
 
 class TestExitCodeDescriptions:

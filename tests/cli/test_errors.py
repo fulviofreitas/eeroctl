@@ -1,18 +1,26 @@
-"""Unit tests for eero.cli.errors module.
+"""Unit tests for eeroctl.errors module.
 
 Tests cover:
-- handle_cli_error function for different exception types
-- Error helper functions (is_premium_error, is_feature_unavailable_error, is_not_found_error)
+- handle_cli_error for every exception in the v8 hierarchy (eero-api 8.0.1)
+- The isinstance-order guarantees that keep a subclass from being shadowed
+  by its parent's branch
+- Negative tests proving the pre-v8 substring-matching fallbacks
+  (is_premium_error / is_feature_unavailable_error / is_not_found_error,
+  deleted in this commit) are gone: a generic EeroException whose message
+  happens to contain "premium"/"beacon" must NOT be reclassified.
 """
 
 from unittest.mock import MagicMock
 
 import pytest
 from eero.exceptions import (
+    EeroAccessDeniedException,
     EeroAPIException,
     EeroAuthenticationException,
+    EeroClientBlockedException,
     EeroException,
     EeroFeatureUnavailableException,
+    EeroNetworkException,
     EeroNotFoundException,
     EeroPremiumRequiredException,
     EeroRateLimitException,
@@ -21,12 +29,7 @@ from eero.exceptions import (
 )
 from rich.console import Console
 
-from eeroctl.errors import (
-    handle_cli_error,
-    is_feature_unavailable_error,
-    is_not_found_error,
-    is_premium_error,
-)
+from eeroctl.errors import handle_cli_error
 from eeroctl.exit_codes import ExitCode
 
 # ========================== handle_cli_error Tests ==========================
@@ -51,8 +54,31 @@ class TestHandleCliError:
         call_args = console.print.call_args[0][0]
         assert "Authentication required" in call_args
 
-    def test_not_found_exception(self, console):
-        """Test handling of not found exception."""
+    def test_access_denied_exception(self, console, api_error):
+        """EeroAccessDeniedException maps to FORBIDDEN, not the generic 403 path."""
+        exc = api_error(EeroAccessDeniedException, 403, "error.access.denied")
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.FORBIDDEN
+        call_args = console.print.call_args[0][0]
+        assert "Permission denied" in call_args
+        assert "error.access.denied" in call_args
+
+    def test_client_blocked_exception(self, console, api_error):
+        """EeroClientBlockedException maps to the new CLIENT_BLOCKED (13)."""
+        exc = api_error(EeroClientBlockedException, 400, "error.app.version.blocked")
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.CLIENT_BLOCKED
+        assert exit_code == 13
+        call_args = console.print.call_args[0][0]
+        assert "blocked" in call_args.lower()
+        assert "error.app.version.blocked" in call_args
+
+    def test_not_found_exception_direct_construction(self, console):
+        """Test handling of a directly constructed not-found exception."""
         exc = EeroNotFoundException("Eero", "living_room")
 
         exit_code = handle_cli_error(exc, console)
@@ -62,6 +88,26 @@ class TestHandleCliError:
         call_args = console.print.call_args[0][0]
         assert "Eero" in call_args
         assert "living_room" in call_args
+
+    def test_not_found_exception_from_response(self, console, api_error):
+        """`from_response` (status 404, resource_type=None) renders without
+        leaking a literal "None 'None'" placeholder."""
+        exc = api_error(
+            EeroNotFoundException,
+            404,
+            None,
+            message="network-scoped path not found",
+        )
+
+        assert exc.resource_type is None
+        assert exc.resource_id is None
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.NOT_FOUND
+        call_args = console.print.call_args[0][0]
+        assert "None 'None'" not in call_args
+        assert "network-scoped path not found" in call_args
 
     def test_premium_required_exception(self, console):
         """Test handling of premium required exception."""
@@ -86,16 +132,71 @@ class TestHandleCliError:
         call_args = console.print.call_args[0][0]
         assert "Nightlight" in call_args
 
-    def test_rate_limit_exception(self, console):
-        """Test handling of rate limit exception."""
+    def test_premium_required_exception_from_response(self, console, api_error):
+        """Envelope-only construction (transport has no per-feature context)
+        still maps to PREMIUM_REQUIRED, with the generic feature label."""
+        exc = api_error(
+            EeroPremiumRequiredException,
+            402,
+            "error.premium.user_not_subscribed",
+            message="premium plan required",
+        )
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.PREMIUM_REQUIRED
+        call_args = console.print.call_args[0][0]
+        assert "error.premium.user_not_subscribed" in call_args
+
+    def test_feature_unavailable_exception_from_response(self, console, api_error):
+        """Envelope-only construction still maps to FEATURE_UNAVAILABLE."""
+        exc = api_error(
+            EeroFeatureUnavailableException,
+            400,
+            "error.eero.offline",
+            message="eero is offline",
+        )
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.FEATURE_UNAVAILABLE
+        call_args = console.print.call_args[0][0]
+        assert "error.eero.offline" in call_args
+
+    def test_client_blocked_not_shadowed_by_generic_api_exception_branch(self, console, api_error):
+        """A 400-status EeroClientBlockedException must still resolve to
+        CLIENT_BLOCKED (13), not fall through to the generic EeroAPIException
+        else-branch (GENERIC_ERROR) just because 400 has no dedicated case
+        there. Proves the isinstance order, not the status code, decides."""
+        exc = api_error(EeroClientBlockedException, 400, "error.app.version.blocked")
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.CLIENT_BLOCKED
+        assert exit_code != ExitCode.GENERIC_ERROR
+
+    def test_rate_limit_exception_maps_to_generic_error(self, console):
+        """Q5 (decided): exit 7 stays TIMEOUT-only, so a rate limit has no
+        dedicated code and falls to GENERIC_ERROR (1)."""
         exc = EeroRateLimitException("Too many requests")
 
         exit_code = handle_cli_error(exc, console)
 
-        assert exit_code == ExitCode.TIMEOUT
+        assert exit_code == ExitCode.GENERIC_ERROR
         console.print.assert_called_once()
         call_args = console.print.call_args[0][0]
         assert "Rate limited" in call_args
+
+    def test_network_exception(self, console):
+        """EeroNetworkException maps to the new NETWORK_ERROR (14)."""
+        exc = EeroNetworkException("Connection reset")
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.NETWORK_ERROR
+        assert exit_code == 14
+        call_args = console.print.call_args[0][0]
+        assert "Network error: could not reach the eero API" in call_args
 
     def test_timeout_exception(self, console):
         """Test handling of timeout exception."""
@@ -108,8 +209,8 @@ class TestHandleCliError:
         call_args = console.print.call_args[0][0]
         assert "timed out" in call_args
 
-    def test_validation_exception(self, console):
-        """Test handling of validation exception."""
+    def test_validation_exception_direct_construction(self, console):
+        """Test handling of a directly constructed validation exception."""
         exc = EeroValidationException("password", "Must be at least 8 characters")
 
         exit_code = handle_cli_error(exc, console)
@@ -118,6 +219,56 @@ class TestHandleCliError:
         console.print.assert_called_once()
         call_args = console.print.call_args[0][0]
         assert "password" in call_args
+
+    def test_validation_exception_from_response(self, console, api_error):
+        """`from_response` sets field="request"; render "Invalid request:
+        <message>" instead of "Validation error for 'request': …"."""
+        exc = api_error(
+            EeroValidationException,
+            400,
+            "error.form.errors",
+            message="email is malformed",
+        )
+
+        assert exc.field == "request"
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.USAGE_ERROR
+        call_args = console.print.call_args[0][0]
+        assert "Invalid request: email is malformed" in call_args
+        assert "Validation error for 'request'" not in call_args
+
+    def test_error_code_suffix_present_when_set(self, console):
+        """error_code, when truthy, is appended to the rendered message."""
+        exc = EeroTimeoutException("Request timed out", error_code="error.timeout")
+
+        handle_cli_error(exc, console)
+
+        call_args = console.print.call_args[0][0]
+        assert "(error code: error.timeout)" in call_args
+
+    def test_error_code_suffix_absent_when_unset(self, console):
+        """No error_code -> no suffix."""
+        exc = EeroTimeoutException("Request timed out")
+
+        handle_cli_error(exc, console)
+
+        call_args = console.print.call_args[0][0]
+        assert "(error code:" not in call_args
+
+    def test_envelope_never_rendered(self, console):
+        """`.envelope` must never appear in the rendered message (it can
+        carry user_token, emails, phones)."""
+        exc = EeroTimeoutException(
+            "Request timed out",
+            envelope={"data": {"user_token": "super-secret-token"}},
+        )
+
+        handle_cli_error(exc, console)
+
+        call_args = console.print.call_args[0][0]
+        assert "super-secret-token" not in call_args
 
     def test_api_exception_401(self, console):
         """Test handling of 401 API exception."""
@@ -130,8 +281,9 @@ class TestHandleCliError:
         call_args = console.print.call_args[0][0]
         assert "expired" in call_args.lower() or "login" in call_args.lower()
 
-    def test_api_exception_403(self, console):
-        """Test handling of 403 API exception."""
+    def test_api_exception_403_generic(self, console):
+        """A generic EeroAPIException(403, …) (not EeroAccessDeniedException)
+        still falls back to FORBIDDEN through the EeroAPIException branch."""
         exc = EeroAPIException(403, "Forbidden")
 
         exit_code = handle_cli_error(exc, console)
@@ -142,7 +294,8 @@ class TestHandleCliError:
         assert "Permission denied" in call_args
 
     def test_api_exception_404(self, console):
-        """Test handling of 404 API exception."""
+        """A generic EeroAPIException(404, …) (not EeroNotFoundException)
+        still falls back to NOT_FOUND through the EeroAPIException branch."""
         exc = EeroAPIException(404, "Network not found")
 
         exit_code = handle_cli_error(exc, console)
@@ -157,13 +310,13 @@ class TestHandleCliError:
 
         assert exit_code == ExitCode.CONFLICT
 
-    def test_api_exception_429(self, console):
-        """Test handling of 429 API exception."""
+    def test_api_exception_429_maps_to_generic_error(self, console):
+        """No dedicated code for 429 either (Q5); unmapped -> GENERIC_ERROR."""
         exc = EeroAPIException(429, "Rate limited")
 
         exit_code = handle_cli_error(exc, console)
 
-        assert exit_code == ExitCode.TIMEOUT
+        assert exit_code == ExitCode.GENERIC_ERROR
 
     def test_api_exception_500(self, console):
         """Test handling of 500 API exception."""
@@ -207,109 +360,27 @@ class TestHandleCliError:
         call_args = console.print.call_args[0][0]
         assert "Network operation:" in call_args
 
+    # ---------------- Negative tests: substring fallbacks are gone ----------------
 
-# ========================== is_premium_error Tests ==========================
+    def test_generic_exception_with_premium_keyword_is_not_reclassified(self, console):
+        """A plain EeroException whose message mentions "premium" must map
+        to GENERIC_ERROR (1), never PREMIUM_REQUIRED (11) — the deleted
+        is_premium_error() substring fallback must not resurface."""
+        exc = EeroException("premium plan required")
 
+        exit_code = handle_cli_error(exc, console)
 
-class TestIsPremiumError:
-    """Tests for is_premium_error helper function."""
+        assert exit_code == ExitCode.GENERIC_ERROR
+        assert exit_code == 1
 
-    def test_premium_required_exception_returns_true(self):
-        """Test returns True for EeroPremiumRequiredException."""
-        exc = EeroPremiumRequiredException("Feature")
-        assert is_premium_error(exc) is True
+    def test_generic_exception_with_beacon_keyword_is_not_reclassified(self, console):
+        """A plain EeroException whose message mentions "beacon" must map to
+        GENERIC_ERROR (1), never FEATURE_UNAVAILABLE (12) or NOT_FOUND (5) —
+        the deleted is_feature_unavailable_error()/is_not_found_error()
+        substring fallbacks must not resurface."""
+        exc = EeroException("beacon not found")
 
-    def test_generic_exception_with_premium_keyword_returns_true(self):
-        """Test returns True when error message contains 'premium'."""
-        exc = Exception("This feature requires premium")
-        assert is_premium_error(exc) is True
+        exit_code = handle_cli_error(exc, console)
 
-    def test_generic_exception_with_plus_keyword_returns_true(self):
-        """Test returns True when error message contains 'plus'."""
-        exc = Exception("Requires Eero Plus subscription")
-        assert is_premium_error(exc) is True
-
-    def test_generic_exception_with_subscription_keyword_returns_true(self):
-        """Test returns True when error message contains 'subscription'."""
-        exc = Exception("Active subscription required")
-        assert is_premium_error(exc) is True
-
-    def test_unrelated_exception_returns_false(self):
-        """Test returns False for unrelated exceptions."""
-        exc = Exception("Network timeout")
-        assert is_premium_error(exc) is False
-
-    def test_case_insensitive_matching(self):
-        """Test keyword matching is case insensitive."""
-        exc = Exception("PREMIUM feature required")
-        assert is_premium_error(exc) is True
-
-        exc = Exception("Eero PLUS subscription")
-        assert is_premium_error(exc) is True
-
-
-# ========================== is_feature_unavailable_error Tests ==========================
-
-
-class TestIsFeatureUnavailableError:
-    """Tests for is_feature_unavailable_error helper function."""
-
-    def test_feature_unavailable_exception_returns_true(self):
-        """Test returns True for EeroFeatureUnavailableException."""
-        exc = EeroFeatureUnavailableException("Nightlight", "not supported")
-        assert is_feature_unavailable_error(exc, "anything") is True
-
-    def test_generic_exception_with_keyword_returns_true(self):
-        """Test returns True when message contains feature keyword."""
-        exc = Exception("Beacon feature not available")
-        assert is_feature_unavailable_error(exc, "beacon") is True
-
-    def test_generic_exception_without_keyword_returns_false(self):
-        """Test returns False when message doesn't contain keyword."""
-        exc = Exception("Network error occurred")
-        assert is_feature_unavailable_error(exc, "beacon") is False
-
-    def test_case_insensitive_matching(self):
-        """Test keyword matching is case insensitive."""
-        exc = Exception("BEACON nightlight is not supported")
-        assert is_feature_unavailable_error(exc, "beacon") is True
-
-        exc = Exception("This is for Beacon only")
-        assert is_feature_unavailable_error(exc, "BEACON") is True
-
-
-# ========================== is_not_found_error Tests ==========================
-
-
-class TestIsNotFoundError:
-    """Tests for is_not_found_error helper function."""
-
-    def test_not_found_exception_returns_true(self):
-        """Test returns True for EeroNotFoundException."""
-        exc = EeroNotFoundException("Device", "abc123")
-        assert is_not_found_error(exc) is True
-
-    def test_api_exception_404_returns_true(self):
-        """Test returns True for EeroAPIException with 404 status."""
-        exc = EeroAPIException(404, "Resource not found")
-        assert is_not_found_error(exc) is True
-
-    def test_api_exception_other_status_returns_false(self):
-        """Test returns False for EeroAPIException with non-404 status."""
-        exc = EeroAPIException(500, "Server error")
-        assert is_not_found_error(exc) is False
-
-    def test_generic_exception_with_not_found_returns_true(self):
-        """Test returns True when message contains 'not found'."""
-        exc = Exception("Device not found in network")
-        assert is_not_found_error(exc) is True
-
-    def test_generic_exception_without_not_found_returns_false(self):
-        """Test returns False for unrelated exceptions."""
-        exc = Exception("Connection timeout")
-        assert is_not_found_error(exc) is False
-
-    def test_case_insensitive_matching(self):
-        """Test 'not found' matching is case insensitive."""
-        exc = Exception("Resource NOT FOUND")
-        assert is_not_found_error(exc) is True
+        assert exit_code == ExitCode.GENERIC_ERROR
+        assert exit_code == 1

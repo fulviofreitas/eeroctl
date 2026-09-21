@@ -13,10 +13,10 @@ import sys
 
 import click
 from eero import EeroClient
+from eero.exceptions import EeroFeatureUnavailableException
 from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
-from ...errors import is_feature_unavailable_error
 from ...exit_codes import ExitCode
 from ...transformers import extract_data
 from ...utils import run_with_client
@@ -66,7 +66,7 @@ def nightlight_show(ctx: click.Context, eero_identifier: str) -> None:
                 try:
                     raw_nl = await client.get_nightlight(eero_id_str, cli_ctx.network_id)
                 except Exception as e:
-                    if is_feature_unavailable_error(e, "beacon"):
+                    if isinstance(e, EeroFeatureUnavailableException):
                         console.print(
                             "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
                         )
@@ -150,7 +150,7 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool
                         eero_id_str, enabled=enabled, network_id=cli_ctx.network_id
                     )
                 except Exception as e:
-                    if is_feature_unavailable_error(e, "beacon"):
+                    if isinstance(e, EeroFeatureUnavailableException):
                         console.print(
                             "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
                         )
@@ -198,7 +198,7 @@ def nightlight_brightness(ctx: click.Context, eero_identifier: str, value: int) 
                         eero_id_str, value, cli_ctx.network_id
                     )
                 except Exception as e:
-                    if is_feature_unavailable_error(e, "beacon"):
+                    if isinstance(e, EeroFeatureUnavailableException):
                         console.print(
                             "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
                         )
@@ -255,7 +255,7 @@ def nightlight_schedule(
                         eero_id_str, schedule, cli_ctx.network_id
                     )
                 except Exception as e:
-                    if is_feature_unavailable_error(e, "beacon"):
+                    if isinstance(e, EeroFeatureUnavailableException):
                         console.print(
                             "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
                         )

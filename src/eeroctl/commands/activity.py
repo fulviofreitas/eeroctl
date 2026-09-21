@@ -10,10 +10,10 @@ from typing import Optional
 
 import click
 from eero import EeroClient
+from eero.exceptions import EeroPremiumRequiredException
 from rich.table import Table
 
 from ..context import ensure_cli_context
-from ..errors import is_premium_error
 from ..exit_codes import ExitCode
 from ..options import apply_options, network_option, output_option
 from ..utils import with_client
@@ -96,7 +96,7 @@ async def activity_history(
                 cadence=cadence,
             )
         except Exception as e:
-            if is_premium_error(e):
+            if isinstance(e, EeroPremiumRequiredException):
                 console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
                 sys.exit(ExitCode.PREMIUM_REQUIRED)
             raise
@@ -172,7 +172,7 @@ async def activity_categories(
                 cadence=cadence,
             )
         except Exception as e:
-            if is_premium_error(e):
+            if isinstance(e, EeroPremiumRequiredException):
                 console.print("[yellow]This feature requires Eero Plus subscription[/yellow]")
                 sys.exit(ExitCode.PREMIUM_REQUIRED)
             raise
