@@ -420,6 +420,8 @@ class TestAuthStatus:
         assert "Show current authentication status" in result.output
         assert "--offline" in result.output
         assert "--check" in result.output
+        normalized = " ".join(result.output.split())
+        assert normalized.count("Mutually exclusive with") == 2
 
     @patch("eeroctl.commands.auth._get_session_info")
     @patch("eeroctl.commands.auth._check_keyring_available")
@@ -554,25 +556,26 @@ class TestAuthStatus:
         mock_client.get_account.assert_not_awaited()
         assert "Stored, not verified" in result.output
 
-    @patch("eeroctl.commands.auth._get_session_info")
-    @patch("eeroctl.commands.auth._check_keyring_available")
-    @patch("eeroctl.commands.auth.build_client")
-    def test_status_offline_check_does_not_fail(
-        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
-    ):
-        """--check with --offline does not exit 3: an unverified token is not a failure."""
-        mock_keyring.return_value = False
-        mock_session_info.return_value = self._session_info(tmp_path)
+    def test_status_offline_and_check_together_is_rejected(self, runner):
+        """--offline --check exits 2: an unverified/revoked token must not read as OK.
 
-        mock_client = AsyncMock()
-        mock_client.is_authenticated = True
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock()
-        mock_build_client.return_value = mock_client
-
+        Previously this combination exited 0 unconditionally, since --check
+        only ever looked at the (never-populated, because --offline skips
+        the probe) invalid-session state -- a locally-stored but revoked
+        token silently passed --check.
+        """
         result = runner.invoke(cli, ["auth", "status", "--offline", "--check"])
 
-        assert result.exit_code == 0
+        assert result.exit_code == 2
+        normalized = " ".join(result.output.split())
+        assert "--offline and --check cannot be used together" in normalized
+
+    def test_status_offline_and_check_together_makes_no_api_call(self, runner):
+        """The rejection happens before any client is even built."""
+        with patch("eeroctl.commands.auth.build_client") as mock_build_client:
+            runner.invoke(cli, ["auth", "status", "--offline", "--check"])
+
+        mock_build_client.assert_not_called()
 
     @patch("eeroctl.commands.auth.get_auth_method")
     @patch("eeroctl.commands.auth._get_session_info")

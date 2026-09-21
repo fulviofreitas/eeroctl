@@ -460,13 +460,19 @@ def _check_keyring_available() -> bool:
 @click.option(
     "--offline",
     is_flag=True,
-    help="Report stored state only; skip the live account probe (no API call)",
+    help=(
+        "Report stored state only; skip the live account probe (no API call). "
+        "Mutually exclusive with --check: an unverified token must not read as OK."
+    ),
 )
 @click.option(
     "--check",
     "check_only",
     is_flag=True,
-    help="Exit 3 if not authenticated or the stored session is invalid",
+    help=(
+        "Exit 3 if not authenticated or the stored session is invalid. "
+        "Mutually exclusive with --offline: an unverified token must not read as OK."
+    ),
 )
 @click.pass_context
 def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
@@ -476,7 +482,15 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
     default this makes one live API call (`GET /account`) to confirm the
     stored session actually works; pass --offline to skip it and report only
     what is stored locally.
+
+    --offline and --check cannot be combined: --check's whole purpose is to
+    fail on an invalid/revoked token, which --offline cannot detect (it
+    never makes the live call), so together they would silently report
+    success (exit 0) for a token that no longer works.
     """
+    if offline and check_only:
+        raise click.UsageError("--offline and --check cannot be used together", ctx=ctx)
+
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
