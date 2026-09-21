@@ -7,6 +7,7 @@ eero-api library into structured data for display and processing.
 from .account import extract_premium_customer
 from .base import extract_data, extract_id_from_url, extract_list, safe_get
 from .device import extract_device, extract_devices, normalize_device
+from .dns_policy import extract_dns_policy
 from .eero import extract_eero, extract_eeros, normalize_eero
 from .entitlements import extract_entitlements
 from .events import (
@@ -68,4 +69,6 @@ __all__ = [
     "extract_unread_flag",
     "extract_notification_history",
     "extract_history_next_cursor",
+    # DNS policy
+    "extract_dns_policy",
 ]

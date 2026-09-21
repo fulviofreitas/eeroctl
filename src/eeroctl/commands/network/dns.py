@@ -794,3 +794,45 @@ def _set_dns_caching(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
         await run_with_client(set_caching)
 
     asyncio.run(run_cmd())
+
+
+# ==================== DNS Content-Filtering Policy (read-only, phase A) ====================
+#
+# get_advanced_content_filter (client.py:2428) is a premium, plain GET; unlike
+# every other command in this module it is not a DNS write and does not
+# reboot the mesh, so it gets its own subgroup rather than living under
+# `dns show`/`dns mode`/`dns caching`/`dns clear` above.
+
+
+@dns_group.group(name="policy")
+@click.pass_context
+def dns_policy_group(ctx: click.Context) -> None:
+    """View DNS content-filtering policy (Eero Plus feature).
+
+    \b
+    Commands:
+      show - Allowed/blocked domain lists
+    """
+    pass
+
+
+@dns_policy_group.command(name="show")
+@output_option
+@network_option
+@click.pass_context
+def dns_policy_show(ctx: click.Context, output: Optional[str], network_id: Optional[str]) -> None:
+    """Show DNS content-filtering allow/block lists (Eero Plus feature)."""
+    from ...formatting.dns_policy import print_dns_policy
+    from ...transformers.dns_policy import extract_dns_policy
+
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
+
+    async def run_cmd() -> None:
+        async def get_policy(client: EeroClient) -> None:
+            with cli_ctx.status("Getting DNS content-filtering policy..."):
+                raw = await client.get_advanced_content_filter(cli_ctx.network_id)
+            print_dns_policy(cli_ctx, extract_dns_policy(raw))
+
+        await run_with_client(get_policy)
+
+    asyncio.run(run_cmd())

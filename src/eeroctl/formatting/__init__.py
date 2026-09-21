@@ -33,6 +33,9 @@ from .device import (
     print_device_details,
 )
 
+# DNS policy formatting
+from .dns_policy import print_dns_policy
+
 # Eero device formatting
 from .eero import (
     create_eeros_table,
@@ -127,4 +130,6 @@ __all__ = [
     "print_notification_settings",
     "print_unread",
     "print_notification_history",
+    # DNS policy
+    "print_dns_policy",
 ]
