@@ -74,8 +74,10 @@ def speedtest_run(ctx: click.Context) -> None:
             if cli_ctx.is_json_output():
                 renderer.render_json(result or {}, "eero.network.speedtest.run/v1")
             else:
-                console.print("[bold green]Speed test started[/bold green]")
-                console.print("[dim]Check results with: eero network speedtest show[/dim]")
+                console.print(
+                    "[bold green]Speed test started; results in ~1 min via "
+                    "`eero network speedtest history --limit 1`[/bold green]"
+                )
 
         await run_with_client(run_test)
 

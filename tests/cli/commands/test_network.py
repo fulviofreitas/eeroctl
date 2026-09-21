@@ -639,6 +639,27 @@ class TestNetworkSpeedtest:
         assert result.exit_code == 0
         assert "Show last speed test results" in result.output
 
+    def test_speedtest_run_points_at_history_command(self, runner):
+        """`run_speed_test` returns 202/data:null (8.0.1); the message points
+        at `speedtest history --limit 1`, not the old `speedtest show` text.
+        """
+        mock_client = MagicMock()
+        mock_client.run_speed_test = AsyncMock(return_value={"meta": {"code": 202}, "data": None})
+
+        async def _run(func):
+            await func(mock_client)
+
+        with patch(
+            "eeroctl.commands.network.speedtest.run_with_client",
+            side_effect=_run,
+        ):
+            result = runner.invoke(cli, ["network", "speedtest", "run"])
+
+        assert result.exit_code == 0
+        assert "Speed test started" in result.output
+        assert "speedtest history" in result.output
+        assert "--limit" in result.output
+
 
 class TestNetworkSQM:
     """Tests for network sqm subcommands."""

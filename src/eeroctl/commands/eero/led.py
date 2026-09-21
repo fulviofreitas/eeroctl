@@ -198,15 +198,25 @@ def led_brightness(ctx: click.Context, eero_identifier: str, value: int) -> None
 
             eero_id_str = str(resolved_id)
 
-            with cli_ctx.status(f"Setting LED brightness to {value}%..."):
-                result = await client.set_led_brightness(eero_id_str, value, cli_ctx.network_id)
+            async def read() -> int:
+                with cli_ctx.status("Reading current LED brightness..."):
+                    raw_led = await client.get_led_status(eero_id_str, cli_ctx.network_id)
+                led_data = extract_data(raw_led) if isinstance(raw_led, dict) else {}
+                brightness = led_data.get("led_brightness")
+                return int(brightness) if brightness is not None else -1
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print(f"[bold green]LED brightness set to {value}%[/bold green]")
-            else:
-                console.print("[red]Failed to set LED brightness[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def write() -> Any:
+                with cli_ctx.status(f"Setting LED brightness to {value}%..."):
+                    return await client.set_led_brightness(eero_id_str, value, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                value,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(set_brightness)
 
