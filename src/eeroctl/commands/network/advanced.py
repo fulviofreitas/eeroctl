@@ -15,7 +15,7 @@ from eero import EeroClient
 from rich.panel import Panel
 
 from ...context import get_cli_context
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...utils import run_with_client
 
 # ==================== Routing Subcommand ====================
@@ -164,13 +164,14 @@ def bundle_export(ctx: click.Context, out: str, force: bool) -> None:
     console = cli_ctx.console
 
     try:
-        confirm_or_fail(
-            action="export support bundle",
+        require_write_confirmation(
+            get_write_spec("network support bundle export"),
             target=f"to {out}",
-            risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=force or cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

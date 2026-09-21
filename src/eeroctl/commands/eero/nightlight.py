@@ -18,6 +18,7 @@ from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
 from ...utils import run_with_client
 from .base import resolve_eero_identifier
@@ -130,6 +131,17 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool
     console = cli_ctx.console
     action = "on" if enabled else "off"
 
+    try:
+        require_write_confirmation(
+            get_write_spec(f"eero nightlight {action}"),
+            target=eero_identifier,
+            ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
     async def run_cmd() -> None:
         async def set_nl(client: EeroClient) -> None:
             # Resolve eero by ID, serial, or name
@@ -177,6 +189,17 @@ def nightlight_brightness(ctx: click.Context, eero_identifier: str, value: int) 
     """Set nightlight brightness (0-100)."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+
+    try:
+        require_write_confirmation(
+            get_write_spec("eero nightlight brightness"),
+            target=eero_identifier,
+            ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
 
     async def run_cmd() -> None:
         async def set_brightness(client: EeroClient) -> None:
@@ -228,6 +251,17 @@ def nightlight_schedule(
     """Set nightlight schedule."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+
+    try:
+        require_write_confirmation(
+            get_write_spec("eero nightlight schedule"),
+            target=eero_identifier,
+            ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
 
     async def run_cmd() -> None:
         async def set_schedule(client: EeroClient) -> None:

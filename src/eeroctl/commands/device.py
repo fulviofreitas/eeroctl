@@ -22,9 +22,9 @@ from ..context import EeroCliContext, ensure_cli_context
 from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
-from ..safety import OperationRisk, SafetyError, confirm_or_fail
+from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ..transformers import extract_data, extract_devices, normalize_device
-from ..utils import run_with_client
+from ..utils import run_with_client, write_if_changed
 
 
 def _find_device(devices: list, identifier: str) -> Optional[Dict[str, Any]]:
@@ -247,6 +247,7 @@ def device_rename(
     """
     cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
+    spec = get_write_spec("device rename")
 
     async def run_cmd() -> None:
         async def rename_device(client: EeroClient) -> None:
@@ -261,6 +262,21 @@ def device_rename(
                 console.print(f"[red]Device '{device_identifier}' not found[/red]")
                 console.print("[dim]Try: eero device list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
+
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=f"{device_identifier} → {name}",
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
 
             with cli_ctx.status(f"Renaming device to '{name}'..."):
                 result = await client.set_device_nickname(target["id"], name, cli_ctx.network_id)
@@ -318,6 +334,7 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked
     """Block or unblock a device."""
     console = cli_ctx.console
     action = "block" if blocked else "unblock"
+    spec = get_write_spec(f"device {action}")
 
     async def run_cmd() -> None:
         async def toggle_block(client: EeroClient) -> None:
@@ -341,31 +358,39 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked
             )
 
             try:
-                confirm_or_fail(
-                    action=action,
+                require_write_confirmation(
+                    spec,
                     target=device_name,
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
                     console=cli_ctx.console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
-                if blocked:
-                    result = await client.block_device(target["id"], cli_ctx.network_id)
-                else:
-                    result = await client.unblock_device(target["id"], cli_ctx.network_id)
+            # Already fetched above (target["blacklisted"]), so no extra read
+            # round-trip is needed for the skip-unchanged check.
+            async def read() -> bool:
+                return bool(target.get("blacklisted", not blocked))
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print(f"[bold green]Device {action}ed[/bold green]")
-            else:
-                console.print(f"[red]Failed to {action} device[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
+                    if blocked:
+                        return await client.block_device(target["id"], cli_ctx.network_id)
+                    return await client.unblock_device(target["id"], cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                blocked,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(toggle_block)
 
@@ -412,6 +437,7 @@ def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: 
     """Pause or unpause a device."""
     console = cli_ctx.console
     action = "pause" if paused else "unpause"
+    spec = get_write_spec(f"device {action}")
 
     async def run_cmd() -> None:
         async def toggle_pause(client: EeroClient) -> None:
@@ -435,28 +461,37 @@ def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: 
             )
 
             try:
-                confirm_or_fail(
-                    action=action,
+                require_write_confirmation(
+                    spec,
                     target=device_name,
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
                     console=cli_ctx.console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
-                result = await client.pause_device(target["id"], paused, cli_ctx.network_id)
+            # Already fetched above (target["paused"]), so no extra read
+            # round-trip is needed for the skip-unchanged check.
+            async def read() -> bool:
+                return bool(target.get("paused", not paused))
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print(f"[bold green]Device {action}d[/bold green]")
-            else:
-                console.print(f"[red]Failed to {action} device[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
+                    return await client.pause_device(target["id"], paused, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                paused,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(toggle_pause)
 

@@ -19,7 +19,7 @@ from ...context import ensure_cli_context
 from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, extract_eeros, normalize_eero
 from ...utils import run_with_client
 
@@ -255,13 +255,14 @@ def eero_reboot(
             )
 
             try:
-                confirm_or_fail(
-                    action="reboot",
+                require_write_confirmation(
+                    get_write_spec("eero reboot"),
                     target=eero_name,
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
                     console=cli_ctx.console,
                 )
             except SafetyError as e:

@@ -11,16 +11,16 @@ Commands:
 
 import asyncio
 import sys
+from typing import Any
 
 import click
 from eero import EeroClient
 from rich.table import Table
 
 from ...context import get_cli_context
-from ...exit_codes import ExitCode
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
-from ...utils import run_with_client
+from ...utils import run_with_client, write_if_changed
 
 
 @click.group(name="security")
@@ -89,6 +89,18 @@ def security_show(ctx: click.Context) -> None:
     asyncio.run(run_cmd())
 
 
+# Field each toggle reads back from `get_security_settings`'s `data`, so
+# `write_if_changed` can tell whether a write is actually a no-op. Mirrors
+# the field names `security_show` already renders (security.py:74-78).
+_SECURITY_STATE_FIELD = {
+    "wpa3": "wpa3",
+    "band-steering": "band_steering",
+    "upnp": "upnp",
+    "ipv6": "ipv6_upstream",
+    "thread": "thread",
+}
+
+
 # Security toggle commands factory
 def _make_security_toggle(setting_name: str, api_method: str, display_name: str):
     """Factory for security toggle command groups."""
@@ -102,13 +114,13 @@ def _make_security_toggle(setting_name: str, api_method: str, display_name: str)
     @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
     @click.pass_context
     def enable_cmd(ctx: click.Context, force: bool) -> None:
-        _set_security_setting(ctx, api_method, display_name, True, force)
+        _set_security_setting(ctx, setting_name, api_method, display_name, True, force)
 
     @toggle_group.command(name="disable")
     @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
     @click.pass_context
     def disable_cmd(ctx: click.Context, force: bool) -> None:
-        _set_security_setting(ctx, api_method, display_name, False, force)
+        _set_security_setting(ctx, setting_name, api_method, display_name, False, force)
 
     enable_cmd.__doc__ = f"Enable {display_name}."
     disable_cmd.__doc__ = f"Disable {display_name}."
@@ -117,20 +129,26 @@ def _make_security_toggle(setting_name: str, api_method: str, display_name: str)
     return toggle_group
 
 
-def _set_security_setting(ctx, api_method: str, display_name: str, enable: bool, force: bool):
+def _set_security_setting(
+    ctx, setting_name: str, api_method: str, display_name: str, enable: bool, force: bool
+):
     """Set a security setting."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
     action = "enable" if enable else "disable"
+    effective_force = force or cli_ctx.force
+    spec = get_write_spec(f"network security {setting_name} {action}")
+    state_field = _SECURITY_STATE_FIELD[setting_name]
 
     try:
-        confirm_or_fail(
-            action=f"{action} {display_name}",
+        require_write_confirmation(
+            spec,
             target="network",
-            risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -139,14 +157,25 @@ def _set_security_setting(ctx, api_method: str, display_name: str, enable: bool,
     async def run_cmd() -> None:
         async def set_setting(client: EeroClient) -> None:
             method = getattr(client, api_method)
-            with cli_ctx.status(f"{action.capitalize()}ing {display_name}..."):
-                result = await method(enable, cli_ctx.network_id)
 
-            if result:
-                console.print(f"[bold green]{display_name} {action}d[/bold green]")
-            else:
-                console.print(f"[red]Failed to {action} {display_name}[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def read() -> bool:
+                with cli_ctx.status(f"Reading current {display_name} setting..."):
+                    raw_security = await client.get_security_settings(cli_ctx.network_id)
+                sec_data = extract_data(raw_security) if isinstance(raw_security, dict) else {}
+                return bool(sec_data.get(state_field, not enable))
+
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing {display_name}..."):
+                    return await method(enable, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                enable,
+                write,
+                force=effective_force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(set_setting)
 

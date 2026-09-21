@@ -169,7 +169,9 @@ class TestDeviceBlock:
             result = runner.invoke(cli, ["device", "block", "MyPhone", "--force"])
 
         assert result.exit_code == 0
-        assert "blocked" in result.output.lower()
+        # write_if_changed's generic acceptance message replaced the old
+        # command-specific "Device blocked" text (safety §3.2 item 4).
+        assert "accepted" in result.output.lower()
         # eero-api 8.0.1 split block/unblock into two methods; neither takes a
         # bare `blocked: bool` positional anymore (device.py:358).
         mock_client.block_device.assert_awaited_once()
@@ -252,7 +254,7 @@ class TestDevicePause:
             result = runner.invoke(cli, ["device", "pause", "MyPhone", "--force"])
 
         assert result.exit_code == 0
-        assert "paused" in result.output.lower()
+        assert "accepted" in result.output.lower()
         mock_client.pause_device.assert_awaited_once()
         call_args = mock_client.pause_device.call_args
         assert call_args[0][1] is True  # paused=True
@@ -343,7 +345,7 @@ class TestDeviceUnpause:
             result = runner.invoke(cli, ["device", "unpause", "MyLaptop", "--force"])
 
         assert result.exit_code == 0
-        assert "unpaused" in result.output.lower()
+        assert "accepted" in result.output.lower()
         mock_client.pause_device.assert_awaited_once()
         call_args = mock_client.pause_device.call_args
         assert call_args[0][1] is False  # paused=False

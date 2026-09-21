@@ -21,7 +21,7 @@ from ...context import ensure_cli_context, get_cli_context
 from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_id_from_url, extract_networks
 from ...transformers.network import extract_network, normalize_network
 from ...utils import run_with_client, set_preferred_network
@@ -259,15 +259,17 @@ def network_rename(
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
+    spec = get_write_spec("network rename")
 
     try:
-        confirm_or_fail(
-            action="rename network",
+        require_write_confirmation(
+            spec,
             target=f"to '{name}'",
-            risk=OperationRisk.MEDIUM,
-            force=cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

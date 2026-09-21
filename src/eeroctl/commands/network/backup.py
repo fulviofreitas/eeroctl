@@ -15,6 +15,7 @@ Note: eero-api 8.0.1 removed `get_backup_network`, `get_backup_status`,
 import asyncio
 import json
 import sys
+from typing import Any
 
 import click
 from eero import EeroClient
@@ -23,9 +24,9 @@ from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
-from ...utils import run_with_client
+from ...utils import run_with_client, write_if_changed
 
 
 @click.group(name="backup")
@@ -102,15 +103,18 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
     """Set backup internet state."""
     console = cli_ctx.console
     action = "enable" if enable else "disable"
+    effective_force = force or cli_ctx.force
+    spec = get_write_spec(f"network backup {action}")
 
     try:
-        confirm_or_fail(
-            action=f"{action} backup internet",
+        require_write_confirmation(
+            spec,
             target="network",
-            risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -118,20 +122,40 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
 
     async def run_cmd() -> None:
         async def set_backup(client: EeroClient) -> None:
-            with cli_ctx.status(f"{action.capitalize()}ing backup internet..."):
-                try:
-                    result = await client.set_backup_internet(enable, cli_ctx.network_id)
-                except Exception as e:
-                    if isinstance(e, EeroPremiumRequiredException):
-                        console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
-                        sys.exit(ExitCode.PREMIUM_REQUIRED)
-                    raise
+            async def read() -> bool:
+                with cli_ctx.status("Reading current backup internet settings..."):
+                    try:
+                        raw_backup = await client.get_backup_internet(cli_ctx.network_id)
+                    except Exception as e:
+                        if isinstance(e, EeroPremiumRequiredException):
+                            console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
+                            sys.exit(ExitCode.PREMIUM_REQUIRED)
+                        raise
+                backup_data = extract_data(raw_backup) if isinstance(raw_backup, dict) else {}
+                return bool(
+                    backup_data.get(
+                        "backup_internet_enabled", backup_data.get("enabled", not enable)
+                    )
+                )
 
-            if result:
-                console.print(f"[bold green]Backup internet {action}d[/bold green]")
-            else:
-                console.print(f"[red]Failed to {action} backup internet[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing backup internet..."):
+                    try:
+                        return await client.set_backup_internet(enable, cli_ctx.network_id)
+                    except Exception as e:
+                        if isinstance(e, EeroPremiumRequiredException):
+                            console.print("[yellow]Backup internet requires Eero Plus[/yellow]")
+                            sys.exit(ExitCode.PREMIUM_REQUIRED)
+                        raise
+
+            await write_if_changed(
+                read,
+                enable,
+                write,
+                force=effective_force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(set_backup)
 

@@ -13,6 +13,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from click.testing import CliRunner
 
+from eeroctl.exit_codes import ExitCode
 from eeroctl.main import cli
 
 
@@ -222,7 +223,7 @@ class TestProfileAppsBlockedShapeValidation:
         mock_client = _mock_client_for_apps(dns_policy_response)
 
         with patch("eeroctl.utils.EeroClient", return_value=mock_client):
-            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok"])
+            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok", "--force"])
 
         assert result.exit_code == 0
         mock_client.set_profile_blocked_applications.assert_awaited_once()
@@ -244,7 +245,7 @@ class TestProfileAppsBlockedShapeValidation:
         mock_client = _mock_client_for_apps(dns_policy_response)
 
         with patch("eeroctl.utils.EeroClient", return_value=mock_client):
-            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok"])
+            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok", "--force"])
 
         assert result.exit_code == 0
         mock_client.set_profile_blocked_applications.assert_awaited_once()
@@ -270,7 +271,7 @@ class TestProfileAppsBlockedShapeValidation:
         mock_client = _mock_client_for_apps(dns_policy_response)
 
         with patch("eeroctl.utils.EeroClient", return_value=mock_client):
-            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok"])
+            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok", "--force"])
 
         assert result.exit_code == 1
         mock_client.set_profile_blocked_applications.assert_not_awaited()
@@ -286,7 +287,7 @@ class TestProfileAppsBlockedShapeValidation:
         mock_client = _mock_client_for_apps(dns_policy_response)
 
         with patch("eeroctl.utils.EeroClient", return_value=mock_client):
-            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok"])
+            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok", "--force"])
 
         assert result.exit_code == 1
         mock_client.set_profile_blocked_applications.assert_not_awaited()
@@ -303,9 +304,29 @@ class TestProfileAppsBlockedShapeValidation:
         mock_client = _mock_client_for_apps(dns_policy_response)
 
         with patch("eeroctl.utils.EeroClient", return_value=mock_client):
-            result = runner.invoke(cli, ["profile", "apps", "unblock", "Kids", "facebook"])
+            result = runner.invoke(
+                cli, ["profile", "apps", "unblock", "Kids", "facebook", "--force"]
+            )
 
         assert result.exit_code == 1
+        mock_client.set_profile_blocked_applications.assert_not_awaited()
+
+    def test_apps_block_without_force_prompts_for_confirmation(self, runner):
+        """`apps block` is now a registered, confirmed write (security
+        review fold-in): without --force and with no input, it must fail
+        via the confirmation path, not silently proceed."""
+        dns_policy_response = {
+            "meta": {"code": 200},
+            "data": {"applications": ["facebook"], "categories_list": []},
+        }
+        mock_client = _mock_client_for_apps(dns_policy_response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--non-interactive", "profile", "apps", "block", "Kids", "tiktok"]
+            )
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
         mock_client.set_profile_blocked_applications.assert_not_awaited()
 
 

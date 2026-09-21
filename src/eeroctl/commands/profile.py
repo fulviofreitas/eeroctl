@@ -26,9 +26,9 @@ from ..context import EeroCliContext, ensure_cli_context
 from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
-from ..safety import OperationRisk, SafetyError, confirm_or_fail
+from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ..transformers import extract_data, extract_profiles, normalize_profile
-from ..utils import run_with_client
+from ..utils import run_with_client, write_if_changed
 
 
 def _find_profile(profiles: list, identifier: str) -> Optional[Dict[str, Any]]:
@@ -289,6 +289,22 @@ def profile_create(
     """
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
+    spec = get_write_spec("profile create")
+
+    try:
+        require_write_confirmation(
+            spec,
+            target=name,
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
 
     async def run_cmd() -> None:
         async def create_profile(client: EeroClient) -> None:
@@ -358,13 +374,14 @@ def profile_rename(
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
-                confirm_or_fail(
-                    action="rename",
+                require_write_confirmation(
+                    get_write_spec("profile rename"),
                     target=f"{target.get('name') or profile_identifier} → {new_name}",
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
                     console=cli_ctx.console,
                 )
             except SafetyError as e:
@@ -420,14 +437,14 @@ def profile_delete(
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
-                confirm_or_fail(
-                    action="delete",
+                require_write_confirmation(
+                    get_write_spec("profile delete"),
                     target=target.get("name") or profile_identifier,
-                    risk=OperationRisk.HIGH,
-                    confirmation_phrase="DELETE",
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
                     console=cli_ctx.console,
                 )
             except SafetyError as e:
@@ -498,6 +515,7 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_identifier: str, paused
     """Pause or unpause a profile."""
     console = cli_ctx.console
     action = "pause" if paused else "unpause"
+    spec = get_write_spec(f"profile {action}")
 
     async def run_cmd() -> None:
         async def toggle_pause(client: EeroClient) -> None:
@@ -514,28 +532,37 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_identifier: str, paused
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
-                confirm_or_fail(
-                    action=action,
+                require_write_confirmation(
+                    spec,
                     target=target.get("name") or profile_identifier,
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
                     console=cli_ctx.console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with cli_ctx.status(f"{action.capitalize()}ing profile..."):
-                result = await client.pause_profile(target["id"], paused, cli_ctx.network_id)
+            # Already fetched above (target["paused"]), so no extra read
+            # round-trip is needed for the skip-unchanged check.
+            async def read() -> bool:
+                return bool(target.get("paused", not paused))
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print(f"[bold green]Profile {action}d[/bold green]")
-            else:
-                console.print(f"[red]Failed to {action} profile[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing profile..."):
+                    return await client.pause_profile(target["id"], paused, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                paused,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(toggle_pause)
 
@@ -622,10 +649,15 @@ def apps_list(
 @apps_group.command(name="block")
 @click.argument("profile_identifier")
 @click.argument("apps", nargs=-1, required=True)
+@force_option
 @network_option
 @click.pass_context
 def apps_block(
-    ctx: click.Context, profile_identifier: str, apps: tuple, network_id: Optional[str]
+    ctx: click.Context,
+    profile_identifier: str,
+    apps: tuple,
+    force: Optional[bool],
+    network_id: Optional[str],
 ) -> None:
     """Block application(s) for a profile.
 
@@ -638,8 +670,9 @@ def apps_block(
     Examples:
       eero profile apps block "Kids" tiktok facebook
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
+    spec = get_write_spec("profile apps block")
 
     async def run_cmd() -> None:
         async def block_apps(client: EeroClient) -> None:
@@ -654,6 +687,21 @@ def apps_block(
                 console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
+
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=f"{target.get('name') or profile_identifier}: {', '.join(apps)}",
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
 
             with cli_ctx.status("Getting current blocked apps..."):
                 try:
@@ -703,10 +751,15 @@ def apps_block(
 @apps_group.command(name="unblock")
 @click.argument("profile_identifier")
 @click.argument("apps", nargs=-1, required=True)
+@force_option
 @network_option
 @click.pass_context
 def apps_unblock(
-    ctx: click.Context, profile_identifier: str, apps: tuple, network_id: Optional[str]
+    ctx: click.Context,
+    profile_identifier: str,
+    apps: tuple,
+    force: Optional[bool],
+    network_id: Optional[str],
 ) -> None:
     """Unblock application(s) for a profile.
 
@@ -715,8 +768,9 @@ def apps_unblock(
       PROFILE_IDENTIFIER  Profile ID or name
       APPS                App identifier(s) to unblock
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
+    spec = get_write_spec("profile apps unblock")
 
     async def run_cmd() -> None:
         async def unblock_apps(client: EeroClient) -> None:
@@ -731,6 +785,21 @@ def apps_unblock(
                 console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
+
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=f"{target.get('name') or profile_identifier}: {', '.join(apps)}",
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
 
             with cli_ctx.status("Getting current blocked apps..."):
                 try:
@@ -906,13 +975,14 @@ def schedule_set(
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
-                confirm_or_fail(
-                    action="set bedtime schedule",
+                require_write_confirmation(
+                    get_write_spec("profile schedule set"),
                     target=f"{target.get('name') or profile_identifier} ({start} - {end})",
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
                     console=cli_ctx.console,
                 )
             except SafetyError as e:
@@ -963,13 +1033,14 @@ def schedule_clear(
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
-                confirm_or_fail(
-                    action="clear schedule",
+                require_write_confirmation(
+                    get_write_spec("profile schedule clear"),
                     target=target.get("name") or profile_identifier,
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
                     console=cli_ctx.console,
                 )
             except SafetyError as e:

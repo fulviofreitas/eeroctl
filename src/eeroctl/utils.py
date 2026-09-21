@@ -7,7 +7,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, TypeVar
 
 import click
 from eero import EeroClient
@@ -434,6 +434,103 @@ async def run_with_client(func, cli_ctx: Optional["EeroCliContext"] = None):
         from .errors import handle_cli_error
 
         raise SystemExit(handle_cli_error(e, console))
+
+
+def _write_accepted(result: Any) -> bool:
+    """Classify a write's response as accepted or not.
+
+    Per the migration plan (§3.2 item 4), a write is treated as *accepted*
+    -- not settled, the SDK never guarantees that -- when either:
+
+    - the response is ``None`` or not a ``{"meta": ..., "data": ...}``
+      envelope at all (some facade calls return the parsed body directly),
+      or
+    - it is an envelope whose ``meta.code`` is a 2xx status.
+
+    Anything else (an envelope with a missing or non-2xx ``meta.code``) is
+    not accepted.
+
+    Args:
+        result: The raw return value of the write coroutine.
+
+    Returns:
+        True if the write should be reported as accepted.
+    """
+    if result is None or not isinstance(result, dict):
+        return True
+    meta = result.get("meta")
+    code = meta.get("code") if isinstance(meta, dict) else None
+    return isinstance(code, int) and 200 <= code < 300
+
+
+async def write_if_changed(
+    read: Callable[[], Awaitable[T]],
+    desired: T,
+    write: Callable[[], Awaitable[Any]],
+    *,
+    compare: Optional[Callable[[T, T], bool]] = None,
+    force: bool = False,
+    console: Optional[Console] = None,
+    read_command: str = "",
+) -> bool:
+    """Read-first, skip-unchanged, write-once helper for toggle-shaped writes.
+
+    Generalises the pattern ``commands/network/dns.py`` already used for
+    DNS writes (migration plan §3.2 item 4): read the current state, skip
+    the write entirely when it already matches what was requested, and
+    otherwise write exactly once -- never in a retry loop, since
+    ``get_retries`` is GET-only by SDK design and a failed write must not
+    be retried blindly.
+
+    Args:
+        read: Zero-argument async callable returning the current,
+            already-comparable state (e.g. a bool, not a raw envelope --
+            callers project the envelope down to the comparable value
+            themselves, the same way ``dns.py``'s ``_current_state`` does).
+        desired: The state the caller wants.
+        write: Zero-argument async callable performing the write. Called
+            at most once.
+        compare: Optional equality predicate; defaults to ``==``. Pass this
+            when *desired*'s natural equality does not match the API's
+            (e.g. set-vs-list, or case-insensitive comparisons).
+        force: When true, writes even if *read* already matches *desired*.
+            Mirrors ``--force``'s existing "skip confirmation" contract by
+            also skipping the no-op short-circuit, so a user who explicitly
+            asked to force a write still gets one.
+        console: Rich console for the "already configured" /
+            "verify with ..." messages. Defaults to a new stderr console.
+        read_command: The command to suggest for verifying the result,
+            e.g. ``"eero network sqm show"``. Included in the post-write
+            message when the write is accepted.
+
+    Returns:
+        True if a write was issued and accepted; False if the write was
+        skipped because the state already matched (and ``force`` was not
+        set).
+
+    Raises:
+        SystemExit: With ``ExitCode.GENERIC_ERROR`` (1) when the write's
+            response is not a 2xx acceptance.
+    """
+    if console is None:
+        console = Console(stderr=True)
+
+    current = await read()
+    is_equal = compare(current, desired) if compare is not None else current == desired
+
+    if is_equal and not force:
+        console.print("[dim]Already configured as requested; no change made.[/dim]")
+        return False
+
+    result = await write()
+
+    if not _write_accepted(result):
+        console.print("[red]Write was not applied.[/red]")
+        sys.exit(ExitCode.GENERIC_ERROR)
+
+    note = f" Verify with `{read_command}`." if read_command else ""
+    console.print(f"[bold green]Write accepted.[/bold green]{note}")
+    return True
 
 
 def confirm_action(message: str) -> bool:

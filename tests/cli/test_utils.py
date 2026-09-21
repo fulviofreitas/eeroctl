@@ -41,6 +41,7 @@ from eeroctl.utils import (
     set_default_output,
     set_preferred_network,
     with_client,
+    write_if_changed,
 )
 
 # ========================== Config Directory Tests ==========================
@@ -859,3 +860,138 @@ class TestDefaultOutput:
 
         with pytest.raises(ValueError, match="Invalid output format"):
             set_default_output("invalid")
+
+
+# ========================== write_if_changed Tests ==========================
+
+
+class TestWriteIfChanged:
+    """Tests for the write_if_changed helper (migration plan §3.2 item 4)."""
+
+    @pytest.fixture
+    def mock_console(self):
+        """Create a mock console."""
+        from unittest.mock import MagicMock
+
+        console = MagicMock()
+        console.print = MagicMock()
+        return console
+
+    @pytest.mark.asyncio
+    async def test_skips_write_when_state_already_matches(self, mock_console):
+        """Equal current/desired state: no write, returns False."""
+        read = AsyncMock(return_value=True)
+        write = AsyncMock(return_value={"meta": {"code": 200}})
+
+        result = await write_if_changed(read, True, write, console=mock_console)
+
+        assert result is False
+        write.assert_not_awaited()
+        printed = " ".join(str(c.args[0]) for c in mock_console.print.call_args_list)
+        assert "already configured" in printed.lower()
+
+    @pytest.mark.asyncio
+    async def test_writes_once_when_state_differs(self, mock_console):
+        """Different current/desired state: write is called exactly once."""
+        read = AsyncMock(return_value=False)
+        write = AsyncMock(return_value={"meta": {"code": 200}})
+
+        result = await write_if_changed(read, True, write, console=mock_console)
+
+        assert result is True
+        write.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_force_writes_even_when_unchanged(self, mock_console):
+        """--force still writes, even though the state already matches."""
+        read = AsyncMock(return_value=True)
+        write = AsyncMock(return_value={"meta": {"code": 200}})
+
+        result = await write_if_changed(read, True, write, force=True, console=mock_console)
+
+        assert result is True
+        write.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_never_calls_write_more_than_once(self, mock_console):
+        """A write is never retried, even implicitly -- called exactly once."""
+        read = AsyncMock(return_value=False)
+        write = AsyncMock(return_value={"meta": {"code": 200}})
+
+        await write_if_changed(read, True, write, console=mock_console)
+
+        assert write.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_2xx_response_is_accepted(self, mock_console):
+        """A 201 (not just 200) is still treated as accepted."""
+        read = AsyncMock(return_value=False)
+        write = AsyncMock(return_value={"meta": {"code": 201}})
+
+        result = await write_if_changed(read, True, write, console=mock_console)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_none_result_is_accepted(self, mock_console):
+        """A write returning None (no envelope) is treated as accepted."""
+        read = AsyncMock(return_value=False)
+        write = AsyncMock(return_value=None)
+
+        result = await write_if_changed(read, True, write, console=mock_console)
+
+        assert result is True
+
+    @pytest.mark.asyncio
+    async def test_non_2xx_response_exits_1_with_not_applied_message(self, mock_console):
+        """A non-2xx meta.code exits 1 (GENERIC_ERROR) with a 'not applied' message."""
+        read = AsyncMock(return_value=False)
+        write = AsyncMock(return_value={"meta": {"code": 500}})
+
+        with pytest.raises(SystemExit) as exc_info:
+            await write_if_changed(read, True, write, console=mock_console)
+
+        assert exc_info.value.code == ExitCode.GENERIC_ERROR
+        printed = " ".join(str(c.args[0]) for c in mock_console.print.call_args_list)
+        assert "not applied" in printed.lower()
+
+    @pytest.mark.asyncio
+    async def test_missing_meta_code_is_not_accepted(self, mock_console):
+        """A dict response with no meta.code is not accepted (ambiguous shape)."""
+        read = AsyncMock(return_value=False)
+        write = AsyncMock(return_value={"meta": {}})
+
+        with pytest.raises(SystemExit) as exc_info:
+            await write_if_changed(read, True, write, console=mock_console)
+
+        assert exc_info.value.code == ExitCode.GENERIC_ERROR
+
+    @pytest.mark.asyncio
+    async def test_custom_compare_predicate_is_used(self, mock_console):
+        """A custom compare (e.g. set equality) overrides plain ==."""
+        read = AsyncMock(return_value={"1.1.1.1", "8.8.8.8"})
+        write = AsyncMock(return_value={"meta": {"code": 200}})
+
+        result = await write_if_changed(
+            read,
+            {"8.8.8.8", "1.1.1.1"},
+            write,
+            compare=lambda current, desired: current == desired,
+            console=mock_console,
+        )
+
+        assert result is False
+        write.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_read_command_appears_in_acceptance_message(self, mock_console):
+        """The suggested verification command is included in the success message."""
+        read = AsyncMock(return_value=False)
+        write = AsyncMock(return_value={"meta": {"code": 200}})
+
+        await write_if_changed(
+            read, True, write, console=mock_console, read_command="eero network sqm show"
+        )
+
+        printed = " ".join(str(c.args[0]) for c in mock_console.print.call_args_list)
+        assert "eero network sqm show" in printed

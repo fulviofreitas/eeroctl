@@ -24,7 +24,7 @@ from rich.table import Table
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
 from ...options import apply_options, network_option, output_option
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, safe_get
 from ...utils import console, run_with_client
 
@@ -196,28 +196,6 @@ def _current_state(view: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-DNS_CONFIRMATION_PHRASE = "REBOOT"
-"""Phrase the user must type to approve a DNS write.
-
-Names the consequence rather than the command. Passed explicitly so every DNS
-subcommand asks for the same word; the auto-derived default would produce
-CHANGEDNSMODE, ENABLEDNSCACHING and so on.
-"""
-
-REBOOT_WARNING = (
-    "Applying a DNS change reboots every eero on the network. All clients lose "
-    "Wi-Fi and internet while the mesh restarts. The outage begins a few minutes "
-    "after this command returns, not immediately."
-)
-"""Warning emitted on every DNS write path, including --force.
-
-Observed 2026-09-12: two DNS writes were followed ~5 minutes later by all four
-nodes rebooting within a 17-second window. The SDK logs an equivalent warning,
-but eeroctl does not route the eero.api.dns logger through Rich, so that is not
-reliably visible to a user.
-"""
-
-
 def _write_succeeded(result: Any) -> bool:
     """Check an API write response for success.
 
@@ -248,18 +226,21 @@ def _write_succeeded(result: Any) -> bool:
 
 def _confirm_dns_write(
     cli_ctx: EeroCliContext,
-    action: str,
+    command: str,
     target: str,
     force: bool,
 ) -> bool:
-    """Warn about the reboot, then require typed confirmation for a DNS write.
+    """Require confirmation for a DNS write, per its registered :class:`WriteSpec`.
 
-    The warning is unconditional. ``--force`` correctly skips the prompt, but a
-    scripted caller should still be told a reboot was triggered.
+    Every DNS write command is a mesh-reboot write (``reboots="mesh"``), so
+    :func:`require_write_confirmation` unconditionally prints the reboot
+    warning -- even under ``--force`` -- and requires the typed ``REBOOT``
+    phrase interactively.
 
     Args:
         cli_ctx: CLI context carrying the safety flags.
-        action: Description of the action, e.g. "change DNS mode".
+        command: The DNS write's command path, e.g. "network dns mode set",
+            used to look up its :class:`~eeroctl.safety.WriteSpec`.
         target: Target of the action, e.g. "to custom".
         force: Per-command --force value.
 
@@ -270,17 +251,17 @@ def _confirm_dns_write(
         SystemExit: With ExitCode.SAFETY_RAIL when confirmation fails or is
             required but unavailable.
     """
-    cli_ctx.renderer.render_warning(REBOOT_WARNING)
+    spec = get_write_spec(command)
 
     try:
-        return confirm_or_fail(
-            action=action,
+        return require_write_confirmation(
+            spec,
             target=target,
-            risk=OperationRisk.HIGH,
-            confirmation_phrase=DNS_CONFIRMATION_PHRASE,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=force or cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -545,7 +526,7 @@ def dns_mode_set(
                     "--force was passed. This will reboot the network."
                 )
 
-            if not _confirm_dns_write(cli_ctx, "change DNS mode", describe, force):
+            if not _confirm_dns_write(cli_ctx, "network dns mode set", describe, force):
                 return
 
             with cli_ctx.status(f"Setting DNS mode {describe}..."):
@@ -744,7 +725,7 @@ def dns_clear(
                 )
 
             if not _confirm_dns_write(
-                cli_ctx, "clear custom DNS", f"on this network{scope}", force
+                cli_ctx, "network dns clear", f"on this network{scope}", force
             ):
                 return
 
@@ -795,7 +776,7 @@ def _set_dns_caching(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
     console = cli_ctx.console
     action = "enable" if enable else "disable"
 
-    if not _confirm_dns_write(cli_ctx, f"{action} DNS caching", "on this network", force):
+    if not _confirm_dns_write(cli_ctx, f"network dns caching {action}", "on this network", force):
         return
 
     async def run_cmd() -> None:

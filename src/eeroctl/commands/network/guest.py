@@ -9,7 +9,7 @@ Commands:
 
 import asyncio
 import sys
-from typing import Optional
+from typing import Any, Optional
 
 import click
 from eero import EeroClient
@@ -17,9 +17,9 @@ from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, normalize_network
-from ...utils import run_with_client
+from ...utils import run_with_client, write_if_changed
 
 
 @click.group(name="guest")
@@ -88,7 +88,7 @@ def guest_show(ctx: click.Context) -> None:
 def guest_enable(ctx: click.Context, force: bool) -> None:
     """Enable guest network."""
     cli_ctx = get_cli_context(ctx)
-    _set_guest_network(cli_ctx, True, None, None, force)
+    _set_guest_network(cli_ctx, "network guest enable", True, None, None, force)
 
 
 @guest_group.command(name="disable")
@@ -97,7 +97,7 @@ def guest_enable(ctx: click.Context, force: bool) -> None:
 def guest_disable(ctx: click.Context, force: bool) -> None:
     """Disable guest network."""
     cli_ctx = get_cli_context(ctx)
-    _set_guest_network(cli_ctx, False, None, None, force)
+    _set_guest_network(cli_ctx, "network guest disable", False, None, None, force)
 
 
 @guest_group.command(name="set")
@@ -120,11 +120,12 @@ def guest_set(
       eero network guest set --name "Guest WiFi" --password "welcome123"
     """
     cli_ctx = get_cli_context(ctx)
-    _set_guest_network(cli_ctx, True, name, password, force)
+    _set_guest_network(cli_ctx, "network guest set", True, name, password, force)
 
 
 def _set_guest_network(
     cli_ctx: EeroCliContext,
+    command: str,
     enable: bool,
     name: Optional[str],
     password: Optional[str],
@@ -133,15 +134,22 @@ def _set_guest_network(
     """Set guest network settings."""
     console = cli_ctx.console
     action = "enable" if enable else "disable"
+    effective_force = force or cli_ctx.force
+    spec = get_write_spec(command)
+    # A pure enable/disable toggle (no --name/--password) is a candidate for
+    # the read-first skip-unchanged path; `guest set` always writes, since a
+    # name/password change has no single boolean to compare against.
+    is_pure_toggle = name is None and password is None
 
     try:
-        confirm_or_fail(
-            action=f"{action} guest network",
+        require_write_confirmation(
+            spec,
             target="network",
-            risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -149,6 +157,34 @@ def _set_guest_network(
 
     async def run_cmd() -> None:
         async def set_guest(client: EeroClient) -> None:
+            if is_pure_toggle:
+                # No --name/--password: a plain enable/disable toggle, so
+                # read-first/skip-unchanged applies (nothing else to write).
+
+                async def read() -> bool:
+                    with cli_ctx.status("Reading current guest network settings..."):
+                        raw_network = await client.get_network(cli_ctx.network_id)
+                    network = normalize_network(extract_data(raw_network))
+                    return bool(network.get("guest_network_enabled", not enable))
+
+                async def write() -> Any:
+                    with cli_ctx.status(f"{action.capitalize()}ing guest network..."):
+                        return await client.set_guest_network(
+                            enabled=enable, name=None, network_id=cli_ctx.network_id
+                        )
+
+                await write_if_changed(
+                    read,
+                    enable,
+                    write,
+                    force=effective_force,
+                    console=console,
+                    read_command=spec.read_command,
+                )
+                return
+
+            # `guest set --name/--password`: always writes, there is no
+            # single boolean to compare a "desired" name/password against.
             with cli_ctx.status(f"{action.capitalize()}ing guest network..."):
                 result = await client.set_guest_network(
                     enabled=enable,

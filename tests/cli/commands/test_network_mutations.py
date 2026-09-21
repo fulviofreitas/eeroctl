@@ -122,13 +122,24 @@ class TestSQM:
 
     @pytest.fixture
     def mock_client_true(self) -> MagicMock:
-        """Mock client returning truthy response for set_sqm."""
-        return _make_mock_client(set_sqm=_OK_RESPONSE)
+        """Mock client returning truthy response for set_sqm.
+
+        ``get_sqm_settings`` reports the opposite of the desired state, so
+        the new read-first/skip-unchanged wiring (``write_if_changed``)
+        still issues the write instead of skipping it as a no-op.
+        """
+        return _make_mock_client(
+            get_sqm_settings={"meta": {"code": 200}, "data": {"enabled": False}},
+            set_sqm=_OK_RESPONSE,
+        )
 
     @pytest.fixture
     def mock_client_false(self) -> MagicMock:
         """Mock client returning truthy response for set_sqm (disable path)."""
-        return _make_mock_client(set_sqm=_OK_RESPONSE)
+        return _make_mock_client(
+            get_sqm_settings={"meta": {"code": 200}, "data": {"enabled": True}},
+            set_sqm=_OK_RESPONSE,
+        )
 
     def test_sqm_enable_calls_set_sqm_with_boolean(
         self, runner: CliRunner, mock_client_true: MagicMock
@@ -157,6 +168,37 @@ class TestSQM:
 
         mock_client_false.set_sqm.assert_called_once_with(False, NID)
         assert result.exit_code == 0
+
+    def test_sqm_enable_is_now_high_risk_and_requires_reboot_phrase(
+        self, runner: CliRunner, mock_client_true: MagicMock
+    ):
+        """SQM was lifted from MEDIUM to HIGH mesh-reboot (migration plan Q3)."""
+        with patch(
+            "eeroctl.commands.network.sqm.run_with_client",
+            side_effect=_make_run_with_client(mock_client_true),
+        ):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "sqm", "enable"], input="REBOOT\n"
+            )
+
+        assert "REBOOT" in result.output
+        assert result.exit_code == 0
+        mock_client_true.set_sqm.assert_called_once_with(True, NID)
+
+    def test_sqm_enable_force_still_warns_about_the_reboot(
+        self, runner: CliRunner, mock_client_true: MagicMock
+    ):
+        """--force skips the prompt but not the reboot warning."""
+        with patch(
+            "eeroctl.commands.network.sqm.run_with_client",
+            side_effect=_make_run_with_client(mock_client_true),
+        ):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "sqm", "enable", "--force"]
+            )
+
+        assert result.exit_code == 0
+        assert "reboots every eero" in result.output
 
 
 # ---------------------------------------------------------------------------
@@ -818,8 +860,19 @@ class TestGuestNetwork:
 
     @pytest.fixture
     def mock_client(self) -> MagicMock:
-        """Mock EeroClient with set_guest_network returning a 200 response."""
-        return _make_mock_client(set_guest_network=_OK_RESPONSE)
+        """Mock EeroClient with set_guest_network returning a 200 response.
+
+        ``get_network`` reports the guest network as disabled, the opposite
+        of what ``guest enable`` requests, so ``write_if_changed`` does not
+        skip the write as a no-op.
+        """
+        return _make_mock_client(
+            get_network={
+                "meta": {"code": 200},
+                "data": {"url": "/2.2/networks/1", "guest_network": {"enabled": False}},
+            },
+            set_guest_network=_OK_RESPONSE,
+        )
 
     def test_guest_network_enable_calls_set_guest_network(
         self, runner: CliRunner, mock_client: MagicMock
@@ -853,8 +906,15 @@ class TestSecurityToggles:
     def _invoke_security(
         self, runner: CliRunner, subcommand: str, method_name: str, expected_value: bool
     ):
-        """Shared helper: patch run_with_client, invoke security subcommand, assert call."""
-        mock_client = _make_mock_client(**{method_name: _OK_RESPONSE})
+        """Shared helper: patch run_with_client, invoke security subcommand, assert call.
+
+        ``get_security_settings`` reports the opposite of the desired state
+        so ``write_if_changed`` does not skip the write as a no-op.
+        """
+        mock_client = _make_mock_client(
+            get_security_settings={"meta": {"code": 200}, "data": {}},
+            **{method_name: _OK_RESPONSE},
+        )
         with patch(
             "eeroctl.commands.network.security.run_with_client",
             side_effect=_make_run_with_client(mock_client),
@@ -886,6 +946,52 @@ class TestSecurityToggles:
     def test_security_toggle_thread_enable_calls_set_thread_enabled(self, runner: CliRunner):
         """thread enable maps CLI subcommand 'thread' to client method set_thread_enabled."""
         self._invoke_security(runner, "thread", "set_thread_enabled", True)
+
+    @pytest.mark.parametrize("subcommand", ["wpa3", "band-steering", "upnp", "ipv6"])
+    def test_mesh_reboot_toggles_require_reboot_phrase(self, runner: CliRunner, subcommand: str):
+        """wpa3/band-steering/upnp/ipv6 were lifted to HIGH mesh-reboot (Q3, decided)."""
+        method_name = {
+            "wpa3": "set_wpa3",
+            "band-steering": "set_band_steering",
+            "upnp": "set_upnp",
+            "ipv6": "set_ipv6",
+        }[subcommand]
+        mock_client = _make_mock_client(
+            get_security_settings={"meta": {"code": 200}, "data": {}},
+            **{method_name: _OK_RESPONSE},
+        )
+        with patch(
+            "eeroctl.commands.network.security.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli,
+                ["--network-id", NID, "network", "security", subcommand, "enable"],
+                input="REBOOT\n",
+            )
+
+        assert "REBOOT" in result.output
+        assert result.exit_code == 0
+        getattr(mock_client, method_name).assert_called_once_with(True, NID)
+
+    def test_thread_toggle_stays_medium_risk(self, runner: CliRunner):
+        """thread was not lifted to HIGH; a plain Y/N confirms it."""
+        mock_client = _make_mock_client(
+            get_security_settings={"meta": {"code": 200}, "data": {}},
+            set_thread_enabled=_OK_RESPONSE,
+        )
+        with patch(
+            "eeroctl.commands.network.security.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli,
+                ["--network-id", NID, "network", "security", "thread", "enable"],
+                input="y\n",
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_thread_enabled.assert_called_once_with(True, NID)
 
 
 # ---------------------------------------------------------------------------

@@ -12,16 +12,16 @@ API exposes no bandwidth fields on SQM.
 
 import asyncio
 import sys
+from typing import Any
 
 import click
 from eero import EeroClient
 from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
-from ...exit_codes import ExitCode
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
-from ...utils import run_with_client
+from ...utils import run_with_client, write_if_changed
 
 
 @click.group(name="sqm")
@@ -104,15 +104,18 @@ def _set_sqm_enabled(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
     """Enable or disable SQM."""
     console = cli_ctx.console
     action = "enable" if enable else "disable"
+    effective_force = force or cli_ctx.force
+    spec = get_write_spec(f"network sqm {action}")
 
     try:
-        confirm_or_fail(
-            action=f"{action} SQM",
+        require_write_confirmation(
+            spec,
             target="network",
-            risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -120,14 +123,24 @@ def _set_sqm_enabled(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
 
     async def run_cmd() -> None:
         async def set_sqm(client: EeroClient) -> None:
-            with cli_ctx.status(f"{action.capitalize()}ing SQM..."):
-                result = await client.set_sqm(enable, cli_ctx.network_id)
+            async def read() -> bool:
+                with cli_ctx.status("Reading current SQM settings..."):
+                    raw_sqm = await client.get_sqm_settings(cli_ctx.network_id)
+                sqm_data = extract_data(raw_sqm) if isinstance(raw_sqm, dict) else {}
+                return bool(sqm_data.get("enabled", not enable))
 
-            if result:
-                console.print(f"[bold green]SQM {action}d[/bold green]")
-            else:
-                console.print(f"[red]Failed to {action} SQM[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing SQM..."):
+                    return await client.set_sqm(enable, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                enable,
+                write,
+                force=effective_force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(set_sqm)
 

@@ -9,6 +9,7 @@ Commands:
 
 import asyncio
 import sys
+from typing import Any
 
 import click
 from eero import EeroClient
@@ -16,8 +17,9 @@ from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
-from ...utils import run_with_client
+from ...utils import run_with_client, write_if_changed
 from .base import resolve_eero_identifier
 
 
@@ -106,6 +108,18 @@ def _set_led(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool) -> No
     """Set LED state."""
     console = cli_ctx.console
     action = "on" if enabled else "off"
+    spec = get_write_spec(f"eero led {action}")
+
+    try:
+        require_write_confirmation(
+            spec,
+            target=eero_identifier,
+            ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
 
     async def run_cmd() -> None:
         async def set_led(client: EeroClient) -> None:
@@ -122,15 +136,24 @@ def _set_led(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool) -> No
 
             eero_id_str = str(resolved_id)
 
-            with cli_ctx.status(f"Turning LED {action}..."):
-                result = await client.set_led(eero_id_str, enabled, cli_ctx.network_id)
+            async def read() -> bool:
+                with cli_ctx.status("Reading current LED status..."):
+                    raw_led = await client.get_led_status(eero_id_str, cli_ctx.network_id)
+                led_data = extract_data(raw_led) if isinstance(raw_led, dict) else {}
+                return bool(led_data.get("led_on", not enabled))
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print(f"[bold green]LED turned {action}[/bold green]")
-            else:
-                console.print(f"[red]Failed to turn LED {action}[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def write() -> Any:
+                with cli_ctx.status(f"Turning LED {action}..."):
+                    return await client.set_led(eero_id_str, enabled, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                enabled,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(set_led)
 
@@ -145,6 +168,17 @@ def led_brightness(ctx: click.Context, eero_identifier: str, value: int) -> None
     """Set LED brightness (0-100)."""
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+
+    try:
+        require_write_confirmation(
+            get_write_spec("eero led brightness"),
+            target=eero_identifier,
+            ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
 
     async def run_cmd() -> None:
         async def set_brightness(client: EeroClient) -> None:

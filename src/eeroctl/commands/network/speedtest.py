@@ -6,12 +6,14 @@ Commands:
 """
 
 import asyncio
+import sys
 
 import click
 from eero import EeroClient
 from rich.panel import Panel
 
 from ...context import get_cli_context
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
 from ...utils import run_with_client
 
@@ -36,6 +38,18 @@ def speedtest_run(ctx: click.Context) -> None:
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
+    spec = get_write_spec("network speedtest run")
+
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
 
     async def run_cmd() -> None:
         async def run_test(client: EeroClient) -> None:
