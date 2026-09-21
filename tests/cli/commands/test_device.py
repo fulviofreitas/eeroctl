@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from click.testing import CliRunner
 
+from eeroctl.exit_codes import ExitCode
 from eeroctl.main import cli
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
@@ -214,6 +215,130 @@ class TestDeviceUnblock:
 
         assert result.exit_code != 0
         assert "Missing argument" in result.output
+
+    def test_device_unblock_calls_unblock_device(self, runner):
+        """A blocked device is unblocked via `unblock_device(id, network_id)`."""
+        mock_devices_response = {
+            "meta": {"code": 200},
+            "data": [
+                {
+                    "url": "/2.2/networks/net1/devices/dev1",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "nickname": "MyPhone",
+                    "hostname": "myphone",
+                    "connected": True,
+                    "blacklisted": True,
+                    "paused": False,
+                }
+            ],
+        }
+        mock_unblock_response = {"meta": {"code": 200}, "data": {}}
+
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(return_value=mock_devices_response)
+        mock_client.unblock_device = AsyncMock(return_value=mock_unblock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "unblock", "MyPhone", "--force"])
+
+        assert result.exit_code == 0
+        assert "accepted" in result.output.lower()
+        mock_client.unblock_device.assert_awaited_once()
+        call_args = mock_client.unblock_device.call_args
+        assert len(call_args[0]) == 2  # (device_id, network_id) -- no blocked bool
+
+    def test_device_unblock_skips_write_when_already_unblocked(self, runner):
+        """write_if_changed skips the write when blacklisted is already False."""
+        mock_devices_response = {
+            "meta": {"code": 200},
+            "data": [
+                {
+                    "url": "/2.2/networks/net1/devices/dev1",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "nickname": "MyPhone",
+                    "hostname": "myphone",
+                    "connected": True,
+                    "blacklisted": False,
+                    "paused": False,
+                }
+            ],
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(return_value=mock_devices_response)
+        mock_client.unblock_device = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "unblock", "MyPhone"], input="y\n")
+
+        assert result.exit_code == 0
+        assert "already configured" in result.output.lower()
+        mock_client.unblock_device.assert_not_called()
+
+    def test_device_unblock_force_writes_even_when_unchanged(self, runner):
+        """--force writes anyway, per write_if_changed's --force contract."""
+        mock_devices_response = {
+            "meta": {"code": 200},
+            "data": [
+                {
+                    "url": "/2.2/networks/net1/devices/dev1",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "nickname": "MyPhone",
+                    "hostname": "myphone",
+                    "connected": True,
+                    "blacklisted": False,
+                    "paused": False,
+                }
+            ],
+        }
+        mock_unblock_response = {"meta": {"code": 200}, "data": {}}
+
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(return_value=mock_devices_response)
+        mock_client.unblock_device = AsyncMock(return_value=mock_unblock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "unblock", "MyPhone", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.unblock_device.assert_awaited_once()
+
+    def test_device_unblock_non_interactive_without_force_fails(self, runner):
+        """MEDIUM risk requires confirmation; --non-interactive without --force
+        exits SAFETY_RAIL before any write.
+        """
+        mock_devices_response = {
+            "meta": {"code": 200},
+            "data": [
+                {
+                    "url": "/2.2/networks/net1/devices/dev1",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "nickname": "MyPhone",
+                    "hostname": "myphone",
+                    "connected": True,
+                    "blacklisted": True,
+                    "paused": False,
+                }
+            ],
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(return_value=mock_devices_response)
+        mock_client.unblock_device = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["--non-interactive", "device", "unblock", "MyPhone"])
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.unblock_device.assert_not_called()
 
 
 class TestDevicePause:
