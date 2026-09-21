@@ -138,7 +138,7 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool
             spec,
             target=eero_identifier,
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -199,7 +199,7 @@ def nightlight_brightness(ctx: click.Context, eero_identifier: str, value: int) 
             spec,
             target=eero_identifier,
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -263,7 +263,7 @@ def nightlight_schedule(
             spec,
             target=eero_identifier,
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

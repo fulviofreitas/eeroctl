@@ -519,7 +519,8 @@ async def write_if_changed(
     is_equal = compare(current, desired) if compare is not None else current == desired
 
     if is_equal and not force:
-        console.print("[dim]Already configured as requested; no change made.[/dim]")
+        already_note = f" Check with `{read_command}`." if read_command else ""
+        console.print(f"[dim]Already configured as requested; no change made.{already_note}[/dim]")
         return False
 
     result = await write()

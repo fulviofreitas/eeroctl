@@ -46,7 +46,7 @@ def speedtest_run(ctx: click.Context) -> None:
             spec,
             target="network",
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

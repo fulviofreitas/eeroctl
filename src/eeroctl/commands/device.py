@@ -273,7 +273,7 @@ def device_rename(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -368,7 +368,7 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -472,7 +472,7 @@ def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: 
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
