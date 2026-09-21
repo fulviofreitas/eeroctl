@@ -663,3 +663,38 @@ class TestNetworkSQM:
 
         assert result.exit_code == 2
         assert "No such command" in result.output
+
+
+class TestNetworkBackup:
+    """Tests for network backup subcommands (eero-api 8.0.1 family:
+    get_backup_internet/set_backup_internet/get_cellular_backup_usage/
+    get_cellular_backup_events, client.py:1950-1976)."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    def test_backup_group_help(self, runner):
+        """Test backup group shows help."""
+        result = runner.invoke(cli, ["network", "backup", "--help"])
+
+        assert result.exit_code == 0
+        assert "show" in result.output
+        assert "enable" in result.output
+        assert "disable" in result.output
+        assert "status" in result.output
+
+    def test_backup_show_help(self, runner):
+        """Test backup show shows help."""
+        result = runner.invoke(cli, ["network", "backup", "show", "--help"])
+
+        assert result.exit_code == 0
+        assert "Show backup internet configuration" in result.output
+
+    def test_backup_status_help(self, runner):
+        """Test backup status shows help."""
+        result = runner.invoke(cli, ["network", "backup", "status", "--help"])
+
+        assert result.exit_code == 0
+        assert "cellular backup" in result.output.lower()

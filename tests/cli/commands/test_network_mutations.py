@@ -928,6 +928,198 @@ class TestGuestNetwork:
         mock_client.set_guest_network.assert_called_once()
         assert result.exit_code == 0
 
+    def test_guest_set_password_calls_set_guest_password_and_never_prints_it(
+        self, runner: CliRunner
+    ):
+        """`guest set --password x` awaits `set_guest_password("x", nid)`
+        (eero-api 8.0.1 dropped `password=` from `set_guest_network`,
+        client.py:1125,1157) -- and the password value never reaches stdout
+        or stderr.
+        """
+        mock_client = _make_mock_client(
+            set_guest_network=_OK_RESPONSE,
+            set_guest_password={"meta": {"code": 200}, "data": {}},
+        )
+        with patch(
+            "eeroctl.commands.network.guest.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli,
+                [
+                    "--network-id",
+                    NID,
+                    "network",
+                    "guest",
+                    "set",
+                    "--password",
+                    "x",
+                    "--force",
+                ],
+            )
+
+        mock_client.set_guest_password.assert_called_once_with("x", NID)
+        assert result.exit_code == 0
+        assert "x" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# TestBackup
+# ---------------------------------------------------------------------------
+
+
+class TestBackup:
+    """Tests for ``eero network backup enable/disable`` →
+    ``client.set_backup_internet`` (eero-api 8.0.1 removed `set_backup_network`;
+    replacement at client.py:1955). commit 7's `write_if_changed` registry
+    wiring landed on this branch after a rebase, so `_set_backup` now reads
+    current state via `get_backup_internet` first and only calls
+    `set_backup_internet` when the desired value differs (skip-unchanged
+    discipline, migration plan §3.2 item 4) -- these mock the read to differ
+    from the desired state so the write is exercised.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_backup_enable_calls_set_backup_internet(self, runner: CliRunner):
+        mock_client = _make_mock_client(
+            get_backup_internet={"meta": {"code": 200}, "data": {"backup_internet_enabled": False}},
+            set_backup_internet=_OK_RESPONSE,
+        )
+        with patch(
+            "eeroctl.commands.network.backup.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "backup", "enable", "--force"]
+            )
+
+        mock_client.set_backup_internet.assert_called_once_with(True, NID)
+        assert result.exit_code == 0
+
+    def test_backup_disable_calls_set_backup_internet(self, runner: CliRunner):
+        mock_client = _make_mock_client(
+            get_backup_internet={"meta": {"code": 200}, "data": {"backup_internet_enabled": True}},
+            set_backup_internet=_OK_RESPONSE,
+        )
+        with patch(
+            "eeroctl.commands.network.backup.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "backup", "disable", "--force"]
+            )
+
+        mock_client.set_backup_internet.assert_called_once_with(False, NID)
+        assert result.exit_code == 0
+
+    def test_backup_show_renders_generic_shape_and_passes_data_through_in_json(
+        self, runner: CliRunner
+    ):
+        """Shapes are undocumented (eero-api 8.0.1); json output must pass
+        `data` through unmodified, and the default (table) render must use
+        the generic key/value dump, never an f-string `repr()`.
+        """
+        raw = {"meta": {"code": 200}, "data": {"backup_internet_enabled": True, "extra": [1, 2]}}
+        mock_client = _make_mock_client(get_backup_internet=raw)
+        with patch(
+            "eeroctl.commands.network.backup.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "--output", "json", "network", "backup", "show"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert '"extra"' in result.output
+        assert "[1, 2]" in result.output or "[\n" in result.output
+
+    def test_backup_status_renders_generic_shape_and_passes_data_through_in_json(
+        self, runner: CliRunner
+    ):
+        usage = {"meta": {"code": 200}, "data": {"bytes_used": 12345}}
+        events = {"meta": {"code": 200}, "data": [{"event": "activated"}]}
+        mock_client = _make_mock_client(
+            get_cellular_backup_usage=usage, get_cellular_backup_events=events
+        )
+        with patch(
+            "eeroctl.commands.network.backup.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "--output", "json", "network", "backup", "status"]
+            )
+
+        assert result.exit_code == 0, result.output
+        assert "bytes_used" in result.output
+        assert "activated" in result.output
+
+    def test_backup_status_default_output_uses_generic_dump_not_repr(self, runner: CliRunner):
+        """The default (table/panel) render must not f-string `repr()` the
+        raw dicts -- no Python-dict-repr artifacts like unquoted keys next
+        to `'` characters; instead the generic JSON-style dump quotes keys.
+        """
+        usage = {"meta": {"code": 200}, "data": {"bytes_used": 12345}}
+        events = {"meta": {"code": 200}, "data": [{"event": "activated"}]}
+        mock_client = _make_mock_client(
+            get_cellular_backup_usage=usage, get_cellular_backup_events=events
+        )
+        with patch(
+            "eeroctl.commands.network.backup.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(cli, ["--network-id", NID, "network", "backup", "status"])
+
+        assert result.exit_code == 0, result.output
+        assert '"bytes_used"' in result.output
+        assert '"activated"' in result.output
+
+
+# ---------------------------------------------------------------------------
+# TestSpeedtest
+# ---------------------------------------------------------------------------
+
+
+class TestSpeedtest:
+    """Tests for ``eero network speedtest run/show`` (eero-api 8.0.1:
+    `run_speed_test` returns 202 with `data: None`; `show` reads
+    `get_speed_tests(limit=1)`, client.py:1186,1206)."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_speedtest_run_with_null_data_prints_started_and_exits_0(self, runner: CliRunner):
+        mock_client = _make_mock_client(
+            run_speed_test={"meta": {"code": 202}, "data": None},
+        )
+        with patch(
+            "eeroctl.commands.network.speedtest.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(cli, ["--network-id", NID, "network", "speedtest", "run"])
+
+        assert result.exit_code == 0, result.output
+        assert "started" in result.output.lower()
+
+    def test_speedtest_show_calls_get_speed_tests_with_limit_1(self, runner: CliRunner):
+        mock_client = _make_mock_client(
+            get_speed_tests={
+                "meta": {"code": 200},
+                "data": [{"down": {"value": 100}, "up": {"value": 20}, "latency": {"value": 5}}],
+            },
+        )
+        with patch(
+            "eeroctl.commands.network.speedtest.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(cli, ["--network-id", NID, "network", "speedtest", "show"])
+
+        mock_client.get_speed_tests.assert_called_once_with(NID, limit=1)
+        assert result.exit_code == 0, result.output
+
 
 # ---------------------------------------------------------------------------
 # TestSecurityToggles

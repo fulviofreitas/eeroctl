@@ -9,10 +9,22 @@ Tests cover:
 - eero updates subcommands
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from click.testing import CliRunner
 
 from eeroctl.main import cli
+
+
+def _mock_client(**method_returns):
+    """An AsyncMock EeroClient wired for `eeroctl.utils.EeroClient` patching."""
+    client = AsyncMock()
+    for name, value in method_returns.items():
+        setattr(client, name, AsyncMock(return_value=value))
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    return client
 
 
 class TestEeroGroup:
@@ -202,6 +214,140 @@ class TestEeroNightlight:
         assert "Set nightlight schedule" in result.output
         assert "--on-time" in result.output
         assert "--off-time" in result.output
+
+
+class TestEeroLEDBrightnessBehavior:
+    """CLI-behavioural tests for `eero led brightness` (v8 call shape)."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_out_of_range_exits_usage_error_before_any_client_call(self, runner):
+        """`101` is rejected by click.IntRange(0, 100) during parsing -- no
+        client is ever constructed and no confirmation prompt is shown."""
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            result = runner.invoke(cli, ["eero", "led", "brightness", "123", "101"], input="")
+
+        assert result.exit_code == 2
+        mock_client_class.assert_not_called()
+
+
+class TestEeroNightlightBrightnessBehavior:
+    """CLI-behavioural tests for `eero nightlight brightness` (v8 call shape)."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_awaits_set_nightlight_brightness_with_exact_args(self, runner):
+        """`set_nightlight_brightness(eero_id, brightness_percentage, network_id)`
+        is the real facade signature on eero-api 8.0.1 (client.py:1920);
+        this pins the exact positional shape `nightlight_brightness` passes.
+        """
+        mock_client = _mock_client(
+            get_eero={"meta": {"code": 200}, "data": {"id": "123", "url": "/2.2/eeros/123"}},
+            set_nightlight_brightness={"meta": {"code": 200}, "data": {}},
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["-n", "111111", "eero", "nightlight", "brightness", "123", "40"]
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_client.set_nightlight_brightness.assert_awaited_once_with("123", 40, "111111")
+
+    def test_out_of_range_exits_usage_error_before_any_client_call(self, runner):
+        """`101` is rejected by click.IntRange(0, 100) during parsing -- no
+        client is ever constructed and no confirmation prompt is shown."""
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            result = runner.invoke(
+                cli, ["eero", "nightlight", "brightness", "123", "101"], input=""
+            )
+
+        assert result.exit_code == 2
+        mock_client_class.assert_not_called()
+
+
+class TestEeroNightlightShowRendersBothShapes:
+    """`get_nightlight` now GETs the `data.nightlight.url` sub-resource and
+    returns the nightlight object itself, so settings usually live at
+    `data.*`; the view must still tolerate the old `data.nightlight.*` shape
+    (migration plan §2.7, unverified -- no Beacon available)."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_renders_flat_data_shape(self, runner):
+        mock_client = _mock_client(
+            get_eero={"meta": {"code": 200}, "data": {"id": "123", "url": "/2.2/eeros/123"}},
+            get_nightlight={
+                "meta": {"code": 200},
+                "data": {"enabled": True, "brightness": 55},
+            },
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["-n", "111111", "eero", "nightlight", "show", "123"])
+
+        assert result.exit_code == 0, result.output
+        assert "55" in result.output
+        assert "Yes" in result.output
+
+    def test_renders_nested_nightlight_shape(self, runner):
+        mock_client = _mock_client(
+            get_eero={"meta": {"code": 200}, "data": {"id": "123", "url": "/2.2/eeros/123"}},
+            get_nightlight={
+                "meta": {"code": 200},
+                "data": {"nightlight": {"enabled": False, "brightness": 20}},
+            },
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["-n", "111111", "eero", "nightlight", "show", "123"])
+
+        assert result.exit_code == 0, result.output
+        assert "20" in result.output
+        assert "No" in result.output
+
+
+class TestEeroNightlightScheduleBehavior:
+    """`nightlight schedule --on-time/--off-time` builds the v7 schedule
+    shape and forwards it verbatim (migration plan Q4, unverified)."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_passes_v7_schedule_shape(self, runner):
+        mock_client = _mock_client(
+            get_eero={"meta": {"code": 200}, "data": {"id": "123", "url": "/2.2/eeros/123"}},
+            set_nightlight_schedule={"meta": {"code": 200}, "data": {}},
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "-n",
+                    "111111",
+                    "eero",
+                    "nightlight",
+                    "schedule",
+                    "123",
+                    "--on-time",
+                    "20:00",
+                    "--off-time",
+                    "06:00",
+                ],
+            )
+
+        assert result.exit_code == 0, result.output
+        mock_client.set_nightlight_schedule.assert_awaited_once_with(
+            "123", {"enabled": True, "on": "20:00", "off": "06:00"}, "111111"
+        )
 
 
 class TestEeroUpdates:
