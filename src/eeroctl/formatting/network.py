@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional, Union
 from rich.panel import Panel
 from rich.table import Table
 
+from ..context import EeroCliContext
 from ..transformers.network import normalize_network
 from .base import (
     DetailLevel,
@@ -21,6 +22,7 @@ from .base import (
     format_datetime,
     format_network_status,
 )
+from .generic import render_generic
 
 # ==================== Network Table ====================
 
@@ -547,3 +549,13 @@ def print_network_details(
         health_panel = _network_health_panel(net)
         if health_panel:
             console.print(health_panel)
+
+
+def print_network_dhcp_view(cli_ctx: EeroCliContext, data: Dict[str, Any]) -> None:
+    """Render `network dhcp show` (dhcp/lease/connection/ip_settings/wan_type).
+
+    Read straight from the `get_network` envelope (migration plan §4,
+    `network dhcp show` row); each sub-object's shape beyond the key name is
+    undocumented, so this goes through the generic key/value renderer.
+    """
+    render_generic(cli_ctx, data, "eero.network.dhcp.show/v1")

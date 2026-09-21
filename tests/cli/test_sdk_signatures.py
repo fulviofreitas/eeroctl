@@ -114,7 +114,9 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         "get_network",
         ("nid",),
         {},
-        "troubleshoot.py:72,256; network/base.py:94,181,212; speedtest.py:77",
+        "troubleshoot.py:72,256; network/base.py:94,181,212; speedtest.py:77; "
+        "network/dhcp.py:56 (dhcp show, commit 17); "
+        "network/security.py:73 (security show extras, commit 17)",
     ),
     ("get_diagnostics", ("nid",), {}, "troubleshoot.py:73,146,207,294; network/advanced.py:183"),
     ("get_routing", ("nid",), {}, "troubleshoot.py:208; network/advanced.py:35"),
@@ -206,6 +208,9 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     # immediately after commit 18, per the test-audit standing rule.
     ("get_members", ("nid",), {}, "network/members.py:47 (client.py:2572, verified)"),
     ("get_invites", ("nid",), {}, "network/members.py:71 (client.py:2579, unverified)"),
+    # -- network/wpa3.py, network/security.py: fast-transition (commit 17) --
+    ("get_wpa3_per_band", ("nid",), {}, "network/wpa3.py:47 (client.py:2736)"),
+    ("get_fast_transition", ("nid",), {}, "network/security.py:221 (client.py:2770)"),
 ]
 
 

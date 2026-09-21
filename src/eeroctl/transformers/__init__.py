@@ -17,7 +17,14 @@ from .events import (
     extract_scan,
 )
 from .members import extract_invites, extract_members, extract_members_list
-from .network import extract_network, extract_networks, normalize_network, normalize_network_status
+from .network import (
+    extract_network,
+    extract_network_dhcp_view,
+    extract_network_security_extras,
+    extract_networks,
+    normalize_network,
+    normalize_network_status,
+)
 from .notifications import (
     extract_history_next_cursor,
     extract_notification_history,
@@ -27,6 +34,7 @@ from .notifications import (
 )
 from .permissions import extract_capability_map, extract_permissions, extract_role
 from .profile import extract_profile, extract_profiles, normalize_profile
+from .wpa3 import extract_fast_transition, extract_wpa3_per_band
 
 __all__ = [
     # Base utilities
@@ -39,6 +47,8 @@ __all__ = [
     "extract_network",
     "normalize_network",
     "normalize_network_status",
+    "extract_network_dhcp_view",
+    "extract_network_security_extras",
     # Device
     "extract_devices",
     "extract_device",
@@ -76,4 +86,7 @@ __all__ = [
     "extract_members",
     "extract_members_list",
     "extract_invites",
+    # WPA3 / fast transition
+    "extract_wpa3_per_band",
+    "extract_fast_transition",
 ]

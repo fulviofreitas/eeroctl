@@ -18,8 +18,11 @@ from eero import EeroClient
 from rich.table import Table
 
 from ...context import get_cli_context
+from ...formatting.wpa3 import print_fast_transition
+from ...options import apply_options, common_options
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
+from ...transformers.wpa3 import extract_fast_transition
 from ...utils import run_with_client, write_if_changed
 
 
@@ -36,12 +39,14 @@ def security_group(ctx: click.Context) -> None:
       upnp           - UPnP
       ipv6           - IPv6
       thread         - Thread protocol
+      fast-transition - 802.11r fast transition (read-only in phase A)
 
     \b
     Examples:
       eero network security show
       eero network security wpa3 enable
       eero network security upnp disable
+      eero network security fast-transition show
     """
     pass
 
@@ -49,7 +54,14 @@ def security_group(ctx: click.Context) -> None:
 @security_group.command(name="show")
 @click.pass_context
 def security_show(ctx: click.Context) -> None:
-    """Show security settings."""
+    """Show security settings.
+
+    Extended with `mlo_mode`, `passpoint`, `proxied_nodes`, and `ddns`, read
+    straight from the `get_network` envelope since no dedicated GETs exist
+    for them (migration plan §4, `network security show` (extend) row).
+    """
+    from ...transformers.network import extract_network, extract_network_security_extras
+
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
     renderer = cli_ctx.renderer
@@ -58,8 +70,11 @@ def security_show(ctx: click.Context) -> None:
         async def get_security(client: EeroClient) -> None:
             with cli_ctx.status("Getting security settings..."):
                 raw_security = await client.get_security_settings(cli_ctx.network_id)
+                raw_network = await client.get_network(cli_ctx.network_id)
 
             sec_data = extract_data(raw_security) if isinstance(raw_security, dict) else {}
+            extras = extract_network_security_extras(extract_network(raw_network))
+            sec_data = {**sec_data, **extras}
 
             if cli_ctx.is_json_output():
                 renderer.render_json(sec_data, "eero.network.security.show/v1")
@@ -83,6 +98,13 @@ def security_show(ctx: click.Context) -> None:
                     table.add_row(name, status)
 
                 console.print(table)
+
+                extras_table = Table(title="Extended Security Settings")
+                extras_table.add_column("Field", style="cyan")
+                extras_table.add_column("Value")
+                for key in ("mlo_mode", "passpoint", "proxied_nodes", "ddns"):
+                    extras_table.add_row(key, str(extras.get(key)))
+                console.print(extras_table)
 
         await run_with_client(get_security)
 
@@ -194,3 +216,40 @@ security_group.add_command(band_steering_group)
 security_group.add_command(upnp_group)
 security_group.add_command(ipv6_group)
 security_group.add_command(thread_group)
+
+
+# ==================== Fast Transition (read-only, phase A) ====================
+#
+# get_fast_transition (client.py:2770) is a plain GET; the writer
+# (set_fast_transition) is phase C. Its own subgroup, distinct from the
+# enable/disable toggle factory above.
+
+
+@security_group.group(name="fast-transition")
+@click.pass_context
+def fast_transition_group(ctx: click.Context) -> None:
+    """View 802.11r fast transition settings.
+
+    \b
+    Commands:
+      show - Current fast-transition setting
+    """
+    pass
+
+
+@fast_transition_group.command(name="show")
+@common_options
+@click.pass_context
+def fast_transition_show(ctx: click.Context, output, network_id) -> None:
+    """Show the current fast-transition setting."""
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
+
+    async def run_cmd() -> None:
+        async def get_fast_transition(client: EeroClient) -> None:
+            with cli_ctx.status("Getting fast-transition settings..."):
+                raw = await client.get_fast_transition(cli_ctx.network_id)
+            print_fast_transition(cli_ctx, extract_fast_transition(raw))
+
+        await run_with_client(get_fast_transition)
+
+    asyncio.run(run_cmd())

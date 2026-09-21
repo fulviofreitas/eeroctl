@@ -68,6 +68,7 @@ from .misc import (
 from .network import (
     create_network_table,
     print_network_details,
+    print_network_dhcp_view,
 )
 
 # Notifications formatting
@@ -82,6 +83,9 @@ from .profile import (
     create_profiles_table,
     print_profile_details,
 )
+
+# WPA3 / fast-transition formatting
+from .wpa3 import print_fast_transition, print_wpa3_per_band
 
 # Re-export all public names
 __all__ = [
@@ -102,6 +106,7 @@ __all__ = [
     # Network
     "create_network_table",
     "print_network_details",
+    "print_network_dhcp_view",
     # Eero
     "create_eeros_table",
     "print_eero_details",
@@ -138,4 +143,7 @@ __all__ = [
     # Members
     "print_members",
     "print_invites",
+    # WPA3 / fast transition
+    "print_wpa3_per_band",
+    "print_fast_transition",
 ]

@@ -1,18 +1,22 @@
 """DHCP commands for the Eero CLI.
 
 Commands:
+- eero network dhcp show: Show DHCP/lease/connection/wan-type read view
 - eero network dhcp reservations: List DHCP reservations
 - eero network dhcp leases: List current DHCP leases
 """
 
 import asyncio
+from typing import Optional
 
 import click
 from eero import EeroClient
 from rich.table import Table
 
 from ...context import get_cli_context
+from ...options import apply_options, common_options
 from ...transformers import extract_data, extract_devices, normalize_device
+from ...transformers.network import extract_network, extract_network_dhcp_view
 from ...utils import run_with_client
 
 
@@ -23,12 +27,38 @@ def dhcp_group(ctx: click.Context) -> None:
 
     \b
     Commands:
+      show         - DHCP/lease/connection/wan-type read view
       reservations - List DHCP reservations
       leases       - List current DHCP leases
       reserve      - Create a reservation (stub)
       unreserve    - Remove a reservation (stub)
     """
     pass
+
+
+@dhcp_group.command(name="show")
+@common_options
+@click.pass_context
+def dhcp_show(ctx: click.Context, output: Optional[str], network_id: Optional[str]) -> None:
+    """Show DHCP, lease, connection, IP settings, and WAN type.
+
+    No dedicated GET exists for this; the fields are read straight from the
+    `get_network` envelope (migration plan §4, `network dhcp show` row).
+    `dhcp reservations`/`dhcp leases` below are unchanged.
+    """
+    from ...formatting.network import print_network_dhcp_view
+
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
+
+    async def run_cmd() -> None:
+        async def get_dhcp_view(client: EeroClient) -> None:
+            with cli_ctx.status("Getting network details..."):
+                raw = await client.get_network(cli_ctx.network_id)
+            print_network_dhcp_view(cli_ctx, extract_network_dhcp_view(extract_network(raw)))
+
+        await run_with_client(get_dhcp_view)
+
+    asyncio.run(run_cmd())
 
 
 @dhcp_group.command(name="reservations")
