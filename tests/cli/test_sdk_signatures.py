@@ -86,6 +86,9 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("block_device", ("did", "nid"), {}, "device.py:358"),
     ("unblock_device", ("did", "nid"), {}, "device.py:358"),
     ("pause_device", ("did", True, "nid"), {}, "device.py:449"),
+    # `set_device_type` is on the SDK's live-verified allowlist (client.py:866;
+    # migration plan §4 phase B row 25).
+    ("set_device_type", ("did", "router", "nid"), {}, "device.py:type_set"),
     # -- profile.py ---------------------------------------------------------
     ("get_profiles", ("nid",), {}, "profile.py:95,176,287,349,443,516,586,641,708,788,845"),
     ("get_profile", ("pid", "nid"), {}, "profile.py:187"),

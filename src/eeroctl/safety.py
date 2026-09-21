@@ -616,6 +616,15 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network backup show",
         ),
+        # -- device: `set_device_type` is in the SDK's live-verified
+        # allowlist (migration plan §3.1, §4 phase B row 25). --
+        "device type set": WriteSpec(
+            command="device type set",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.VERIFIED,
+            reboots="none",
+            read_command="eero device show <id>",
+        ),
         # -- device: `block_device` is form-encoded and unverified;
         # `unblock_device`/`pause_device` are both live-verified. --
         "device block": WriteSpec(

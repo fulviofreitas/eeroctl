@@ -4,6 +4,7 @@ Commands:
 - eero device list: List all connected devices
 - eero device show: Show device details
 - eero device rename: Rename a device
+- eero device type set: Set a device's type
 - eero device block: Block a device
 - eero device unblock: Unblock a device
 - eero device pause: Pause a device
@@ -79,6 +80,7 @@ def device_group(ctx: click.Context) -> None:
       list    - List all connected devices
       show    - Show device details
       rename  - Rename a device
+      type    - Manage a device's type
       block   - Block a device
       unblock - Unblock a device
       pause   - Pause a device
@@ -318,6 +320,104 @@ def device_rename(
                 sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(rename_device)
+
+    asyncio.run(run_cmd())
+
+
+@device_group.group(name="type")
+@click.pass_context
+def device_type_group(ctx: click.Context) -> None:
+    """Manage a device's type.
+
+    \b
+    Commands:
+      set  - Set a device's type
+    """
+    pass
+
+
+@device_type_group.command(name="set")
+@click.argument("device_identifier")
+@click.argument("device_type")
+@force_option
+@network_option
+@click.pass_context
+def device_type_set(
+    ctx: click.Context,
+    device_identifier: str,
+    device_type: str,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Set a device's type.
+
+    \b
+    Arguments:
+      DEVICE_IDENTIFIER  Device ID, MAC address, or name
+      DEVICE_TYPE        The new device type
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+    spec = get_write_spec("device type set")
+    cli_ctx.active_write_spec = spec
+
+    async def run_cmd() -> None:
+        async def set_type(client: EeroClient) -> None:
+            # Find device first
+            with cli_ctx.status("Finding device..."):
+                raw_response = await client.get_devices(cli_ctx.network_id)
+
+            devices = extract_devices(raw_response)
+            target = _find_device(devices, device_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Device '{device_identifier}' not found[/red]")
+                console.print("[dim]Try: eero device list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            device_name = (
+                target.get("display_name")
+                or target.get("nickname")
+                or target.get("hostname")
+                or device_identifier
+            )
+
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=device_name,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            # Already fetched above (target["device_type"]), so no extra read
+            # round-trip is needed for the skip-unchanged check.
+            async def read() -> str:
+                return target.get("device_type") or ""
+
+            async def write() -> Any:
+                with cli_ctx.status(f"Setting device type to '{device_type}'..."):
+                    return await client.set_device_type(
+                        target["id"], device_type, cli_ctx.network_id
+                    )
+
+            await write_if_changed(
+                read,
+                device_type,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
+
+        await run_with_client(set_type)
 
     asyncio.run(run_cmd())
 
