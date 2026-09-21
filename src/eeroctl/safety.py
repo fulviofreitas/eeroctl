@@ -701,6 +701,13 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero profile list",
         ),
+        "profile devices set": WriteSpec(
+            command="profile devices set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero profile show <profile>",
+        ),
         "profile schedule set": WriteSpec(
             command="profile schedule set",
             risk=OperationRisk.MEDIUM,

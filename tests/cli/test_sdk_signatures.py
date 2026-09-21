@@ -108,6 +108,13 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         "profile.py:600,655 (client.py:2559)",
     ),
     ("enable_bedtime", ("pid", "22:00", "07:00", ["mon", "tue"], "nid"), {}, "profile.py:813"),
+    ("get_profile_devices", ("pid", "nid"), {}, "profile.py:devices_set (client.py:2271)"),
+    (
+        "set_profile_devices",
+        ("pid", ["/2.2/networks/nid/devices/did"], "nid"),
+        {},
+        "profile.py:devices_set (client.py:2278)",
+    ),
     # `get_profile_schedule` was removed in 8.0.0; replaced by `get_schedules`,
     # which returns a *list* of pause sub-resources (client.py:1983).
     ("get_schedules", ("pid", "nid"), {}, "profile.py:719"),

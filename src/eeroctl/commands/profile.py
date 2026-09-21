@@ -27,8 +27,15 @@ from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
-from ..transformers import extract_data, extract_id_from_url, extract_profiles, normalize_profile
+from ..transformers import (
+    extract_data,
+    extract_devices,
+    extract_id_from_url,
+    extract_profiles,
+    normalize_profile,
+)
 from ..utils import looks_like_sdk_reference, run_with_client, write_if_changed
+from .device import _find_device
 
 
 def _find_profile(profiles: list, identifier: str) -> Optional[Dict[str, Any]]:
@@ -144,6 +151,7 @@ def profile_group(ctx: click.Context) -> None:
       unpause  - Resume internet access
       apps     - Blocked apps management
       schedule - Schedule management
+      devices  - Device assignment management
 
     \b
     Examples:
@@ -1240,5 +1248,140 @@ def schedule_delete(
                 sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(delete_one)
+
+    asyncio.run(run_cmd())
+
+
+# ==================== Devices Subcommand Group ====================
+
+
+@profile_group.group(name="devices")
+@click.pass_context
+def devices_group(ctx: click.Context) -> None:
+    """Manage a profile's assigned devices.
+
+    \b
+    Commands:
+      set - Set the devices assigned to a profile
+    """
+    pass
+
+
+@devices_group.command(name="set")
+@click.argument("profile_identifier")
+@click.argument("devices", nargs=-1, required=True)
+@force_option
+@network_option
+@click.pass_context
+def devices_set(
+    ctx: click.Context,
+    profile_identifier: str,
+    devices: tuple,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Set the devices assigned to a profile.
+
+    REPLACES the full device assignment for the profile with exactly the
+    device(s) given here.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      DEVICES              Device id, MAC, or name(s) to assign
+
+    \b
+    Examples:
+      eero profile devices set "Kids" "iPad" AA:BB:CC:DD:EE:FF
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+
+    async def run_cmd() -> None:
+        async def set_devices(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_profiles = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_profiles)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            with cli_ctx.status("Finding devices..."):
+                raw_devices = await client.get_devices(cli_ctx.network_id)
+
+            all_devices = extract_devices(raw_devices)
+
+            resolved_urls = []
+            missing = []
+            for identifier in devices:
+                found = _find_device(all_devices, identifier)
+                if not found or not found.get("url"):
+                    missing.append(identifier)
+                else:
+                    resolved_urls.append(found["url"])
+
+            if missing:
+                console.print(f"[red]Device(s) not found: {', '.join(missing)}[/red]")
+                console.print("[dim]Try: eero device list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            spec = get_write_spec("profile devices set")
+            cli_ctx.active_write_spec = spec
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=target.get("name") or profile_identifier,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            desired = frozenset(resolved_urls)
+
+            async def read() -> frozenset:
+                with cli_ctx.status("Reading current profile devices..."):
+                    raw_current = await client.get_profile_devices(target["id"], cli_ctx.network_id)
+                data = extract_data(raw_current) if isinstance(raw_current, dict) else raw_current
+                if isinstance(data, dict):
+                    current_list = data.get("devices", [])
+                elif isinstance(data, list):
+                    current_list = data
+                else:
+                    current_list = []
+
+                current_urls = set()
+                for entry in current_list or []:
+                    if isinstance(entry, dict) and entry.get("url"):
+                        current_urls.add(entry["url"])
+                    elif isinstance(entry, str):
+                        current_urls.add(entry)
+                return frozenset(current_urls)
+
+            async def write() -> Any:
+                with cli_ctx.status("Setting profile devices..."):
+                    return await client.set_profile_devices(
+                        target["id"], resolved_urls, cli_ctx.network_id
+                    )
+
+            await write_if_changed(
+                read,
+                desired,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
+
+        await run_with_client(set_devices)
 
     asyncio.run(run_cmd())

@@ -483,6 +483,7 @@ class TestWriteSpecsRegistry:
         "profile schedule set",
         "profile schedule clear",
         "profile schedule delete",
+        "profile devices set",
         "eero reboot",
         "eero led on",
         "eero led off",
@@ -593,6 +594,7 @@ class TestWriteSpecsRegistry:
         "enable_bedtime": ["profile schedule set"],
         "clear_profile_schedule": ["profile schedule clear"],
         "delete_schedule": ["profile schedule delete"],
+        "set_profile_devices": ["profile devices set"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
