@@ -163,6 +163,7 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         "eero/nightlight.py:243",
     ),
     ("get_updates", ("nid",), {}, "eero/updates.py:43,77"),
+    ("apply_update", ("nid",), {}, "eero/updates.py:updates_apply (client.py:1832)"),
     # -- eero: location/pppoe/ports/port/led-cycle/nightlight-override,
     # migration plan §4 phase C row 36. --
     ("set_location", ("eid", "Office", "nid"), {}, "eero/base.py:location_set (client.py:643)"),

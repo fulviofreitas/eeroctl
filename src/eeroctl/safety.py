@@ -884,6 +884,16 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero eero nightlight show",
         ),
+        # -- eero updates apply: reboots every node on the network
+        # (migration plan §4 phase C row 38). --
+        "eero updates apply": WriteSpec(
+            command="eero updates apply",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero eero updates show",
+            phrase="REBOOT",
+        ),
         # -- network support bundle export: not an SDK write at all -- it is
         # two reads (`get_support`, `get_diagnostics`) written to a local
         # file. Confirmed because the bundle can be large and may contain

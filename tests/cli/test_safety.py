@@ -504,6 +504,7 @@ class TestWriteSpecsRegistry:
         "eero nightlight brightness",
         "eero nightlight schedule",
         "eero nightlight override",
+        "eero updates apply",
         "network support bundle export",
         "profile apps block",
         "profile apps unblock",
@@ -636,6 +637,7 @@ class TestWriteSpecsRegistry:
         "led_cycle": ["eero led cycle"],
         "nightlight_override": ["eero nightlight override"],
         "set_pppoe": ["eero pppoe set"],
+        "apply_update": ["eero updates apply"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
