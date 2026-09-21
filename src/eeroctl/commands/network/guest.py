@@ -5,6 +5,8 @@ Commands:
 - eero network guest enable: Enable guest network
 - eero network guest disable: Disable guest network
 - eero network guest set: Configure guest network
+- eero network guest password set: Set the guest network password
+- eero network guest password clear: Clear the guest network password
 """
 
 import asyncio
@@ -29,10 +31,11 @@ def guest_group(ctx: click.Context) -> None:
 
     \b
     Commands:
-      show    - Show guest network settings
-      enable  - Enable guest network
-      disable - Disable guest network
-      set     - Configure guest network
+      show     - Show guest network settings
+      enable   - Enable guest network
+      disable  - Disable guest network
+      set      - Configure guest network
+      password - Manage the guest network password
 
     \b
     Examples:
@@ -140,6 +143,21 @@ def guest_set(
     _set_guest_network(cli_ctx, "network guest set", True, name, password, force)
 
 
+async def _write_guest_password(
+    client: EeroClient, password: str, network_id: Optional[str]
+) -> bool:
+    """Call the SDK's live-verified `set_guest_password` and report acceptance.
+
+    Shared by `guest set --password` (which keeps calling this after its own
+    `network guest set` confirmation) and `guest password set` (which has its
+    own `network guest password set` WriteSpec), so both entry points issue
+    the exact same write (migration plan §4 phase B row 26).
+    """
+    result = await client.set_guest_password(password, network_id)
+    meta = result.get("meta", {}) if isinstance(result, dict) else {}
+    return meta.get("code") == 200 or bool(result)
+
+
 def _set_guest_network(
     cli_ctx: EeroCliContext,
     command: str,
@@ -216,11 +234,7 @@ def _set_guest_network(
             password_ok = True
             if password is not None:
                 with cli_ctx.status("Setting guest network password..."):
-                    password_result = await client.set_guest_password(password, cli_ctx.network_id)
-                password_meta = (
-                    password_result.get("meta", {}) if isinstance(password_result, dict) else {}
-                )
-                password_ok = password_meta.get("code") == 200 or bool(password_result)
+                    password_ok = await _write_guest_password(client, password, cli_ctx.network_id)
 
             if network_ok and password_ok:
                 console.print(f"[bold green]Guest network {action}d[/bold green]")
@@ -229,5 +243,139 @@ def _set_guest_network(
                 sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(set_guest)
+
+    asyncio.run(run_cmd())
+
+
+@guest_group.group(name="password")
+@click.pass_context
+def guest_password_group(ctx: click.Context) -> None:
+    """Manage the guest network's password.
+
+    \b
+    Commands:
+      set    - Set the guest network password
+      clear  - Clear the guest network password
+    """
+    pass
+
+
+@guest_password_group.command(name="set")
+@click.option(
+    "--password",
+    help="Guest network password. Omitted, you are prompted (input hidden).",
+)
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def guest_password_set(ctx: click.Context, password: Optional[str], force: bool) -> None:
+    """Set the guest network's password.
+
+    Disconnects guest clients while the change propagates.
+
+    \b
+    Options:
+      --password  New guest network password. Omitted, prompts for it
+                  (input hidden, confirmed) instead.
+
+    \b
+    Examples:
+      eero network guest password set --password "welcome123"
+      eero network guest password set
+    """
+    cli_ctx = get_cli_context(ctx)
+    console = cli_ctx.console
+    effective_force = force or cli_ctx.force
+
+    if password is None:
+        if cli_ctx.non_interactive:
+            console.print("[red]--password is required when --non-interactive is set[/red]")
+            sys.exit(ExitCode.USAGE_ERROR)
+        # hide_input/confirmation_prompt: the password is never echoed to the
+        # terminal, and is not logged or included in --debug output.
+        password = click.prompt(
+            "Guest network password",
+            hide_input=True,
+            confirmation_prompt=True,
+        )
+
+    spec = get_write_spec("network guest password set")
+    cli_ctx.active_write_spec = spec
+
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def set_password(client: EeroClient) -> None:
+            with cli_ctx.status("Setting guest network password..."):
+                ok = await _write_guest_password(client, password, cli_ctx.network_id)
+
+            if ok:
+                console.print("[bold green]Guest network password set.[/bold green]")
+                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
+            else:
+                console.print("[red]Failed to set guest network password[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(set_password)
+
+    asyncio.run(run_cmd())
+
+
+@guest_password_group.command(name="clear")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def guest_password_clear(ctx: click.Context, force: bool) -> None:
+    """Clear the guest network's password.
+
+    Disconnects guest clients while the change propagates.
+    """
+    cli_ctx = get_cli_context(ctx)
+    console = cli_ctx.console
+    effective_force = force or cli_ctx.force
+
+    spec = get_write_spec("network guest password clear")
+    cli_ctx.active_write_spec = spec
+
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def clear_password(client: EeroClient) -> None:
+            with cli_ctx.status("Clearing guest network password..."):
+                result = await client.clear_guest_password(cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            ok = meta.get("code") == 200 or bool(result)
+
+            if ok:
+                console.print("[bold green]Guest network password cleared.[/bold green]")
+                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
+            else:
+                console.print("[red]Failed to clear guest network password[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(clear_password)
 
     asyncio.run(run_cmd())

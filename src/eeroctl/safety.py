@@ -600,6 +600,20 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="clients",
             read_command="eero network guest show",
         ),
+        "network guest password set": WriteSpec(
+            command="network guest password set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.VERIFIED,
+            reboots="clients",
+            read_command="eero network guest show",
+        ),
+        "network guest password clear": WriteSpec(
+            command="network guest password clear",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.VERIFIED,
+            reboots="clients",
+            read_command="eero network guest show",
+        ),
         # -- network backup: `set_backup_internet` replaced the removed
         # `set_backup_network` and is not in the live-verified allowlist. --
         "network backup enable": WriteSpec(

@@ -189,6 +189,7 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         "network/guest.py:153",
     ),
     ("set_guest_password", ("hunter2", "nid"), {}, "network/guest.py:153"),
+    ("clear_guest_password", ("nid",), {}, "network/guest.py:password_clear (client.py:1171)"),
     # -- network/security.py: dynamic dispatch, invisible to mypy -----------
     ("get_security_settings", ("nid",), {}, "network/security.py:59"),
     ("set_wpa3", (True, "nid"), {}, "network/security.py:138 (getattr dispatch)"),
