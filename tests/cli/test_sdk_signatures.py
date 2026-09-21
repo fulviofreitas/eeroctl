@@ -304,6 +304,62 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         "network/speedtest.py:144 (client.py:1206)",
     ),
     ("get_transfer_stats", ("nid", None), {}, "network/transfer.py:41 (client.py:1569)"),
+    # -- activity.py: devices/profiles insights (phase A, commit 24) --------
+    (
+        "get_devices_insights",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "insight_type": "inspected",
+        },
+        "activity.py:283 (client.py:1308)",
+    ),
+    (
+        "get_device_insights",
+        ("did", "nid"),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "insight_type": "inspected",
+        },
+        "activity.py:340 (client.py:1328)",
+    ),
+    (
+        "get_profiles_insights",
+        ("nid",),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "insight_type": "inspected",
+        },
+        "activity.py:381 (client.py:1349)",
+    ),
+    (
+        "get_profile_insights",
+        ("pid", "nid"),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "insight_type": "inspected",
+        },
+        "activity.py:462 (client.py:1369)",
+    ),
+    (
+        "get_profile_devices_insights",
+        ("pid", "nid"),
+        {
+            "start": "2024-01-01T00:00:00Z",
+            "end": "2024-01-02T00:00:00Z",
+            "cadence": "daily",
+            "insight_type": "inspected",
+        },
+        "activity.py:451 (client.py:1390)",
+    ),
 ]
 
 

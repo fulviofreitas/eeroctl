@@ -10,6 +10,15 @@ for backward compatibility with existing imports.
 # Account formatting
 from .account import print_account_premium
 
+# Activity insights formatting
+from .activity import (
+    print_device_insights,
+    print_devices_insights,
+    print_profile_devices_insights,
+    print_profile_insights,
+    print_profiles_insights,
+)
+
 # Backup access-points formatting
 from .backup_access_points import print_backup_access_points, print_backup_ssid_discovery
 
@@ -190,4 +199,10 @@ __all__ = [
     "print_speedtest_history",
     # Transfer
     "print_transfer_stats",
+    # Activity (devices/profiles insights)
+    "print_devices_insights",
+    "print_device_insights",
+    "print_profiles_insights",
+    "print_profile_insights",
+    "print_profile_devices_insights",
 ]

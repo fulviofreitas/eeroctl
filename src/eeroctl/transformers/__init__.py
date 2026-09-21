@@ -5,6 +5,7 @@ eero-api library into structured data for display and processing.
 """
 
 from .account import extract_premium_customer
+from .activity import extract_insights
 from .backup_access_points import (
     extract_backup_access_points,
     extract_backup_ssid_discovery,
@@ -124,4 +125,6 @@ __all__ = [
     "extract_latest_speed_test",
     # Transfer
     "extract_transfer_stats",
+    # Activity (devices/profiles insights)
+    "extract_insights",
 ]
