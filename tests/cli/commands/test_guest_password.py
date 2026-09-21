@@ -36,6 +36,21 @@ def _mock_client(**method_return_values) -> MagicMock:
     return client
 
 
+def _sdk_client(**method_return_values) -> AsyncMock:
+    """Build an AsyncMock EeroClient for patching at the SDK boundary.
+
+    Unlike `_mock_client` (patched over `run_with_client`), this one is
+    entered as an async context manager by `utils.build_client`, so it needs
+    working `__aenter__`/`__aexit__`.
+    """
+    client = AsyncMock()
+    for method_name, return_value in method_return_values.items():
+        setattr(client, method_name, AsyncMock(return_value=return_value))
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    return client
+
+
 class TestGuestPasswordGroup:
     """Tests for the `network guest password` command group."""
 
@@ -169,6 +184,70 @@ class TestGuestPasswordSet:
 
         assert result.exit_code != 0
 
+    def test_non_interactive_with_password_without_force_exits_safety_rail(
+        self, runner: CliRunner
+    ) -> None:
+        """MEDIUM risk still requires confirmation even when --password is
+        given: --non-interactive without --force must exit SAFETY_RAIL (8),
+        not silently proceed just because the password was supplied.
+        """
+        mock_client = _sdk_client(set_guest_password=_OK_RESPONSE)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "--non-interactive",
+                    "network",
+                    "guest",
+                    "password",
+                    "set",
+                    "--password",
+                    "hunter2",
+                ],
+            )
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.set_guest_password.assert_not_called()
+
+    def test_declining_confirmation_never_prompts_for_password(self, runner: CliRunner) -> None:
+        """Declining the Y/N confirmation must not ask for the password at
+        all -- confirmation now runs before the password prompt.
+        """
+        mock_client = _sdk_client(set_guest_password=_OK_RESPONSE)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "guest", "password", "set"], input="n\n")
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.set_guest_password.assert_not_called()
+
+    def test_json_output_reports_ok(self, runner: CliRunner) -> None:
+        mock_client = _mock_client(set_guest_password=_OK_RESPONSE)
+
+        with patch(
+            "eeroctl.commands.network.guest.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli,
+                [
+                    "--output",
+                    "json",
+                    "network",
+                    "guest",
+                    "password",
+                    "set",
+                    "--password",
+                    "hunter2",
+                    "--force",
+                ],
+            )
+
+        assert result.exit_code == 0
+        assert '"ok": true' in result.output
+        assert "eero.network.guest.password.set/v1" in result.output
+
 
 class TestGuestPasswordClear:
     """Tests for `network guest password clear`."""
@@ -209,6 +288,22 @@ class TestGuestPasswordClear:
         assert result.exit_code == ExitCode.SAFETY_RAIL
         mock_client.clear_guest_password.assert_not_called()
 
+    def test_json_output_reports_ok(self, runner: CliRunner) -> None:
+        mock_client = _mock_client(clear_guest_password=_OK_RESPONSE)
+
+        with patch(
+            "eeroctl.commands.network.guest.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli,
+                ["--output", "json", "network", "guest", "password", "clear", "--force"],
+            )
+
+        assert result.exit_code == 0
+        assert '"ok": true' in result.output
+        assert "eero.network.guest.password.clear/v1" in result.output
+
     def test_falsy_response_exits_nonzero(self, runner: CliRunner) -> None:
         """An empty/falsy response (no meta.code, no truthy body) is a failure."""
         mock_client = _mock_client(clear_guest_password=None)
@@ -220,3 +315,23 @@ class TestGuestPasswordClear:
             result = runner.invoke(cli, ["network", "guest", "password", "clear", "--force"])
 
         assert result.exit_code != 0
+
+    def test_interactive_yes_confirms_and_writes(self, runner: CliRunner) -> None:
+        """MEDIUM risk without --force prompts Y/N; 'y' proceeds to the write."""
+        mock_client = _sdk_client(clear_guest_password=_OK_RESPONSE)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "guest", "password", "clear"], input="y\n")
+
+        assert result.exit_code == 0
+        mock_client.clear_guest_password.assert_awaited_once()
+
+    def test_interactive_no_declines_and_exits_safety_rail(self, runner: CliRunner) -> None:
+        """MEDIUM risk without --force prompts Y/N; 'n' is a safety-rail failure."""
+        mock_client = _sdk_client(clear_guest_password=_OK_RESPONSE)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "guest", "password", "clear"], input="n\n")
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.clear_guest_password.assert_not_called()

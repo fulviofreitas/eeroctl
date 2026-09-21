@@ -286,17 +286,11 @@ def guest_password_set(ctx: click.Context, password: Optional[str], force: bool)
     console = cli_ctx.console
     effective_force = force or cli_ctx.force
 
-    if password is None:
-        if cli_ctx.non_interactive:
-            console.print("[red]--password is required when --non-interactive is set[/red]")
-            sys.exit(ExitCode.USAGE_ERROR)
-        # hide_input/confirmation_prompt: the password is never echoed to the
-        # terminal, and is not logged or included in --debug output.
-        password = click.prompt(
-            "Guest network password",
-            hide_input=True,
-            confirmation_prompt=True,
-        )
+    # --non-interactive without --password can never be satisfied (no prompt
+    # will run), so this guard stays first, before any confirmation.
+    if password is None and cli_ctx.non_interactive:
+        console.print("[red]--password is required when --non-interactive is set[/red]")
+        sys.exit(ExitCode.USAGE_ERROR)
 
     spec = get_write_spec("network guest password set")
     cli_ctx.active_write_spec = spec
@@ -315,17 +309,35 @@ def guest_password_set(ctx: click.Context, password: Optional[str], force: bool)
         cli_ctx.renderer.render_error(e.message)
         sys.exit(e.exit_code)
 
+    # Only ask for the password once the write is actually going to happen --
+    # a user who declines the confirmation (or fails it) is never prompted
+    # for the secret in the first place.
+    if password is None:
+        # hide_input/confirmation_prompt: the password is never echoed to the
+        # terminal, and is not logged or included in --debug output.
+        password = click.prompt(
+            "Guest network password",
+            hide_input=True,
+            confirmation_prompt=True,
+        )
+
     async def run_cmd() -> None:
         async def set_password(client: EeroClient) -> None:
             with cli_ctx.status("Setting guest network password..."):
                 ok = await _write_guest_password(client, password, cli_ctx.network_id)
 
-            if ok:
-                console.print("[bold green]Guest network password set.[/bold green]")
-                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
-            else:
+            if not ok:
                 console.print("[red]Failed to set guest network password[/red]")
                 sys.exit(ExitCode.GENERIC_ERROR)
+
+            if cli_ctx.is_structured_output():
+                cli_ctx.render_structured(
+                    {"ok": True, "command": "network guest password set"},
+                    "eero.network.guest.password.set/v1",
+                )
+            else:
+                console.print("[bold green]Guest network password set.[/bold green]")
+                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
 
         await run_with_client(set_password)
 
@@ -369,12 +381,18 @@ def guest_password_clear(ctx: click.Context, force: bool) -> None:
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             ok = meta.get("code") == 200 or bool(result)
 
-            if ok:
-                console.print("[bold green]Guest network password cleared.[/bold green]")
-                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
-            else:
+            if not ok:
                 console.print("[red]Failed to clear guest network password[/red]")
                 sys.exit(ExitCode.GENERIC_ERROR)
+
+            if cli_ctx.is_structured_output():
+                cli_ctx.render_structured(
+                    {"ok": True, "command": "network guest password clear"},
+                    "eero.network.guest.password.clear/v1",
+                )
+            else:
+                console.print("[bold green]Guest network password cleared.[/bold green]")
+                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
 
         await run_with_client(clear_password)
 
