@@ -6,7 +6,7 @@ to share state like the client, output settings, and global flags.
 
 from contextlib import nullcontext
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, ContextManager, Dict, Optional
+from typing import TYPE_CHECKING, Any, ContextManager, Dict, List, Optional, Set
 
 import click
 from eero import EeroClient
@@ -15,7 +15,7 @@ from rich.console import Console
 from .output import DetailLevel, OutputContext, OutputFormat, OutputManager, OutputRenderer
 
 if TYPE_CHECKING:
-    pass
+    from .safety import WriteSpec
 
 
 @dataclass
@@ -57,6 +57,24 @@ class EeroCliContext:
     # Cached renderer instance
     _renderer: Optional[OutputRenderer] = field(default=None, repr=False)
 
+    # -- SDK unverified-write warning surfacing (migration plan §3.3) --
+    # The WriteSpec of the write command currently confirming/executing, set
+    # by command modules right before they call require_write_confirmation.
+    # Read by the logging.Filter installed in main.py so the concise stderr
+    # note can name the write's read command without the filter having to
+    # reverse-engineer it from the SDK's internal operation string.
+    active_write_spec: Optional["WriteSpec"] = None
+
+    # One formatted note per uncharacterised-write WARNING captured this
+    # invocation (not deduplicated -- every occurrence is a real write, and
+    # this list feeds `meta.warnings` for json/yaml output).
+    sdk_warnings: List[str] = field(default_factory=list)
+
+    # Operations already printed to stderr this invocation, so a command
+    # that triggers the same uncharacterised write twice (e.g. a retry)
+    # gets one stderr note, not two (output.py §3.3, §5.2).
+    _printed_sdk_warning_ops: Set[str] = field(default_factory=set, repr=False)
+
     def __post_init__(self):
         """Initialize derived components."""
         if self.output_manager is None:
@@ -80,6 +98,10 @@ class EeroCliContext:
                 quiet=self.quiet,
                 no_color=self.no_color,
                 network_id=self.network_id,
+                # Same list object, not a copy: a write's SDK warning can be
+                # captured *after* this OutputContext is built but *before*
+                # a later render_json/render_yaml call in the same command.
+                warnings=self.sdk_warnings,
             )
             self._renderer = OutputRenderer(output_ctx)
         return self._renderer
@@ -133,6 +155,37 @@ class EeroCliContext:
             self.renderer.render_yaml(data, schema)
         else:
             self.renderer.render_text(data, schema)
+
+    def record_sdk_warning(self, operation: str) -> Optional[str]:
+        """Record one occurrence of the SDK's uncharacterised-write warning.
+
+        Called by the ``logging.Filter`` installed in ``main.py`` (migration
+        plan §3.3) every time ``warn_uncharacterised_write`` fires. Always
+        appends a note to :attr:`sdk_warnings` (surfaced as ``meta.warnings``
+        for ``json``/``yaml`` output, regardless of ``--quiet``/``--debug``).
+
+        Args:
+            operation: The op name from the SDK's message, e.g. the ``%s``
+                in ``"Issuing write (%s): ..."``.
+
+        Returns:
+            The note text, the *first* time *operation* is seen this
+            invocation -- the caller should print it to stderr. ``None`` on
+            a repeat of an already-seen operation, so a command that
+            triggers the same write twice prints the stderr note once.
+        """
+        spec = self.active_write_spec
+        if spec is not None:
+            note = f"note: unverified write ({operation}); verify with `{spec.read_command}`"
+        else:
+            note = f"note: unverified write ({operation})"
+
+        self.sdk_warnings.append(note)
+
+        if operation in self._printed_sdk_warning_ops:
+            return None
+        self._printed_sdk_warning_ops.add(operation)
+        return note
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a value from extra storage."""

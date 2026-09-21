@@ -163,9 +163,11 @@ def bundle_export(ctx: click.Context, out: str, force: bool) -> None:
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
+    spec = get_write_spec("network support bundle export")
+    cli_ctx.active_write_spec = spec
     try:
         require_write_confirmation(
-            get_write_spec("network support bundle export"),
+            spec,
             target=f"to {out}",
             ctx=SafetyContext(
                 force=force or cli_ctx.force,

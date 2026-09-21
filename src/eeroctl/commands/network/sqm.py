@@ -106,6 +106,7 @@ def _set_sqm_enabled(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
     action = "enable" if enable else "disable"
     effective_force = force or cli_ctx.force
     spec = get_write_spec(f"network sqm {action}")
+    cli_ctx.active_write_spec = spec
 
     try:
         require_write_confirmation(

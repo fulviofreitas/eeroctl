@@ -248,6 +248,7 @@ def device_rename(
     cli_ctx = apply_options(ctx, network_id=network_id)
     console = cli_ctx.console
     spec = get_write_spec("device rename")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def rename_device(client: EeroClient) -> None:
@@ -335,6 +336,7 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked
     console = cli_ctx.console
     action = "block" if blocked else "unblock"
     spec = get_write_spec(f"device {action}")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def toggle_block(client: EeroClient) -> None:
@@ -438,6 +440,7 @@ def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: 
     console = cli_ctx.console
     action = "pause" if paused else "unpause"
     spec = get_write_spec(f"device {action}")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def toggle_pause(client: EeroClient) -> None:

@@ -109,6 +109,7 @@ def _set_led(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool) -> No
     console = cli_ctx.console
     action = "on" if enabled else "off"
     spec = get_write_spec(f"eero led {action}")
+    cli_ctx.active_write_spec = spec
 
     try:
         require_write_confirmation(
@@ -169,9 +170,11 @@ def led_brightness(ctx: click.Context, eero_identifier: str, value: int) -> None
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
+    spec = get_write_spec("eero led brightness")
+    cli_ctx.active_write_spec = spec
     try:
         require_write_confirmation(
-            get_write_spec("eero led brightness"),
+            spec,
             target=eero_identifier,
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
             console=cli_ctx.console,

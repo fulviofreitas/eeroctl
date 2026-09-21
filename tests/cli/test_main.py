@@ -8,13 +8,14 @@ Tests cover:
 - Version display
 """
 
+import logging
 from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
 
 from eeroctl.context import EeroCliContext
-from eeroctl.main import cli, main
+from eeroctl.main import _SdkWarningFilter, cli, main
 
 
 class TestMainCLI:
@@ -341,6 +342,47 @@ class TestPreferredNetworkLoading:
                 assert captured_ctx[0].network_id == "net_explicit"
         finally:
             cli.commands.pop("test-override", None)
+
+
+class TestSdkWarningFilterInstallation:
+    """`cli()` installs `_SdkWarningFilter` on the root logger's handlers
+    (migration plan §3.3) -- not on a bare `eero.api` Logger object, which
+    Python's propagation would silently never consult (see
+    `_SdkWarningFilter`'s docstring)."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_filter_attached_to_root_handlers_after_invocation(self, runner):
+        result = runner.invoke(cli, ["--help"])
+
+        assert result.exit_code == 0
+        root_handlers = logging.getLogger().handlers
+        assert root_handlers, "basicConfig should have installed at least one handler"
+        assert any(isinstance(f, _SdkWarningFilter) for hdlr in root_handlers for f in hdlr.filters)
+
+    def test_each_invocation_gets_its_own_filter_instance(self, runner):
+        """force=True on basicConfig means no filter accumulation across
+        invocations in the same process (relevant under CliRunner)."""
+        runner.invoke(cli, ["--help"])
+        first_count = sum(
+            1
+            for hdlr in logging.getLogger().handlers
+            for f in hdlr.filters
+            if isinstance(f, _SdkWarningFilter)
+        )
+
+        runner.invoke(cli, ["--help"])
+        second_count = sum(
+            1
+            for hdlr in logging.getLogger().handlers
+            for f in hdlr.filters
+            if isinstance(f, _SdkWarningFilter)
+        )
+
+        assert first_count == 1
+        assert second_count == 1
 
 
 class TestMainFunction:

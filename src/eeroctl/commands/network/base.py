@@ -260,6 +260,7 @@ def network_rename(
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
     spec = get_write_spec("network rename")
+    cli_ctx.active_write_spec = spec
 
     try:
         require_write_confirmation(

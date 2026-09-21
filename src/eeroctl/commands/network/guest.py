@@ -136,6 +136,7 @@ def _set_guest_network(
     action = "enable" if enable else "disable"
     effective_force = force or cli_ctx.force
     spec = get_write_spec(command)
+    cli_ctx.active_write_spec = spec
     # A pure enable/disable toggle (no --name/--password) is a candidate for
     # the read-first skip-unchanged path; `guest set` always writes, since a
     # name/password change has no single boolean to compare against.

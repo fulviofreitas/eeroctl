@@ -113,6 +113,7 @@ class TestOutputContext:
         assert ctx.quiet is False
         assert ctx.no_color is False
         assert ctx.network_id is None
+        assert ctx.warnings == []
 
     def test_custom_values(self):
         """Test custom values."""
@@ -210,6 +211,40 @@ class TestOutputRenderer:
         assert result["meta"]["timestamp"] == "2025-01-07T00:00:00Z"
         assert result["meta"]["network_id"] == "net_test"
         assert result["meta"]["warnings"] == ["Test warning"]
+
+    def test_render_json_defaults_warnings_from_context(self):
+        """When meta is omitted, render_json pulls warnings from
+        ctx.warnings (migration plan §3.3: EeroCliContext.renderer wires
+        this to EeroCliContext.sdk_warnings by reference)."""
+        ctx = OutputContext(format=OutputFormat.JSON, warnings=["note: unverified write (dns)"])
+        renderer = OutputRenderer(ctx)
+        output = StringIO()
+        renderer.ctx._console = Console(file=output, force_terminal=False)
+
+        renderer.render_json(data={}, schema="eero.test/v1")
+
+        result = json.loads(output.getvalue())
+        assert result["meta"]["warnings"] == ["note: unverified write (dns)"]
+
+    def test_render_yaml_defaults_warnings_from_context(self):
+        ctx = OutputContext(format=OutputFormat.YAML, warnings=["note: unverified write (dns)"])
+        renderer = OutputRenderer(ctx)
+        output = StringIO()
+        renderer.ctx._console = Console(file=output, force_terminal=False)
+
+        renderer.render_yaml(data={}, schema="eero.test/v1")
+
+        assert "note: unverified write (dns)" in output.getvalue()
+
+    def test_render_sdk_warning_note_goes_to_stderr(self):
+        ctx = OutputContext(format=OutputFormat.TABLE)
+        renderer = OutputRenderer(ctx)
+        output = StringIO()
+        renderer.ctx._err_console = Console(file=output, force_terminal=False)
+
+        renderer.render_sdk_warning_note("note: unverified write (dns); verify with `x`")
+
+        assert "note: unverified write (dns)" in output.getvalue()
 
     def test_render_mutation_result_json(self, json_renderer):
         """Test render_mutation_result in JSON mode."""

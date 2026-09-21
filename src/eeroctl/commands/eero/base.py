@@ -254,9 +254,11 @@ def eero_reboot(
                 eero.get("name") or eero.get("location") or eero.get("serial") or eero_identifier
             )
 
+            spec = get_write_spec("eero reboot")
+            cli_ctx.active_write_spec = spec
             try:
                 require_write_confirmation(
-                    get_write_spec("eero reboot"),
+                    spec,
                     target=eero_name,
                     ctx=SafetyContext(
                         force=cli_ctx.force,

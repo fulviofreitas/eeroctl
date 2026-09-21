@@ -290,6 +290,7 @@ def profile_create(
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
     spec = get_write_spec("profile create")
+    cli_ctx.active_write_spec = spec
 
     try:
         require_write_confirmation(
@@ -373,9 +374,11 @@ def profile_rename(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
+            spec = get_write_spec("profile rename")
+            cli_ctx.active_write_spec = spec
             try:
                 require_write_confirmation(
-                    get_write_spec("profile rename"),
+                    spec,
                     target=f"{target.get('name') or profile_identifier} → {new_name}",
                     ctx=SafetyContext(
                         force=cli_ctx.force,
@@ -436,9 +439,11 @@ def profile_delete(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
+            spec = get_write_spec("profile delete")
+            cli_ctx.active_write_spec = spec
             try:
                 require_write_confirmation(
-                    get_write_spec("profile delete"),
+                    spec,
                     target=target.get("name") or profile_identifier,
                     ctx=SafetyContext(
                         force=cli_ctx.force,
@@ -516,6 +521,7 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_identifier: str, paused
     console = cli_ctx.console
     action = "pause" if paused else "unpause"
     spec = get_write_spec(f"profile {action}")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def toggle_pause(client: EeroClient) -> None:
@@ -673,6 +679,7 @@ def apps_block(
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
     spec = get_write_spec("profile apps block")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def block_apps(client: EeroClient) -> None:
@@ -771,6 +778,7 @@ def apps_unblock(
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
     spec = get_write_spec("profile apps unblock")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def unblock_apps(client: EeroClient) -> None:
@@ -974,9 +982,11 @@ def schedule_set(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
+            spec = get_write_spec("profile schedule set")
+            cli_ctx.active_write_spec = spec
             try:
                 require_write_confirmation(
-                    get_write_spec("profile schedule set"),
+                    spec,
                     target=f"{target.get('name') or profile_identifier} ({start} - {end})",
                     ctx=SafetyContext(
                         force=cli_ctx.force,
@@ -1032,9 +1042,11 @@ def schedule_clear(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
+            spec = get_write_spec("profile schedule clear")
+            cli_ctx.active_write_spec = spec
             try:
                 require_write_confirmation(
-                    get_write_spec("profile schedule clear"),
+                    spec,
                     target=target.get("name") or profile_identifier,
                     ctx=SafetyContext(
                         force=cli_ctx.force,

@@ -138,6 +138,7 @@ def _set_security_setting(
     action = "enable" if enable else "disable"
     effective_force = force or cli_ctx.force
     spec = get_write_spec(f"network security {setting_name} {action}")
+    cli_ctx.active_write_spec = spec
     state_field = _SECURITY_STATE_FIELD[setting_name]
 
     try:

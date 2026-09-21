@@ -252,6 +252,7 @@ def _confirm_dns_write(
             required but unavailable.
     """
     spec = get_write_spec(command)
+    cli_ctx.active_write_spec = spec
 
     try:
         return require_write_confirmation(

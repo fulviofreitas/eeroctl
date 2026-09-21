@@ -39,6 +39,7 @@ def speedtest_run(ctx: click.Context) -> None:
     console = cli_ctx.console
     renderer = cli_ctx.renderer
     spec = get_write_spec("network speedtest run")
+    cli_ctx.active_write_spec = spec
 
     try:
         require_write_confirmation(

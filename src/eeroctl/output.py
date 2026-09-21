@@ -58,6 +58,14 @@ class OutputContext:
     no_color: bool = False
     network_id: Optional[str] = None
 
+    # SDK unverified-write warning notes captured this invocation (migration
+    # plan §3.3). Deliberately the *same* list object as
+    # ``EeroCliContext.sdk_warnings`` when constructed via
+    # ``EeroCliContext.renderer`` -- appends made after this ``OutputContext``
+    # is built (e.g. during a write that happens after a read was rendered)
+    # are still visible to ``render_json``/``render_yaml``'s default meta.
+    warnings: List[str] = field(default_factory=list)
+
     # Console instance (created lazily)
     _console: Optional[Console] = field(default=None, repr=False)
     _err_console: Optional[Console] = field(default=None, repr=False)
@@ -176,7 +184,7 @@ class OutputRenderer:
             meta: Optional metadata
         """
         if meta is None:
-            meta = OutputMeta(network_id=self.ctx.network_id)
+            meta = OutputMeta(network_id=self.ctx.network_id, warnings=list(self.ctx.warnings))
 
         envelope = {
             "schema": schema,
@@ -206,7 +214,7 @@ class OutputRenderer:
             meta: Optional metadata
         """
         if meta is None:
-            meta = OutputMeta(network_id=self.ctx.network_id)
+            meta = OutputMeta(network_id=self.ctx.network_id, warnings=list(self.ctx.warnings))
 
         envelope = {
             "schema": schema,
@@ -388,6 +396,19 @@ class OutputRenderer:
             message: Warning message
         """
         self.ctx.err_console.print(f"[yellow]Warning:[/yellow] {message}")
+
+    def render_sdk_warning_note(self, note: str) -> None:
+        r"""Render one concise stderr line for an SDK uncharacterised-write warning.
+
+        Migration plan §3.3: printed once per distinct write operation per
+        command (deduplication happens in
+        :meth:`~eeroctl.context.EeroCliContext.record_sdk_warning`, which
+        returns ``None`` -- meaning "don't print" -- for a repeat). *note* is
+        already fully formatted (``"note: unverified write (<op>); verify
+        with \`<read command>\`"``); this method only owns where it goes
+        (stderr, dim, never stdout, so ``--output json | jq`` stays clean).
+        """
+        self.ctx.err_console.print(f"[dim]{note}[/dim]", highlight=False)
 
     def render_success(self, message: str) -> None:
         """Render a success message.

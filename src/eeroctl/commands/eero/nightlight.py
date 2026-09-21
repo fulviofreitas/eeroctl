@@ -131,9 +131,11 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool
     console = cli_ctx.console
     action = "on" if enabled else "off"
 
+    spec = get_write_spec(f"eero nightlight {action}")
+    cli_ctx.active_write_spec = spec
     try:
         require_write_confirmation(
-            get_write_spec(f"eero nightlight {action}"),
+            spec,
             target=eero_identifier,
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
             console=cli_ctx.console,
@@ -190,9 +192,11 @@ def nightlight_brightness(ctx: click.Context, eero_identifier: str, value: int) 
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
+    spec = get_write_spec("eero nightlight brightness")
+    cli_ctx.active_write_spec = spec
     try:
         require_write_confirmation(
-            get_write_spec("eero nightlight brightness"),
+            spec,
             target=eero_identifier,
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
             console=cli_ctx.console,
@@ -252,9 +256,11 @@ def nightlight_schedule(
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
+    spec = get_write_spec("eero nightlight schedule")
+    cli_ctx.active_write_spec = spec
     try:
         require_write_confirmation(
-            get_write_spec("eero nightlight schedule"),
+            spec,
             target=eero_identifier,
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
             console=cli_ctx.console,
