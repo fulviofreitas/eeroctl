@@ -463,6 +463,11 @@ class TestWriteSpecsRegistry:
         "network security ipv6 disable",
         "network security thread enable",
         "network security thread disable",
+        "network security mlo set",
+        "network security passpoint enable",
+        "network security passpoint disable",
+        "network security proxied-nodes enable",
+        "network security proxied-nodes disable",
         "network rename",
         "network guest enable",
         "network guest disable",
@@ -607,6 +612,7 @@ class TestWriteSpecsRegistry:
         "create_reservation": ["network dhcp reservation create"],
         "update_reservation": ["network dhcp reservation update"],
         "delete_reservation": ["network dhcp reservation delete"],
+        "set_mlo_mode": ["network security mlo set"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

@@ -7,6 +7,9 @@ Commands:
 - eero network security upnp: UPnP
 - eero network security ipv6: IPv6
 - eero network security thread: Thread protocol
+- eero network security mlo set: Multi-link operation mode
+- eero network security passpoint: Passpoint
+- eero network security proxied-nodes: Proxied nodes
 """
 
 import asyncio
@@ -17,6 +20,7 @@ import click
 from eero import EeroClient
 from rich.table import Table
 
+from ...const import MLO_MODES
 from ...context import get_cli_context
 from ...formatting.wpa3 import print_fast_transition
 from ...options import apply_options, common_options
@@ -40,6 +44,9 @@ def security_group(ctx: click.Context) -> None:
       ipv6           - IPv6
       thread         - Thread protocol
       fast-transition - 802.11r fast transition (read-only in phase A)
+      mlo            - Multi-link operation mode
+      passpoint      - Passpoint
+      proxied-nodes  - Proxied nodes
 
     \b
     Examples:
@@ -212,12 +219,186 @@ def _set_security_setting(
     asyncio.run(run_cmd())
 
 
+# `passpoint`/`proxied_nodes` have no dedicated GET -- they live on the raw
+# `get_network` envelope, the same fields the phase-A extended `security
+# show` reads (migration plan §2.7). This factory mirrors
+# `_make_security_toggle` but reads its current state from there instead of
+# `get_security_settings`.
+def _make_network_field_toggle(
+    setting_name: str, api_method: str, display_name: str, state_field: str
+):
+    """Factory for security toggle command groups backed by `get_network`."""
+
+    @click.group(name=setting_name)
+    @click.pass_context
+    def toggle_group(ctx: click.Context) -> None:
+        pass
+
+    @toggle_group.command(name="enable")
+    @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+    @click.pass_context
+    def enable_cmd(ctx: click.Context, force: bool) -> None:
+        _set_network_field_setting(
+            ctx, setting_name, api_method, display_name, state_field, True, force
+        )
+
+    @toggle_group.command(name="disable")
+    @click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+    @click.pass_context
+    def disable_cmd(ctx: click.Context, force: bool) -> None:
+        _set_network_field_setting(
+            ctx, setting_name, api_method, display_name, state_field, False, force
+        )
+
+    enable_cmd.__doc__ = f"Enable {display_name}."
+    disable_cmd.__doc__ = f"Disable {display_name}."
+    toggle_group.__doc__ = f"Manage {display_name}."
+
+    return toggle_group
+
+
+def _set_network_field_setting(
+    ctx,
+    setting_name: str,
+    api_method: str,
+    display_name: str,
+    state_field: str,
+    enable: bool,
+    force: bool,
+):
+    """Set a security setting whose current state lives on `get_network`."""
+    cli_ctx = get_cli_context(ctx)
+    console = cli_ctx.console
+    action = "enable" if enable else "disable"
+    effective_force = force or cli_ctx.force
+    spec = get_write_spec(f"network security {setting_name} {action}")
+    cli_ctx.active_write_spec = spec
+
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def set_setting(client: EeroClient) -> None:
+            method = getattr(client, api_method)
+
+            async def read() -> bool:
+                with cli_ctx.status(f"Reading current {display_name} setting..."):
+                    raw_network = await client.get_network(cli_ctx.network_id)
+                net_data = extract_data(raw_network) if isinstance(raw_network, dict) else {}
+                return bool(net_data.get(state_field, not enable))
+
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing {display_name}..."):
+                    return await method(enable, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                enable,
+                write,
+                force=effective_force,
+                console=console,
+                read_command=spec.read_command,
+            )
+
+        await run_with_client(set_setting)
+
+    asyncio.run(run_cmd())
+
+
+@security_group.group(name="mlo")
+@click.pass_context
+def mlo_group(ctx: click.Context) -> None:
+    """Manage multi-link operation (MLO) mode.
+
+    \b
+    Commands:
+      set - Set the MLO mode
+    """
+    pass
+
+
+@mlo_group.command(name="set")
+@click.argument("mode", type=click.Choice(MLO_MODES))
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def mlo_set(ctx: click.Context, mode: str, force: bool) -> None:
+    """Set the network's MLO mode.
+
+    Applying this change reboots every eero on the network.
+
+    \b
+    Arguments:
+      MODE  One of: disabled, single, multi
+    """
+    cli_ctx = get_cli_context(ctx)
+    console = cli_ctx.console
+    effective_force = force or cli_ctx.force
+    spec = get_write_spec("network security mlo set")
+    cli_ctx.active_write_spec = spec
+
+    try:
+        require_write_confirmation(
+            spec,
+            target=mode,
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def set_mlo(client: EeroClient) -> None:
+            async def read() -> str:
+                with cli_ctx.status("Reading current MLO mode..."):
+                    raw_network = await client.get_network(cli_ctx.network_id)
+                net_data = extract_data(raw_network) if isinstance(raw_network, dict) else {}
+                return str(net_data.get("mlo_mode") or "")
+
+            async def write() -> Any:
+                with cli_ctx.status(f"Setting MLO mode to '{mode}'..."):
+                    return await client.set_mlo_mode(mode, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                mode,
+                write,
+                force=effective_force,
+                console=console,
+                read_command=spec.read_command,
+            )
+
+        await run_with_client(set_mlo)
+
+    asyncio.run(run_cmd())
+
+
 # Create and register security toggle commands
 wpa3_group = _make_security_toggle("wpa3", "set_wpa3", "WPA3")
 band_steering_group = _make_security_toggle("band-steering", "set_band_steering", "band steering")
 upnp_group = _make_security_toggle("upnp", "set_upnp", "UPnP")
 ipv6_group = _make_security_toggle("ipv6", "set_ipv6", "IPv6")
 thread_group = _make_security_toggle("thread", "set_thread_enabled", "Thread")
+passpoint_group = _make_network_field_toggle(
+    "passpoint", "set_passpoint_enabled", "Passpoint", "passpoint"
+)
+proxied_nodes_group = _make_network_field_toggle(
+    "proxied-nodes", "set_proxied_nodes", "proxied nodes", "proxied_nodes"
+)
 
 security_group.add_command(wpa3_group)
 security_group.add_command(band_steering_group)
@@ -261,3 +442,7 @@ def fast_transition_show(ctx: click.Context, output, network_id) -> None:
         await run_with_client(get_fast_transition)
 
     asyncio.run(run_cmd())
+
+
+security_group.add_command(passpoint_group)
+security_group.add_command(proxied_nodes_group)

@@ -568,6 +568,47 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network security show",
         ),
+        # -- network security mlo: mesh-reboot write (migration plan §4
+        # phase C row 34). --
+        "network security mlo set": WriteSpec(
+            command="network security mlo set",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network security show",
+            phrase="REBOOT",
+        ),
+        # -- network security passpoint/proxied-nodes: no reboot, unverified
+        # (migration plan §4 phase C row 34); state lives on `get_network`,
+        # not `get_security_settings` (§2.7). --
+        "network security passpoint enable": WriteSpec(
+            command="network security passpoint enable",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network security show",
+        ),
+        "network security passpoint disable": WriteSpec(
+            command="network security passpoint disable",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network security show",
+        ),
+        "network security proxied-nodes enable": WriteSpec(
+            command="network security proxied-nodes enable",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network security show",
+        ),
+        "network security proxied-nodes disable": WriteSpec(
+            command="network security proxied-nodes disable",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network security show",
+        ),
         # -- network rename: `set_network_name` is not live-verified and
         # disconnects clients while the SSID change propagates. --
         "network rename": WriteSpec(

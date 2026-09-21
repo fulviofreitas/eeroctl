@@ -236,6 +236,19 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("set_upnp", (True, "nid"), {}, "network/security.py:138 (getattr dispatch)"),
     ("set_ipv6", (True, "nid"), {}, "network/security.py:138 (getattr dispatch)"),
     ("set_thread_enabled", (True, "nid"), {}, "network/security.py:138 (getattr dispatch)"),
+    ("set_mlo_mode", ("single", "nid"), {}, "network/security.py:mlo_set (client.py:2761)"),
+    (
+        "set_passpoint_enabled",
+        (True, "nid"),
+        {},
+        "network/security.py:passpoint (getattr dispatch, client.py:2788)",
+    ),
+    (
+        "set_proxied_nodes",
+        (True, "nid"),
+        {},
+        "network/security.py:proxied_nodes (getattr dispatch, client.py:2799)",
+    ),
     # -- network/speedtest.py ------------------------------------------------
     ("run_speed_test", ("nid",), {}, "network/speedtest.py:43"),
     # `run_speed_test` returns 202 with `data: null` (8.0.1); `speedtest show`
