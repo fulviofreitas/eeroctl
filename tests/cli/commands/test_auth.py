@@ -53,10 +53,10 @@ class TestAuthLogin:
         assert "--force" in result.output
         assert "--no-keyring" in result.output
 
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
     def test_already_authenticated_shows_message(
-        self, mock_cookie_file, mock_client_class, runner, tmp_path
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
     ):
         """Test shows message when already authenticated."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -66,16 +66,16 @@ class TestAuthLogin:
         mock_client.is_authenticated = True
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "login"])
 
         assert "Already authenticated" in result.output
 
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
     def test_force_bypasses_existing_auth(
-        self, mock_cookie_file, mock_client_class, runner, tmp_path
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
     ):
         """Test --force bypasses existing authentication check."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -88,7 +88,7 @@ class TestAuthLogin:
         mock_client._api = MagicMock()
         mock_client._api.auth = MagicMock()
         mock_client._api.auth.clear_auth_data = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         # Use input to simulate user interaction
         runner.invoke(
@@ -115,10 +115,10 @@ class TestAuthLogout:
         assert result.exit_code == 0
         assert "Logout from your Eero account" in result.output
 
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
     def test_logout_when_not_authenticated(
-        self, mock_cookie_file, mock_client_class, runner, tmp_path
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
     ):
         """Test logout when not authenticated shows message."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -127,15 +127,15 @@ class TestAuthLogout:
         mock_client.is_authenticated = False
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "logout"])
 
         assert "Not logged in" in result.output
 
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
-    def test_logout_success(self, mock_cookie_file, mock_client_class, runner, tmp_path):
+    def test_logout_success(self, mock_cookie_file, mock_build_client, runner, tmp_path):
         """Test successful logout."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
 
@@ -144,15 +144,15 @@ class TestAuthLogout:
         mock_client.logout = AsyncMock(return_value=True)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "logout"])
 
         assert "Logged out successfully" in result.output
 
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
-    def test_logout_failure(self, mock_cookie_file, mock_client_class, runner, tmp_path):
+    def test_logout_failure(self, mock_cookie_file, mock_build_client, runner, tmp_path):
         """Test logout failure."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
 
@@ -161,7 +161,7 @@ class TestAuthLogout:
         mock_client.logout = AsyncMock(return_value=False)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "logout"])
 
@@ -184,10 +184,10 @@ class TestAuthClear:
         assert "Clear all stored authentication" in result.output
         assert "--force" in result.output
 
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
     def test_clear_prompts_for_confirmation(
-        self, mock_cookie_file, mock_client_class, runner, tmp_path
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
     ):
         """Test clear prompts for confirmation without --force."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -195,16 +195,16 @@ class TestAuthClear:
         mock_client = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         # Decline confirmation
         result = runner.invoke(cli, ["auth", "clear"], input="n\n")
 
         assert "Cancelled" in result.output
 
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
-    def test_clear_with_force(self, mock_cookie_file, mock_client_class, runner, tmp_path):
+    def test_clear_with_force(self, mock_cookie_file, mock_build_client, runner, tmp_path):
         """Test clear with --force skips confirmation."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
 
@@ -214,7 +214,7 @@ class TestAuthClear:
         mock_client._api.auth.clear_auth_data = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "clear", "--force"])
 
@@ -249,10 +249,10 @@ class TestAuthStatus:
 
     @patch("eeroctl.commands.auth._get_session_info")
     @patch("eeroctl.commands.auth._check_keyring_available")
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_when_not_authenticated(
-        self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
+        self, mock_cookie_file, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
     ):
         """Test status shows not authenticated."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -270,7 +270,7 @@ class TestAuthStatus:
         mock_client.is_authenticated = False
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "status"])
 
@@ -278,10 +278,10 @@ class TestAuthStatus:
 
     @patch("eeroctl.commands.auth._get_session_info")
     @patch("eeroctl.commands.auth._check_keyring_available")
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_when_authenticated(
-        self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
+        self, mock_cookie_file, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
     ):
         """Test status shows authenticated with account info."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -323,7 +323,7 @@ class TestAuthStatus:
         mock_client.get_account = AsyncMock(return_value=mock_account_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "status"])
 
@@ -333,10 +333,10 @@ class TestAuthStatus:
 
     @patch("eeroctl.commands.auth._get_session_info")
     @patch("eeroctl.commands.auth._check_keyring_available")
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_json_output(
-        self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
+        self, mock_cookie_file, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
     ):
         """Test status with JSON output format."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -378,7 +378,7 @@ class TestAuthStatus:
         mock_client.get_account = AsyncMock(return_value=mock_account_response)
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["--output", "json", "auth", "status"])
 
@@ -395,10 +395,10 @@ class TestAuthStatus:
 
     @patch("eeroctl.commands.auth._get_session_info")
     @patch("eeroctl.commands.auth._check_keyring_available")
-    @patch("eeroctl.commands.auth.EeroClient")
+    @patch("eeroctl.commands.auth.build_client")
     @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_session_expired(
-        self, mock_cookie_file, mock_client_class, mock_keyring, mock_session_info, runner, tmp_path
+        self, mock_cookie_file, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
     ):
         """Test status shows expired when session is invalid."""
         mock_cookie_file.return_value = tmp_path / "cookies.json"
@@ -416,7 +416,7 @@ class TestAuthStatus:
         mock_client.is_authenticated = True
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client_class.return_value = mock_client
+        mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "status"])
 

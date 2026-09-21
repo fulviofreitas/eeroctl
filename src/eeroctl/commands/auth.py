@@ -24,11 +24,12 @@ from rich.table import Table
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..output import OutputFormat
+from ..sdk_private import clear_all_credentials, resend_verification_code
 from ..utils import (
+    build_client,
     get_auth_method,
     get_config_file,
     get_cookie_file,
-    get_use_keyring,
     set_auth_method,
     set_preferred_network,
 )
@@ -104,10 +105,7 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
     use_keyring = not no_keyring if no_keyring else get_auth_method() == "keyring"
 
     async def run() -> None:
-        async with EeroClient(
-            cookie_file=str(get_cookie_file()),
-            use_keyring=use_keyring,
-        ) as client:
+        async with build_client(use_keyring=use_keyring) as client:
             if client.is_authenticated and not force:
                 # Validate session is actually working, not just locally present
                 try:
@@ -174,7 +172,7 @@ async def _interactive_login(
             logger.debug("Failed to check existing session: %s", ex)
 
     # Clear existing auth data
-    await client._api.auth.clear_auth_data()
+    await clear_all_credentials(client)
 
     # Start fresh login
     console.print(
@@ -238,7 +236,7 @@ async def _interactive_login(
             resend = Confirm.ask("Resend verification code?")
             if resend:
                 with cli_ctx.status("Resending..."):
-                    await client._api.auth.resend_verification_code()
+                    await resend_verification_code(client)
                     console.print("[green]Code resent![/green]")
 
     console.print("[bold red]Too many failed attempts[/bold red]")
@@ -255,13 +253,9 @@ def auth_logout(ctx: click.Context) -> None:
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
-    use_keyring = get_use_keyring()
 
     async def run() -> None:
-        async with EeroClient(
-            cookie_file=str(get_cookie_file()),
-            use_keyring=use_keyring,
-        ) as client:
+        async with build_client() as client:
             if not client.is_authenticated:
                 console.print("[yellow]Not logged in[/yellow]")
                 return
@@ -291,7 +285,6 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
-    use_keyring = get_use_keyring()
 
     if not force and not cli_ctx.non_interactive:
         confirmed = Confirm.ask(
@@ -308,11 +301,8 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
         sys.exit(ExitCode.SAFETY_RAIL)
 
     async def run() -> None:
-        async with EeroClient(
-            cookie_file=str(get_cookie_file()),
-            use_keyring=use_keyring,
-        ) as client:
-            await client._api.auth.clear_auth_data()
+        async with build_client() as client:
+            await clear_all_credentials(client)
 
         # Also delete config.json (contains preferences)
         config_file = get_config_file()
@@ -385,17 +375,12 @@ def auth_status(ctx: click.Context) -> None:
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
-    use_keyring = get_use_keyring()
 
     async def run() -> None:
-        cookie_file = get_cookie_file()
         session_info = _get_session_info()
         keyring_available = _check_keyring_available()
 
-        async with EeroClient(
-            cookie_file=str(cookie_file),
-            use_keyring=use_keyring,
-        ) as client:
+        async with build_client() as client:
             is_auth = client.is_authenticated
             account_data: _AccountData | None = None
 

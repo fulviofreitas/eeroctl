@@ -6,17 +6,60 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Awaitable, Callable, Optional, TypeVar
+from typing import TYPE_CHECKING, Awaitable, Callable, Optional, TypeVar
 
 import click
 from eero import EeroClient
 from eero.exceptions import EeroAuthenticationException, EeroException
 from rich.console import Console
 
+if TYPE_CHECKING:
+    from .context import EeroCliContext
+
 # Create console for rich output
 console = Console()
 
 T = TypeVar("T")
+
+
+def build_client(
+    cli_ctx: Optional["EeroCliContext"] = None,
+    *,
+    use_keyring: Optional[bool] = None,
+    cookie_file: Optional[Path] = None,
+) -> EeroClient:
+    """Build an EeroClient. The single construction site for the whole CLI.
+
+    Every command that needs an :class:`~eero.EeroClient` goes through this
+    function instead of instantiating the class directly, so there is one
+    place to change when the client gains new constructor options (see the
+    v8 migration plan, §3.4). All private-SDK access (``client._api...``)
+    lives in :mod:`eeroctl.sdk_private`, never here or in a command module.
+
+    Args:
+        cli_ctx: The active CLI context. Not yet used to influence
+            construction; accepted now so callers do not need to change
+            again when a later commit plumbs constructor overrides
+            (``send_legacy_cookie``, ``accept_language``, ``get_retries``)
+            through it.
+        use_keyring: Overrides the saved auth-method preference for this
+            construction only (e.g. an in-flight ``--no-keyring`` flag that
+            has not been persisted yet). Defaults to ``get_use_keyring()``.
+        cookie_file: Overrides the configured cookie file path for this
+            construction only. Defaults to ``get_cookie_file()``.
+
+    Returns:
+        A configured, un-entered :class:`~eero.EeroClient`. Callers use it
+        as an async context manager, e.g. ``async with build_client() as
+        client:``.
+    """
+    del cli_ctx  # Reserved for a later commit; unused today.
+    resolved_cookie_file = cookie_file if cookie_file is not None else get_cookie_file()
+    resolved_use_keyring = use_keyring if use_keyring is not None else get_use_keyring()
+    return EeroClient(
+        cookie_file=str(resolved_cookie_file),
+        use_keyring=resolved_use_keyring,
+    )
 
 
 def with_client(func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
@@ -51,13 +94,8 @@ def with_client(func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         async def run():
-            cookie_file = get_cookie_file()
-            use_keyring = get_use_keyring()
             try:
-                async with EeroClient(
-                    cookie_file=str(cookie_file),
-                    use_keyring=use_keyring,
-                ) as client:
+                async with build_client() as client:
                     return await func(*args, client=client, **kwargs)
             except EeroAuthenticationException:
                 console.print("[bold red]Not authenticated[/bold red]")
@@ -291,7 +329,7 @@ def get_default_output() -> str:
     return config.get("default_output", "table")
 
 
-async def run_with_client(func):
+async def run_with_client(func, cli_ctx: Optional["EeroCliContext"] = None):
     """Run a function with an EeroClient instance.
 
     Respects the use_keyring preference saved during login.
@@ -303,18 +341,15 @@ async def run_with_client(func):
 
     Args:
         func: Async function that takes an EeroClient as argument
+        cli_ctx: The active CLI context, forwarded to :func:`build_client`.
+            Optional so existing callers do not need to change; a later
+            commit will start passing it.
 
     Raises:
         SystemExit: With the mapped exit code when an SDK exception escapes.
     """
-    cookie_file = get_cookie_file()
-    use_keyring = get_use_keyring()
-
     try:
-        async with EeroClient(
-            cookie_file=str(cookie_file),
-            use_keyring=use_keyring,
-        ) as client:
+        async with build_client(cli_ctx) as client:
             await func(client)
     except EeroAuthenticationException:
         console.print("[bold red]Not authenticated[/bold red]")

@@ -25,6 +25,7 @@ from eero.exceptions import (
 from eeroctl.exit_codes import ExitCode
 from eeroctl.utils import (
     DEFAULT_CONFIG,
+    build_client,
     confirm_action,
     ensure_config,
     get_auth_method,
@@ -211,6 +212,77 @@ class TestGetPreferredNetwork:
         assert result is None
 
 
+# ========================== build_client Tests ==========================
+
+
+class TestBuildClient:
+    """Tests for build_client, the single EeroClient construction site."""
+
+    def test_passes_cookie_file_and_use_keyring_through(self, tmp_path, monkeypatch):
+        """build_client forwards get_cookie_file()/get_use_keyring() to EeroClient."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            build_client()
+
+        mock_client_class.assert_called_once_with(
+            cookie_file=str(get_cookie_file()),
+            use_keyring=get_auth_method() == "keyring",
+        )
+
+    def test_reflects_saved_cookie_file_auth_method(self, tmp_path, monkeypatch):
+        """A saved cookie_file preference is reflected in the construction call."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        set_auth_method("cookie_file")
+
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            build_client()
+
+        assert mock_client_class.call_args.kwargs["use_keyring"] is False
+
+    def test_accepts_optional_cli_ctx_without_using_it_yet(self, tmp_path, monkeypatch):
+        """cli_ctx is accepted for future plumbing but does not change output today."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            build_client(cli_ctx=object())
+
+        mock_client_class.assert_called_once_with(
+            cookie_file=str(get_cookie_file()),
+            use_keyring=get_auth_method() == "keyring",
+        )
+
+    def test_returns_the_constructed_client(self, tmp_path, monkeypatch):
+        """build_client returns whatever EeroClient(...) produced, un-entered."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        sentinel = object()
+
+        with patch("eeroctl.utils.EeroClient", return_value=sentinel):
+            result = build_client()
+
+        assert result is sentinel
+
+    def test_use_keyring_override_wins_over_saved_preference(self, tmp_path, monkeypatch):
+        """An explicit use_keyring= override beats get_use_keyring()."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        set_auth_method("keyring")  # get_use_keyring() would be True
+
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            build_client(use_keyring=False)
+
+        assert mock_client_class.call_args.kwargs["use_keyring"] is False
+
+    def test_cookie_file_override_wins_over_configured_path(self, tmp_path, monkeypatch):
+        """An explicit cookie_file= override beats get_cookie_file()."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        override = tmp_path / "other-cookies.json"
+
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            build_client(cookie_file=override)
+
+        assert mock_client_class.call_args.kwargs["cookie_file"] == str(override)
+
+
 # ========================== with_client Decorator Tests ==========================
 
 
@@ -270,6 +342,23 @@ class TestWithClientDecorator:
 
         assert received_args == ["a", "b", "c"]
 
+    def test_goes_through_build_client(self, tmp_path, monkeypatch):
+        """with_client constructs its client via build_client, not EeroClient directly."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        @with_client
+        async def my_command(client):
+            return "done"
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch("eeroctl.utils.build_client", return_value=mock_client) as mock_build:
+            my_command()
+
+        mock_build.assert_called_once_with()
+
 
 # ========================== run_with_client Tests ==========================
 
@@ -301,6 +390,41 @@ class TestRunWithClient:
         import asyncio
 
         assert asyncio.iscoroutinefunction(run_with_client)
+
+    @pytest.mark.asyncio
+    async def test_goes_through_build_client(self, tmp_path, monkeypatch):
+        """run_with_client constructs its client via build_client, not EeroClient directly."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        async def my_func(client):
+            pass
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch("eeroctl.utils.build_client", return_value=mock_client) as mock_build:
+            await run_with_client(my_func)
+
+        mock_build.assert_called_once_with(None)
+
+    @pytest.mark.asyncio
+    async def test_forwards_cli_ctx_to_build_client(self, tmp_path, monkeypatch):
+        """A cli_ctx passed to run_with_client is forwarded to build_client."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        async def my_func(client):
+            pass
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        sentinel_ctx = object()
+
+        with patch("eeroctl.utils.build_client", return_value=mock_client) as mock_build:
+            await run_with_client(my_func, cli_ctx=sentinel_ctx)
+
+        mock_build.assert_called_once_with(sentinel_ctx)
 
 
 class TestRunWithClientErrorMapping:
