@@ -467,6 +467,8 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/usage.py:417 (client.py:1766)",
     ),
+    # -- network/guest.py: show rewired onto the dedicated endpoint (24c) ----
+    ("get_guest_network", ("nid",), {}, "network/guest.py:68 (client.py:1118)"),
 ]
 
 

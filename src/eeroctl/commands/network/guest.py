@@ -46,34 +46,51 @@ def guest_group(ctx: click.Context) -> None:
 @guest_group.command(name="show")
 @click.pass_context
 def guest_show(ctx: click.Context) -> None:
-    """Show guest network settings."""
+    """Show guest network settings.
+
+    Reads from the dedicated `get_guest_network` endpoint (client.py:1118,
+    GETs the network's `guestnetwork` sub-resource) instead of the full
+    network envelope this used to read `guest_network_enabled`/
+    `guest_network_name`/`guest_network_password` out of. <!-- unverified
+    shape --> the sub-resource's own field names are assumed to be the same
+    `enabled`/`name`/`password` names, unprefixed since the response is
+    already scoped -- no live sample captured yet (migration plan §5.3). The
+    password stays masked in every format, exactly as before: this command
+    never round-trips the real value, even to `json`/`yaml`.
+    """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
-    renderer = cli_ctx.renderer
 
     async def run_cmd() -> None:
         async def get_guest(client: EeroClient) -> None:
             with cli_ctx.status("Getting guest network settings..."):
-                raw_network = await client.get_network(cli_ctx.network_id)
+                raw_guest = await client.get_guest_network(cli_ctx.network_id)
 
-            network = normalize_network(extract_data(raw_network))
+            guest = extract_data(raw_guest) if isinstance(raw_guest, dict) else {}
+            if not isinstance(guest, dict):
+                guest = {}
+
+            enabled = guest.get("enabled")
+            name = guest.get("name")
+            has_password = bool(guest.get("password"))
 
             data = {
-                "enabled": network.get("guest_network_enabled"),
-                "name": network.get("guest_network_name"),
-                "password": "********" if network.get("guest_network_password") else None,
+                "enabled": enabled,
+                "name": name,
+                "password": "********" if has_password else None,
             }
 
-            if cli_ctx.is_json_output():
-                renderer.render_json(data, "eero.network.guest.show/v1")
+            if cli_ctx.is_json_output() or cli_ctx.is_yaml_output() or cli_ctx.is_text_output():
+                # `data`'s password is already masked above, so there is
+                # nothing to redact further here.
+                cli_ctx.render_structured(data, "eero.network.guest.show/v1")
             elif cli_ctx.is_list_output():
-                renderer.render_text(data, "eero.network.guest.show/v1")
+                cli_ctx.renderer.render_text(data, "eero.network.guest.show/v1")
             else:
-                enabled = network.get("guest_network_enabled")
                 content = (
                     f"[bold]Enabled:[/bold] {'[green]Yes[/green]' if enabled else '[dim]No[/dim]'}\n"
-                    f"[bold]Name:[/bold] {network.get('guest_network_name') or 'N/A'}\n"
-                    f"[bold]Password:[/bold] {'********' if network.get('guest_network_password') else 'N/A'}"
+                    f"[bold]Name:[/bold] {name or 'N/A'}\n"
+                    f"[bold]Password:[/bold] {'********' if has_password else 'N/A'}"
                 )
                 console.print(Panel(content, title="Guest Network", border_style="blue"))
 
