@@ -198,6 +198,18 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     # -- network/base.py --------------------------------------------------
     ("set_preferred_network", ("nid",), {}, "network/base.py:176"),
     ("set_network_name", ("New Name", "nid"), {}, "network/base.py:279"),
+    (
+        "set_network_password",
+        ("hunter2", "nid"),
+        {},
+        "network/base.py:password_set (client.py:529)",
+    ),
+    (
+        "clear_network_password",
+        ("nid",),
+        {},
+        "network/base.py:password_clear (client.py:546)",
+    ),
     ("get_premium_status", ("nid",), {}, "network/base.py:314"),
     # -- network/dns.py -----------------------------------------------------
     ("get_dns_settings", ("nid",), {}, "network/dns.py:409,493,670,732"),

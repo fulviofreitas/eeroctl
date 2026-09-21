@@ -469,6 +469,9 @@ class TestWriteSpecsRegistry:
         "network security proxied-nodes enable",
         "network security proxied-nodes disable",
         "network rename",
+        "network password set",
+        "network password clear",
+        "network reboot",
         "network guest enable",
         "network guest disable",
         "network guest set",
@@ -638,6 +641,8 @@ class TestWriteSpecsRegistry:
         "nightlight_override": ["eero nightlight override"],
         "set_pppoe": ["eero pppoe set"],
         "apply_update": ["eero updates apply"],
+        "set_network_password": ["network password set"],
+        "clear_network_password": ["network password clear"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
