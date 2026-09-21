@@ -180,6 +180,12 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("get_support", ("nid",), {}, "network/advanced.py:127,182"),
     ("get_reservations", ("nid",), {}, "network/dhcp.py:45"),
     ("get_forwards", ("nid",), {}, "network/forwards.py:48,97"),
+    # `forward_data`/`forward_id` are plain values (client.py:1543,1552,1562),
+    # not an envelope -- unlike schedules, `update_forward`/`delete_forward`
+    # take the forward's own id directly.
+    ("create_forward", ({"name": "SSH"}, "nid"), {}, "network/forwards.py:create"),
+    ("update_forward", ("fid", {"name": "SSH"}, "nid"), {}, "network/forwards.py:update"),
+    ("delete_forward", ("fid", "nid"), {}, "network/forwards.py:delete"),
     # -- network/sqm.py -----------------------------------------------------
     ("get_sqm_settings", ("nid",), {}, "network/sqm.py:56"),
     # `set_sqm_enabled`/`configure_sqm` were removed in 8.0.0; `set_sqm`

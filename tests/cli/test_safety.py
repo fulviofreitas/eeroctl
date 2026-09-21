@@ -498,6 +498,9 @@ class TestWriteSpecsRegistry:
         "device rename",
         "profile create",
         "network speedtest run",
+        "network forwards create",
+        "network forwards update",
+        "network forwards delete",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -595,6 +598,9 @@ class TestWriteSpecsRegistry:
         "clear_profile_schedule": ["profile schedule clear"],
         "delete_schedule": ["profile schedule delete"],
         "set_profile_devices": ["profile devices set"],
+        "create_forward": ["network forwards create"],
+        "update_forward": ["network forwards update"],
+        "delete_forward": ["network forwards delete"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

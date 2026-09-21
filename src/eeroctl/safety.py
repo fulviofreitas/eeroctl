@@ -855,6 +855,29 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network speedtest show",
         ),
+        # -- network forwards: create/update/delete are all unverified
+        # (migration plan §4 phase C row 32). --
+        "network forwards create": WriteSpec(
+            command="network forwards create",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network forwards list",
+        ),
+        "network forwards update": WriteSpec(
+            command="network forwards update",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network forwards list",
+        ),
+        "network forwards delete": WriteSpec(
+            command="network forwards delete",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network forwards list",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.
