@@ -341,3 +341,50 @@ class TestSdkWarningFilterInstalled:
             result = runner.invoke(cli, ["--debug", "device", "block", "MyPhone", "--force"])
 
         assert "characterised" not in result.stdout
+
+
+class TestJsonOutputCarriesMetaWarnings:
+    """End-to-end: --output json on a write command surfaces the SDK
+    warning in meta.warnings, with stdout staying valid-JSON-only.
+
+    None of the currently-registered *toggle* writes (``device block``
+    included) render JSON on success -- they print a plain
+    ``write_if_changed`` acceptance message regardless of ``--output``, so
+    there is nothing for a JSON parse to grab onto for those. ``profile
+    create`` is used instead: it is a registered, UNVERIFIED write (§3.2)
+    that already renders through ``cli_ctx.render_structured`` under
+    ``--output json``, so it is the smallest change from the requested
+    ``device block`` case that actually exercises meta.warnings end to end
+    through real JSON output.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_output_json_includes_the_note_in_meta_warnings(self, runner):
+        import json
+
+        async def _create_profile_side_effect(*args, **kwargs):
+            logging.getLogger("eero.api.profiles").warning(_SDK_WARNING_MSG, "create_profile")
+            return {
+                "meta": {"code": 200},
+                "data": {"url": "/2.2/networks/net1/profiles/p1", "name": "Kids"},
+            }
+
+        mock_client = AsyncMock()
+        mock_client.create_profile = AsyncMock(side_effect=_create_profile_side_effect)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["--output", "json", "profile", "create", "Kids"])
+
+        assert result.exit_code == 0, result.output
+        # stdout is valid JSON and nothing else -- no interleaved warning text.
+        parsed = json.loads(result.stdout)
+        assert parsed["meta"]["warnings"]
+        assert any("create_profile" in w for w in parsed["meta"]["warnings"])
+        assert "characterised" not in result.stdout
+        # The concise stderr note still fires, on stderr, same as any other write.
+        assert "note: unverified write (create_profile)" in result.stderr

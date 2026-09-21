@@ -9,12 +9,25 @@ Tests cover:
 - device transformer regression (blacklisted field)
 """
 
+import re
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from click.testing import CliRunner
 
 from eeroctl.main import cli
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI escapes and collapse whitespace from Rich console output.
+
+    Rich wraps to the console width even under CliRunner and re-applies
+    styling per wrapped line, so a substring straddling a wrap point is
+    broken up by escape codes and whitespace otherwise.
+    """
+    return re.sub(r"\s+", " ", _ANSI_RE.sub("", text))
 
 
 class TestDeviceGroup:
@@ -417,3 +430,171 @@ class TestDeviceTransformerRegression:
         # 'blacklisted' key absent → blocked and blacklisted should both be False
         assert result["blocked"] is False
         assert result["blacklisted"] is False
+
+
+# ---------------------------------------------------------------------------
+# TestSkipUnchangedAndReadCommandHints
+# ---------------------------------------------------------------------------
+
+
+class TestSkipUnchangedAndReadCommandHints:
+    """Integration coverage for the ``write_if_changed`` skip-unchanged path
+    and the per-command ``read_command`` hint (migration plan §3.2 item 4,
+    §3.3) for ``device unblock``/``device pause`` and ``eero led
+    on``/``off`` -- registered write commands that skip an unchanged state
+    using the target already fetched by ``get_devices``/``get_led_status``.
+
+    ``eero led`` lives outside the ``device`` command tree, but is covered
+    here rather than in a new file since this commit's file list is
+    ``test_network_mutations.py``, ``test_device.py`` and
+    ``test_warning_filter.py``.
+
+    Uses the SDK-boundary mock (``eeroctl.utils.EeroClient``), matching the
+    pattern already established by ``TestDeviceBlock``/``TestDevicePause``
+    above, not a ``run_with_client`` patch.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    @staticmethod
+    def _devices_response(*, blacklisted: bool, paused: bool):
+        return {
+            "meta": {"code": 200},
+            "data": [
+                {
+                    "url": "/2.2/networks/net1/devices/dev1",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                    "nickname": "MyPhone",
+                    "hostname": "myphone",
+                    "connected": True,
+                    "blacklisted": blacklisted,
+                    "paused": paused,
+                }
+            ],
+        }
+
+    # -- device unblock ---------------------------------------------------
+
+    def test_device_unblock_already_configured_skips_the_write(self, runner):
+        """Already unblocked (blacklisted=False): a plain Y confirms
+        (device unblock is MEDIUM, verified), but the write is skipped."""
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(
+            return_value=self._devices_response(blacklisted=False, paused=False)
+        )
+        mock_client.unblock_device = AsyncMock(return_value={"meta": {"code": 200}, "data": {}})
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "unblock", "MyPhone"], input="y\n")
+
+        assert result.exit_code == 0
+        mock_client.unblock_device.assert_not_awaited()
+        plain_output = _plain(result.output)
+        assert "already" in plain_output.lower()
+        assert "eero device list" in plain_output
+
+    def test_device_unblock_changed_state_writes_and_hints_read_command(self, runner):
+        """Currently blocked (blacklisted=True): unblock writes and hints
+        the read command to verify with."""
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(
+            return_value=self._devices_response(blacklisted=True, paused=False)
+        )
+        mock_client.unblock_device = AsyncMock(return_value={"meta": {"code": 200}, "data": {}})
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "unblock", "MyPhone", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.unblock_device.assert_awaited_once()
+        assert "verify with `eero device list`" in _plain(result.output).lower()
+
+    # -- device pause -----------------------------------------------------
+
+    def test_device_pause_already_configured_skips_the_write(self, runner):
+        """Already paused: the write is skipped."""
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(
+            return_value=self._devices_response(blacklisted=False, paused=True)
+        )
+        mock_client.pause_device = AsyncMock(return_value={"meta": {"code": 200}, "data": {}})
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "pause", "MyPhone"], input="y\n")
+
+        assert result.exit_code == 0
+        mock_client.pause_device.assert_not_awaited()
+        plain_output = _plain(result.output)
+        assert "already" in plain_output.lower()
+        assert "eero device list" in plain_output
+
+    def test_device_pause_changed_state_writes_and_hints_read_command(self, runner):
+        """Not yet paused: pause writes and hints the read command."""
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(
+            return_value=self._devices_response(blacklisted=False, paused=False)
+        )
+        mock_client.pause_device = AsyncMock(return_value={"meta": {"code": 200}, "data": {}})
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["device", "pause", "MyPhone", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.pause_device.assert_awaited_once()
+        assert "verify with `eero device list`" in _plain(result.output).lower()
+
+    # -- eero led on/off ----------------------------------------------------
+
+    @staticmethod
+    def _led_client(*, led_on: bool):
+        mock_client = AsyncMock()
+        # "123" is numeric, so resolve_eero_identifier resolves it directly
+        # via get_eero rather than searching get_eeros.
+        mock_client.get_eero = AsyncMock(
+            return_value={
+                "meta": {"code": 200},
+                "data": {"url": "/2.2/networks/net1/eeros/123", "id": "123"},
+            }
+        )
+        mock_client.get_led_status = AsyncMock(
+            return_value={"meta": {"code": 200}, "data": {"led_on": led_on}}
+        )
+        mock_client.set_led = AsyncMock(return_value={"meta": {"code": 200}, "data": {}})
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        return mock_client
+
+    def test_led_on_already_configured_skips_the_write(self, runner):
+        """LED already on: no prompt (LOW risk), and the write is skipped."""
+        mock_client = self._led_client(led_on=True)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["eero", "led", "on", "123"])
+
+        assert result.exit_code == 0
+        mock_client.set_led.assert_not_awaited()
+        plain_output = _plain(result.output)
+        assert "already" in plain_output.lower()
+        assert "eero eero led show" in plain_output
+
+    def test_led_off_changed_state_writes_and_hints_read_command(self, runner):
+        """LED currently on: `led off` writes and hints the read command."""
+        mock_client = self._led_client(led_on=True)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["eero", "led", "off", "123"])
+
+        assert result.exit_code == 0
+        mock_client.set_led.assert_awaited_once_with("123", False, None)
+        assert "verify with `eero eero led show`" in _plain(result.output).lower()

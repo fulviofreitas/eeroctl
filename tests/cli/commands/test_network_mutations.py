@@ -8,6 +8,7 @@ correct EeroClient method is called with the expected positional arguments.
 See PR42-PLAN.md §T1 for rationale.
 """
 
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -15,6 +16,20 @@ from click.testing import CliRunner
 
 from eeroctl.exit_codes import ExitCode
 from eeroctl.main import cli
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI escapes and line-wrap newlines from Rich console output.
+
+    Rich wraps to the console width even under CliRunner (not a real tty)
+    and re-applies styling per wrapped line, so a substring that happens to
+    straddle a wrap point is broken up by escape codes and a newline. Tests
+    that assert on longer strings normalize through this first.
+    """
+    return re.sub(r"\s+", " ", _ANSI_RE.sub("", text))
+
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -68,6 +83,24 @@ def _make_mock_client(**method_return_values) -> MagicMock:
     client = MagicMock()
     for method_name, return_value in method_return_values.items():
         setattr(client, method_name, AsyncMock(return_value=return_value))
+    return client
+
+
+def _make_sdk_client(**method_return_values) -> AsyncMock:
+    """Build an AsyncMock EeroClient patched in at the SDK boundary.
+
+    Unlike ``_make_mock_client`` (paired with a ``run_with_client`` patch
+    per command module), this mocks ``eeroctl.utils.EeroClient`` itself --
+    the single construction site every command funnels through
+    (``build_client``) -- so it exercises the real ``run_with_client`` /
+    ``build_client`` / ``write_if_changed`` path end to end, not just the
+    command function body.
+    """
+    client = AsyncMock()
+    for method_name, return_value in method_return_values.items():
+        setattr(client, method_name, AsyncMock(return_value=return_value))
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
     return client
 
 
@@ -188,7 +221,12 @@ class TestSQM:
     def test_sqm_enable_force_still_warns_about_the_reboot(
         self, runner: CliRunner, mock_client_true: MagicMock
     ):
-        """--force skips the prompt but not the reboot warning."""
+        """--force skips the prompt but not the reboot warning.
+
+        The warning must land on stderr -- not stdout, which stays clean
+        for ``--output json | jq`` even on write commands -- so the streams
+        are checked separately rather than via the combined ``.output``.
+        """
         with patch(
             "eeroctl.commands.network.sqm.run_with_client",
             side_effect=_make_run_with_client(mock_client_true),
@@ -198,7 +236,8 @@ class TestSQM:
             )
 
         assert result.exit_code == 0
-        assert "reboots every eero" in result.output
+        assert "reboots every eero" in result.stderr
+        assert "reboots every eero" not in result.stdout
 
 
 # ---------------------------------------------------------------------------
@@ -1034,3 +1073,164 @@ class TestMutationSuccessAndFailure:
             )
 
         assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# TestSkipUnchangedAndReadCommandHints
+# ---------------------------------------------------------------------------
+
+
+class TestSkipUnchangedAndReadCommandHints:
+    """Integration coverage for the ``write_if_changed`` skip-unchanged path
+    and the per-command ``read_command`` hint (migration plan §3.2 item 4,
+    §3.3), for every network-domain command wired to it.
+
+    Uses the SDK-boundary mock (``eeroctl.utils.EeroClient``), not a
+    ``run_with_client`` patch, so the real ``build_client`` /
+    ``run_with_client`` / ``write_if_changed`` plumbing is exercised.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    # -- network sqm enable ---------------------------------------------
+
+    def test_sqm_enable_already_configured_skips_the_write(self, runner: CliRunner):
+        """Confirmed via the typed REBOOT phrase, not --force: --force also
+        forces write_if_changed to write regardless of skip-unchanged (its
+        documented contract), which would mask the skip path this test
+        exists to cover."""
+        mock_client = _make_sdk_client(
+            get_sqm_settings={"meta": {"code": 200}, "data": {"enabled": True}},
+            set_sqm=_OK_RESPONSE,
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "sqm", "enable"], input="REBOOT\n"
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_sqm.assert_not_awaited()
+        plain_output = _plain(result.output)
+        assert "already" in plain_output.lower()
+        assert "eero network sqm show" in plain_output
+
+    def test_sqm_enable_changed_state_writes_and_hints_read_command(self, runner: CliRunner):
+        mock_client = _make_sdk_client(
+            get_sqm_settings={"meta": {"code": 200}, "data": {"enabled": False}},
+            set_sqm=_OK_RESPONSE,
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "sqm", "enable", "--force"]
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_sqm.assert_awaited_once_with(True, NID)
+        assert "verify with `eero network sqm show`" in _plain(result.output).lower()
+
+    # -- network security wpa3 (one representative toggle) --------------
+
+    def test_security_wpa3_enable_already_configured_skips_the_write(self, runner: CliRunner):
+        """Confirmed via the typed REBOOT phrase, not --force (see the sqm
+        test above for why --force is unsuitable for a skip-path test)."""
+        mock_client = _make_sdk_client(
+            get_security_settings={"meta": {"code": 200}, "data": {"wpa3": True}},
+            set_wpa3=_OK_RESPONSE,
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--network-id", NID, "network", "security", "wpa3", "enable"],
+                input="REBOOT\n",
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_wpa3.assert_not_awaited()
+        plain_output = _plain(result.output)
+        assert "already" in plain_output.lower()
+        assert "eero network security show" in plain_output
+
+    def test_security_wpa3_enable_changed_state_writes_and_hints_read_command(
+        self, runner: CliRunner
+    ):
+        mock_client = _make_sdk_client(
+            get_security_settings={"meta": {"code": 200}, "data": {"wpa3": False}},
+            set_wpa3=_OK_RESPONSE,
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "security", "wpa3", "enable", "--force"]
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_wpa3.assert_awaited_once_with(True, NID)
+        assert "verify with `eero network security show`" in _plain(result.output).lower()
+
+    # -- network guest enable/disable ------------------------------------
+
+    def test_guest_enable_already_configured_skips_the_write(self, runner: CliRunner):
+        """Confirmed via a plain Y, not --force (see the sqm test above for
+        why --force is unsuitable for a skip-path test)."""
+        mock_client = _make_sdk_client(
+            get_network={
+                "meta": {"code": 200},
+                "data": {"url": "/2.2/networks/1", "guest_network": {"enabled": True}},
+            },
+            set_guest_network=_OK_RESPONSE,
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "guest", "enable"], input="y\n"
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_guest_network.assert_not_awaited()
+        plain_output = _plain(result.output)
+        assert "already" in plain_output.lower()
+        assert "eero network guest show" in plain_output
+
+    def test_guest_disable_changed_state_writes_and_hints_read_command(self, runner: CliRunner):
+        mock_client = _make_sdk_client(
+            get_network={
+                "meta": {"code": 200},
+                "data": {"url": "/2.2/networks/1", "guest_network": {"enabled": True}},
+            },
+            set_guest_network=_OK_RESPONSE,
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "guest", "disable", "--force"]
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_guest_network.assert_awaited_once()
+        assert "verify with `eero network guest show`" in _plain(result.output).lower()
+
+    # -- --force placement stream isolation (item 2) ---------------------
+
+    def test_sqm_enable_force_warning_is_on_stderr_stdout_clean(self, runner: CliRunner):
+        """--force skips the prompt but not the reboot warning -- and the
+        warning must be on stderr, not stdout (so `--output json | jq`
+        keeps working on any command that also prints structured data)."""
+        mock_client = _make_sdk_client(
+            get_sqm_settings={"meta": {"code": 200}, "data": {"enabled": False}},
+            set_sqm=_OK_RESPONSE,
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--network-id", NID, "network", "sqm", "enable", "--force"]
+            )
+
+        assert result.exit_code == 0
+        assert "reboots every eero" in result.stderr
+        assert "reboots every eero" not in result.stdout
