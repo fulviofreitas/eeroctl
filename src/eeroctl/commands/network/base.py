@@ -54,6 +54,7 @@ def network_group(ctx: click.Context) -> None:
       events    - Recent app events
       scan      - Channel/neighbour scan
       channels  - Wi-Fi channel utilization
+      permissions - Caller's role and per-capability permissions
 
     \b
     Examples:
@@ -367,6 +368,7 @@ from .entitlements import entitlements_group  # noqa: E402
 from .events import network_channels, network_events, network_scan  # noqa: E402
 from .forwards import forwards_group  # noqa: E402
 from .guest import guest_group  # noqa: E402
+from .permissions import network_permissions  # noqa: E402
 from .security import security_group  # noqa: E402
 from .speedtest import speedtest_group  # noqa: E402
 from .sqm import sqm_group  # noqa: E402
@@ -387,3 +389,4 @@ network_group.add_command(entitlements_group)
 network_group.add_command(network_events)
 network_group.add_command(network_scan)
 network_group.add_command(network_channels)
+network_group.add_command(network_permissions)

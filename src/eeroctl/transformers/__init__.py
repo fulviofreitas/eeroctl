@@ -16,6 +16,7 @@ from .events import (
     extract_scan,
 )
 from .network import extract_network, extract_networks, normalize_network, normalize_network_status
+from .permissions import extract_capability_map, extract_permissions, extract_role
 from .profile import extract_profile, extract_profiles, normalize_profile
 
 __all__ = [
@@ -50,4 +51,8 @@ __all__ = [
     "extract_next_cursor",
     "extract_scan",
     "extract_channel_utilization",
+    # Permissions
+    "extract_permissions",
+    "extract_role",
+    "extract_capability_map",
 ]

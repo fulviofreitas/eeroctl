@@ -64,6 +64,9 @@ from .network import (
     print_network_details,
 )
 
+# Permissions formatting
+from .permissions import print_permissions
+
 # Profile formatting
 from .profile import (
     create_profile_devices_table,
@@ -115,4 +118,6 @@ __all__ = [
     "print_events",
     "print_scan",
     "print_channels",
+    # Permissions
+    "print_permissions",
 ]
