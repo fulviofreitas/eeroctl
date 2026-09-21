@@ -86,7 +86,19 @@ def forwards_list(ctx: click.Context) -> None:
 @click.argument("forward_id")
 @click.pass_context
 def forwards_show(ctx: click.Context, forward_id: str) -> None:
-    """Show details of a port forward."""
+    """Show details of a port forward.
+
+    Unlike `eero show`/`device show`/`profile show`, this command cannot
+    forward `forward_id` verbatim to an id-validated SDK read: the facade
+    exposes no singular `get_forward`, only `get_forwards` (list) plus
+    `update_forward`/`delete_forward` (writes -- unsafe to call from a read
+    command just to borrow their id validation, since a well-shaped id would
+    reach the transport as a real mutation). Per migration plan §2.5 rule
+    ("forward to the id-taking SDK method ... else document"): documented
+    gap, not fixed. A hostile `forward_id` is still reported "not found"
+    (exit 5), not rejected as invalid (exit 2); see
+    `tests/cli/test_link_validation.py::TestForwardsShowRejectsHostileIds`.
+    """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
     renderer = cli_ctx.renderer

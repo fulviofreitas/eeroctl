@@ -12,7 +12,7 @@ from typing import Any, Dict, Literal, Optional, Tuple
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroException, EeroNotFoundException
+from eero.exceptions import EeroNotFoundException
 from rich.table import Table
 
 from ...context import ensure_cli_context
@@ -21,7 +21,7 @@ from ...options import apply_options, force_option, network_option, output_optio
 from ...output import OutputFormat
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, extract_eeros, normalize_eero
-from ...utils import run_with_client
+from ...utils import looks_like_sdk_reference, run_with_client
 
 
 async def resolve_eero_identifier(
@@ -38,15 +38,26 @@ async def resolve_eero_identifier(
 
     Returns:
         Tuple of (resolved_id, normalized_eero_data) or (None, None) if not found
+
+    Raises:
+        EeroValidationException: When `identifier` looks like a path/URL/
+            hostile id (`looks_like_sdk_reference`) and the SDK rejects it.
+            Deliberately not caught here -- migration plan §2.5 decision 2:
+            eeroctl never pre-validates, it forwards verbatim and lets the
+            SDK's own rejection map to exit 2 via `handle_cli_error`.
     """
-    # First, check if identifier looks like a numeric ID
-    if identifier.isdigit():
-        # Try direct lookup by ID first
+    # A bare numeric id (today's behaviour) or anything that looks like a
+    # path/URL/hostile id goes straight to the id-validated SDK method,
+    # verbatim -- never pre-validated here. Only `EeroNotFoundException` is
+    # swallowed to fall through to the list-and-match branch below (a
+    # well-shaped id that simply doesn't exist); every other exception,
+    # including `EeroValidationException`, propagates to the caller.
+    if identifier.isdigit() or looks_like_sdk_reference(identifier):
         try:
             raw_response = await client.get_eero(identifier, network_id)
             eero_data = normalize_eero(extract_data(raw_response))
             return identifier, eero_data
-        except (EeroNotFoundException, EeroException):
+        except EeroNotFoundException:
             # Not a valid ID, continue to search by other fields
             pass
 

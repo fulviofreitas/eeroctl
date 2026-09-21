@@ -27,6 +27,47 @@ logger = logging.getLogger("eeroctl")
 T = TypeVar("T")
 
 
+def looks_like_sdk_reference(value: str) -> bool:
+    """Return True when `value` should be handed to an id-validated SDK
+    method verbatim, rather than resolved locally by listing and matching.
+
+    Per migration plan §2.5 decision 2, eeroctl never pre-validates ids,
+    paths or URLs -- it hands them to the SDK unchanged and lets
+    ``EeroValidationException`` (from the SDK's own ``_IDENTIFIER_RE``,
+    ``eero/api/links.py:47,65-66``, and ``_require_nested_family``,
+    ``eero/api/_params.py:171-216``) map to exit 2 via
+    ``handle_cli_error``, *before* any request. This helper only decides
+    which resolution path a command takes; it performs no validation of its
+    own.
+
+    A value "looks like" an id/path/URL the SDK should see directly when:
+
+    - it starts with ``/``, ``http://`` or ``https://`` (a host-relative
+      path or absolute URL, per ``resource_url``'s three branches,
+      ``links.py:223-276``); or
+    - it contains any of ``/ ? # { }`` -- a bare
+      ``_IDENTIFIER_RE``-validated id can never contain these, so their
+      presence means either a path/URL shape or a string the SDK is
+      guaranteed to reject (e.g. ``"a/b"``, ``"x?y=1"``, ``"{x}"``); or
+    - it is the empty string -- never a valid name/serial/MAC to resolve
+      locally, and the one corpus case (``""``) not already covered by the
+      character check above; the SDK rejects it the same way (empty does
+      not match ``_IDENTIFIER_RE``).
+
+    Everything else (plain names, serials, MAC addresses like
+    ``"aabbccddeeff"``, bare numeric ids) returns False and keeps going
+    through the existing list-and-match resolvers -- names must keep
+    working exactly as before.
+    """
+    if not isinstance(value, str):
+        return False
+    if value == "":
+        return True
+    if value.startswith(("/", "http://", "https://")):
+        return True
+    return any(ch in value for ch in "/?#{}")
+
+
 def backup_legacy_cookie_file(cookie_file: Path) -> Optional[Path]:
     """Back up a pre-v8 (schema 1) credential file before the SDK migrates it.
 

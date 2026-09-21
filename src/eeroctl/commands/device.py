@@ -16,6 +16,7 @@ from typing import Any, Dict, Literal, Optional
 
 import click
 from eero import EeroClient
+from eero.exceptions import EeroNotFoundException
 from rich.table import Table
 
 from ..context import EeroCliContext, ensure_cli_context
@@ -24,7 +25,7 @@ from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ..transformers import extract_data, extract_devices, normalize_device
-from ..utils import run_with_client, write_if_changed
+from ..utils import looks_like_sdk_reference, run_with_client, write_if_changed
 
 
 def _find_device(devices: list, identifier: str) -> Optional[Dict[str, Any]]:
@@ -188,22 +189,47 @@ def device_show(
 
     async def run_cmd() -> None:
         async def get_device(client: EeroClient) -> None:
-            with cli_ctx.status("Finding device..."):
-                raw_response = await client.get_devices(cli_ctx.network_id)
+            # A path/URL/hostile-shaped identifier goes straight to the
+            # id-validated SDK method, verbatim -- never pre-validated here
+            # (migration plan §2.5 decision 2). `EeroValidationException` is
+            # deliberately not caught: it propagates to `run_with_client` and
+            # maps to exit 2. Only a well-shaped-but-absent id/path/URL
+            # (`EeroNotFoundException`, or an empty envelope) falls through
+            # to "not found"; plain names/serials/MACs skip straight to the
+            # existing list-and-match resolution below.
+            device: Optional[Dict[str, Any]] = None
+            if looks_like_sdk_reference(device_identifier):
+                with cli_ctx.status("Getting device details..."):
+                    try:
+                        raw_detail = await client.get_device(device_identifier, cli_ctx.network_id)
+                    except EeroNotFoundException:
+                        raw_detail = None
 
-            devices = extract_devices(raw_response)
-            target = _find_device(devices, device_identifier)
+                data = extract_data(raw_detail) if isinstance(raw_detail, dict) else None
+                if isinstance(data, dict) and data:
+                    device = normalize_device(data)
 
-            if not target or not target.get("id"):
-                console.print(f"[red]Device '{device_identifier}' not found[/red]")
-                console.print("[dim]Try: eero device list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
+                if device is None:
+                    console.print(f"[red]Device '{device_identifier}' not found[/red]")
+                    console.print("[dim]Try: eero device list[/dim]")
+                    sys.exit(ExitCode.NOT_FOUND)
+            else:
+                with cli_ctx.status("Finding device..."):
+                    raw_response = await client.get_devices(cli_ctx.network_id)
 
-            # Get full details
-            with cli_ctx.status("Getting device details..."):
-                raw_detail = await client.get_device(target["id"], cli_ctx.network_id)
+                devices = extract_devices(raw_response)
+                target = _find_device(devices, device_identifier)
 
-            device = normalize_device(extract_data(raw_detail))
+                if not target or not target.get("id"):
+                    console.print(f"[red]Device '{device_identifier}' not found[/red]")
+                    console.print("[dim]Try: eero device list[/dim]")
+                    sys.exit(ExitCode.NOT_FOUND)
+
+                # Get full details
+                with cli_ctx.status("Getting device details..."):
+                    raw_detail = await client.get_device(target["id"], cli_ctx.network_id)
+
+                device = normalize_device(extract_data(raw_detail))
 
             if cli_ctx.is_structured_output():
                 cli_ctx.render_structured(device, "eero.device.show/v1")

@@ -22,15 +22,26 @@ Two things are pinned here, at two different layers:
 
 2. **CLI reality check** (``TestEeroShowRejectsHostileIds`` and siblings):
    whether that SDK protection is actually reachable from the shipped
-   ``eero <noun> show <id>`` commands. It mostly is not: every id-taking
-   read command in this repo resolves its argument by fetching the full
-   list and matching locally (``resolve_eero_identifier``, ``_find_device``,
-   ``_find_profile``, the inline loop in ``forwards_show``) rather than
-   forwarding the raw string to an id-validated SDK method. Each such gap is
-   marked ``xfail(strict=True)`` with the exact file:line responsible, so a
-   future fix that starts forwarding the id flips these to unexpected
-   passes and fails the suite -- turning a silent gap into a checkpoint
-   finding per this brief's instructions.
+   ``eero <noun> show <id>`` commands.
+
+   As of ``fix(cli): pass id, path and URL inputs to the SDK unchanged``,
+   ``resolve_eero_identifier`` (``commands/eero/base.py``), ``device_show``
+   and ``profile_show`` all short-circuit to the id-validated SDK method
+   (``get_eero``/``get_device``/``get_profile``) verbatim, via the shared
+   ``looks_like_sdk_reference`` helper (``utils.py``), whenever the input
+   looks like a path/URL/hostile id -- so ``TestEeroShowRejectsHostileIds``,
+   ``TestDeviceShowRejectsHostileIds``, ``TestProfileShowRejectsHostileIds``
+   and ``TestLedShowRejectsHostileIds`` (``led_show`` shares
+   ``resolve_eero_identifier``) are no longer ``xfail``: they assert the
+   real, fixed behaviour.
+
+   ``TestForwardsShowRejectsHostileIds`` stays ``xfail(strict=True)``: the
+   facade exposes no singular id-validated *read* for a port forward (only
+   ``get_forwards`` -- a list -- plus ``update_forward``/``delete_forward``,
+   which are writes and therefore unsafe to call from a read command just to
+   borrow their id validation). Documented, not fixed, per migration plan
+   §2.5's "forward to the id-taking SDK method ... else document" rule; see
+   ``commands/network/forwards.py::forwards_show``'s docstring.
 """
 
 import asyncio
@@ -213,28 +224,19 @@ class TestSdkRejectsCrossNetworkChildLinks:
 class TestEeroShowRejectsHostileIds:
     """``eero eero show <id>``.
 
-    XFAIL: ``resolve_eero_identifier`` (``commands/eero/base.py:27-76``)
-    only attempts a direct, id-validated ``client.get_eero(...)`` call when
-    ``identifier.isdigit()`` (``base.py:43``). Every string in the SDK's
-    hostile-id corpus is non-digit, so all of them fall through to the
-    list-then-match branch (``base.py:54-76``): ``client.get_eeros(...)`` is
-    called (no id involved at all), then the hostile string is compared,
-    in Python, against each eero's serial/name/location. It is never
-    checked against the SDK's ``_IDENTIFIER_RE``. The command reports "not
-    found" (exit 5) instead of "invalid" (exit 2), and reaches the
-    transport for the *list* call before any rejection could occur.
+    ``resolve_eero_identifier`` (``commands/eero/base.py``) now attempts a
+    direct, id-validated ``client.get_eero(...)`` call, verbatim, whenever
+    ``identifier.isdigit()`` OR ``looks_like_sdk_reference(identifier)``
+    (``utils.py``) -- every string in the SDK's hostile-id corpus matches
+    the latter (each contains one of ``/ ? # { }`` or is empty), so it is
+    forwarded to the SDK's own ``_IDENTIFIER_RE`` check, which raises
+    ``EeroValidationException`` before any request. ``EeroNotFoundException``
+    is the only exception the resolver still swallows to fall through to the
+    list+match branch -- every other exception, including
+    ``EeroValidationException``, propagates to ``run_with_client`` and maps
+    to exit 2.
     """
 
-    @pytest.mark.xfail(
-        reason=(
-            "resolve_eero_identifier only validates a *digit* id directly "
-            "against the SDK (commands/eero/base.py:43); every hostile, "
-            "non-digit corpus string falls through to the list+match branch "
-            "(base.py:54-76) and is reported as 'not found' (exit 5), never "
-            "rejected as invalid (exit 2). See module docstring."
-        ),
-        strict=True,
-    )
     @pytest.mark.parametrize("hostile_id", HOSTILE_IDS)
     def test_rejects_hostile_id_before_any_request(
         self, runner, wired_client, guarded_transport, hostile_id
@@ -248,24 +250,18 @@ class TestEeroShowRejectsHostileIds:
 class TestDeviceShowRejectsHostileIds:
     """``eero device show <id>``.
 
-    XFAIL: ``device_show`` always calls ``client.get_devices(...)`` first
-    (``commands/device.py:192``) and matches locally via ``_find_device``
-    (``device.py:30-58``, an equality/``.lower()`` comparison, never an SDK
-    call) before it ever calls an id-scoped SDK method. A hostile string is
-    therefore never validated -- it is "not found" (exit 5), and the
-    transport is reached for the list call regardless of the id's shape.
+    ``device_show`` (``commands/device.py``) now checks
+    ``looks_like_sdk_reference(device_identifier)`` before doing anything
+    else: when it matches, the raw identifier is forwarded verbatim to
+    ``client.get_device(...)`` instead of listing devices and matching
+    locally via ``_find_device``. Every hostile corpus string and every
+    foreign-network/query/fragment child link matches, so each reaches the
+    SDK's own validation (``_IDENTIFIER_RE`` / ``_require_nested_family``)
+    before any request, and ``EeroValidationException`` propagates to exit
+    2. Plain names/MACs (e.g. ``"iPhone"``, ``"aabbccddeeff"``) still don't
+    match and keep going through the list+match resolver unchanged.
     """
 
-    @pytest.mark.xfail(
-        reason=(
-            "device_show (commands/device.py:177-224) always lists devices "
-            "first and matches the raw identifier locally via _find_device "
-            "(device.py:30-58); a hostile id is never handed to an "
-            "id-validated SDK method, so it is reported 'not found' (exit "
-            "5) rather than rejected as invalid (exit 2)."
-        ),
-        strict=True,
-    )
     @pytest.mark.parametrize("hostile_id", HOSTILE_IDS)
     def test_rejects_hostile_id_before_any_request(
         self, runner, wired_client, guarded_transport, hostile_id
@@ -275,18 +271,6 @@ class TestDeviceShowRejectsHostileIds:
         assert "invalid" in result.output.lower(), result.output
         guarded_transport.assert_not_awaited()
 
-    @pytest.mark.xfail(
-        reason=(
-            "Same gap as the hostile-id case above: _find_device (device.py"
-            ":30-58) matches the child link against dev['id'] as a plain "
-            "string, so a same-shaped-but-foreign-network device URL is "
-            "just 'not found' (exit 5); it never reaches _require_nested_"
-            "family (eero-api _params.py:171-216) because device_show never "
-            "calls client.get_device() with the raw CLI argument -- only "
-            "with an id it already found in the list (device.py:222)."
-        ),
-        strict=True,
-    )
     @pytest.mark.parametrize("child_link", CHILD_LINK_HOSTILE_CASES)
     def test_rejects_foreign_network_device_link(
         self, runner, wired_client, guarded_transport, child_link
@@ -300,21 +284,13 @@ class TestDeviceShowRejectsHostileIds:
 class TestProfileShowRejectsHostileIds:
     """``eero profile show <id>``.
 
-    XFAIL: same shape as device show. ``profile_show`` always calls
-    ``client.get_profiles(...)`` first (``commands/profile.py:206``) and
-    matches locally via ``_find_profile`` (``profile.py:34-50``).
+    Same fix shape as device show: ``profile_show`` (``commands/profile.py``)
+    checks ``looks_like_sdk_reference(profile_identifier)`` first and, when
+    it matches, forwards the raw identifier verbatim to
+    ``client.get_profile(...)`` instead of listing profiles and matching
+    locally via ``_find_profile``.
     """
 
-    @pytest.mark.xfail(
-        reason=(
-            "profile_show (commands/profile.py:191-238) always lists "
-            "profiles first and matches the raw identifier locally via "
-            "_find_profile (profile.py:34-50); a hostile id is never "
-            "handed to an id-validated SDK method, so it is reported 'not "
-            "found' (exit 5) rather than rejected as invalid (exit 2)."
-        ),
-        strict=True,
-    )
     @pytest.mark.parametrize("hostile_id", HOSTILE_IDS)
     def test_rejects_hostile_id_before_any_request(
         self, runner, wired_client, guarded_transport, hostile_id
@@ -328,21 +304,26 @@ class TestProfileShowRejectsHostileIds:
 class TestForwardsShowRejectsHostileIds:
     """``eero network forwards show <id>``.
 
-    XFAIL: ``forwards_show`` always calls ``client.get_forwards(...)``
-    first (``commands/network/forwards.py:97``) and matches locally with an
-    inline loop comparing ``str(fwd.get("id")) == forward_id``
-    (``forwards.py:102-105``) -- a plain string comparison, never an SDK
-    call.
+    XFAIL, still: unlike eero/device/profile show, ``forwards_show`` has no
+    id-validated SDK *read* to forward to -- the facade only exposes
+    ``get_forwards`` (a list) plus ``update_forward``/``delete_forward``
+    (writes; unsafe to call from a read command just to borrow their id
+    validation). It always calls ``client.get_forwards(...)`` first
+    (``commands/network/forwards.py``) and matches locally with an inline
+    loop comparing ``str(fwd.get("id")) == forward_id`` -- a plain string
+    comparison, never an SDK call. Documented, not fixed, per migration plan
+    §2.5's "forward to the id-taking SDK method ... else document" rule.
     """
 
     @pytest.mark.xfail(
         reason=(
-            "forwards_show (commands/network/forwards.py:86-122) always "
-            "lists forwards first and matches forward_id locally with a "
-            "plain string comparison (forwards.py:102-105); a hostile id "
-            "is never handed to an id-validated SDK method, so it is "
-            "reported 'not found' (exit 5) rather than rejected as invalid "
-            "(exit 2)."
+            "forwards_show (commands/network/forwards.py) always lists "
+            "forwards first and matches forward_id locally with a plain "
+            "string comparison; there is no singular id-validated SDK read "
+            "for a port forward to forward the raw id to (only the list, "
+            "plus update/delete -- writes), so a hostile id is reported "
+            "'not found' (exit 5) rather than rejected as invalid (exit 2). "
+            "Documented gap, not fixed -- see forwards_show's docstring."
         ),
         strict=True,
     )
@@ -359,22 +340,12 @@ class TestForwardsShowRejectsHostileIds:
 class TestLedShowRejectsHostileIds:
     """``eero eero led show <id>``.
 
-    XFAIL: ``led_show`` resolves its argument through the very same
-    ``resolve_eero_identifier`` as ``eero show`` (``commands/eero/led.py
-    :21,52``), so it has the identical digit-only-shortcut gap documented
-    on ``TestEeroShowRejectsHostileIds``.
+    ``led_show`` resolves its argument through the very same
+    ``resolve_eero_identifier`` as ``eero show`` (``commands/eero/led.py``),
+    so it inherits that resolver's fix identically -- see
+    ``TestEeroShowRejectsHostileIds``.
     """
 
-    @pytest.mark.xfail(
-        reason=(
-            "led_show (commands/eero/led.py:39-83) resolves via the same "
-            "resolve_eero_identifier as eero show (commands/eero/base.py:"
-            "27-76); every hostile, non-digit corpus string falls through "
-            "to list+match and is reported 'not found' (exit 5), never "
-            "rejected as invalid (exit 2)."
-        ),
-        strict=True,
-    )
     @pytest.mark.parametrize("hostile_id", HOSTILE_IDS)
     def test_rejects_hostile_id_before_any_request(
         self, runner, wired_client, guarded_transport, hostile_id
@@ -388,19 +359,14 @@ class TestLedShowRejectsHostileIds:
 # =====================================================================
 # Section 3 -- CLI positive controls
 #
-# `device show` is used because it unconditionally calls the SDK's list
-# endpoint as its very first action (commands/device.py:192) for *every*
-# identifier shape -- bare id, host-relative path, or full URL alike -- so
-# it can demonstrate the transport guard is a real trap (not a fixture that
-# silently no-ops) without depending on the digit-only shortcut that only
-# `eero show`/`eero led show` have. We assert only that the transport was
-# reached, never that the SDK *accepted* the identifier as a device link:
-# as Section 2 documents, device_show never hands a raw path/URL to an
-# id-validated SDK method, so there is nothing here for `_IDENTIFIER_RE` /
-# `_require_nested_family` to accept or reject -- that acceptance path is
-# pinned directly against the SDK in
-# ``TestSdkRejectsCrossNetworkChildLinks.
-# test_get_device_accepts_same_network_child_link_forms`` above instead.
+# `device show` demonstrates the transport guard is a real trap (not a
+# fixture that silently no-ops) for every identifier shape -- bare id,
+# host-relative path, or full URL alike. As of the fix, `device_show`
+# forwards a path/URL identifier straight to `get_device` (Section 4 below
+# pins that with a mocked client method assertion); this section only
+# asserts that *some* request reaches the transport and the command
+# reports NOT_FOUND for an empty response, independent of which endpoint
+# was hit.
 # =====================================================================
 
 
@@ -440,4 +406,146 @@ class TestEeroShowReachesIdScopedEndpointForBareNumericId:
         result = runner.invoke(cli, ["-n", "111111", "eero", "show", "123"])
 
         guard.assert_awaited_once()
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+
+# =====================================================================
+# Section 4 -- id-scoped method receives the raw string verbatim, and a
+# plain name still resolves via the list
+#
+# Uses a mocked ``EeroClient`` (patched at ``eeroctl.utils.build_client``,
+# the CLI's single construction site) rather than the real SDK: these
+# assert *what eeroctl calls* for a given input shape, not what the SDK
+# does with it -- SDK acceptance/rejection is already pinned against the
+# real client in Section 1.
+# =====================================================================
+
+
+def _mock_client(**method_returns: Any) -> AsyncMock:
+    client = AsyncMock()
+    for name, value in method_returns.items():
+        setattr(client, name, AsyncMock(return_value=value))
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    return client
+
+
+class TestPathFormsForwardVerbatimToIdScopedMethod:
+    """A `/2.2/<resource>/<id>`-shaped input is awaited by the id-scoped SDK
+    method with the exact string the caller typed -- never trimmed, never
+    normalised, and the list endpoint is never called."""
+
+    def test_eero_show_forwards_path_to_get_eero(self, runner, monkeypatch):
+        path = "/2.2/eeros/123"
+        mock_client = _mock_client(
+            get_eero={"meta": {"code": 200}, "data": {"id": "123", "url": path}},
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "eero", "show", path])
+
+        mock_client.get_eero.assert_awaited_once_with(path, "111111")
+        mock_client.get_eeros.assert_not_called()
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+    def test_device_show_forwards_path_to_get_device(self, runner, monkeypatch):
+        path = "/2.2/networks/111111/devices/aabbccddeeff"
+        mock_client = _mock_client(
+            get_device={"meta": {"code": 200}, "data": {"id": "aabbccddeeff", "url": path}},
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "device", "show", path])
+
+        mock_client.get_device.assert_awaited_once_with(path, "111111")
+        mock_client.get_devices.assert_not_called()
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+    def test_profile_show_forwards_path_to_get_profile(self, runner, monkeypatch):
+        path = "/2.2/networks/111111/profiles/p1"
+        mock_client = _mock_client(
+            get_profile={
+                "meta": {"code": 200},
+                "data": {"id": "p1", "url": path, "name": "Kids"},
+            },
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "profile", "show", path])
+
+        mock_client.get_profile.assert_awaited_once_with(path, "111111")
+        mock_client.get_profiles.assert_not_called()
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+    def test_led_show_forwards_path_to_get_eero(self, runner, monkeypatch):
+        path = "/2.2/eeros/123"
+        mock_client = _mock_client(
+            get_eero={"meta": {"code": 200}, "data": {"id": "123", "url": path}},
+            get_led_status={"meta": {"code": 200}, "data": {"led_on": True}},
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "eero", "led", "show", path])
+
+        mock_client.get_eero.assert_awaited_once_with(path, "111111")
+        mock_client.get_eeros.assert_not_called()
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+
+class TestPlainNamesStillResolveViaTheList:
+    """Plain names/serials/MACs are unaffected by the fix: they still go
+    through the existing list-and-match resolvers, never straight to the
+    id-scoped method."""
+
+    def test_eero_show_resolves_name_via_list(self, runner, monkeypatch):
+        mock_client = _mock_client(
+            get_eeros={
+                "meta": {"code": 200},
+                "data": [{"id": "123", "url": "/2.2/eeros/123", "name": "Living Room"}],
+            },
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "eero", "show", "Living Room"])
+
+        mock_client.get_eeros.assert_awaited_once()
+        mock_client.get_eero.assert_not_called()
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+    def test_device_show_resolves_name_via_list(self, runner, monkeypatch):
+        mock_client = _mock_client(
+            get_devices={
+                "meta": {"code": 200},
+                "data": [
+                    {
+                        "url": "/2.2/networks/111111/devices/aabbccddeeff",
+                        "nickname": "iPhone",
+                    }
+                ],
+            },
+            get_device={
+                "meta": {"code": 200},
+                "data": {"id": "aabbccddeeff", "nickname": "iPhone"},
+            },
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "device", "show", "iPhone"])
+
+        mock_client.get_devices.assert_awaited_once()
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+    def test_profile_show_resolves_name_via_list(self, runner, monkeypatch):
+        mock_client = _mock_client(
+            get_profiles={
+                "meta": {"code": 200},
+                "data": [{"url": "/2.2/networks/111111/profiles/p1", "name": "Kids"}],
+            },
+            get_profile={"meta": {"code": 200}, "data": {"id": "p1", "name": "Kids"}},
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "profile", "show", "Kids"])
+
+        mock_client.get_profiles.assert_awaited_once()
         assert result.exit_code == ExitCode.SUCCESS, result.output

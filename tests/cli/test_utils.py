@@ -36,6 +36,7 @@ from eeroctl.utils import (
     get_cookie_file,
     get_default_output,
     get_preferred_network,
+    looks_like_sdk_reference,
     run_with_client,
     set_auth_method,
     set_default_output,
@@ -995,3 +996,59 @@ class TestWriteIfChanged:
 
         printed = " ".join(str(c.args[0]) for c in mock_console.print.call_args_list)
         assert "eero network sqm show" in printed
+
+
+# ========================== looks_like_sdk_reference Tests ==========================
+
+
+class TestLooksLikeSdkReference:
+    """Tests for `looks_like_sdk_reference`.
+
+    Pins the exact rule commands use to decide whether to forward an
+    identifier verbatim to an id-validated SDK method, or resolve it
+    locally via list-and-match (migration plan §2.5 decision 2/3).
+    """
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("../../account", id="path-traversal"),
+            pytest.param("x?y=1", id="query-string"),
+            pytest.param("a/b", id="multi-segment"),
+            pytest.param("{x}", id="format-template"),
+            pytest.param("", id="empty-string"),
+        ],
+    )
+    def test_hostile_corpus_strings_look_like_references(self, value):
+        """Every string in the SDK's own hostile-id corpus must be forwarded,
+        not resolved locally -- so the SDK's own validation can reject it."""
+        assert looks_like_sdk_reference(value) is True
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("/2.2/eeros/123", id="host-relative-path"),
+            pytest.param(
+                "https://api-user.e2ro.com/2.2/networks/111111/devices/aabbccddeeff",
+                id="absolute-url",
+            ),
+        ],
+    )
+    def test_path_and_url_forms_look_like_references(self, value):
+        assert looks_like_sdk_reference(value) is True
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("Kids", id="plain-name"),
+            pytest.param("Living Room", id="name-with-space-not-a-query-char"),
+            pytest.param("aabbccddeeff", id="bare-mac"),
+            pytest.param("SERIAL123", id="bare-serial"),
+            pytest.param("123", id="bare-numeric-id"),
+        ],
+    )
+    def test_plain_names_serials_and_macs_do_not_look_like_references(self, value):
+        """Names/serials/MACs must keep resolving via the existing
+        list-and-match path -- this is the "names must keep working"
+        requirement from the fix."""
+        assert looks_like_sdk_reference(value) is False

@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Literal, Optional, Set, Union
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroException, EeroPremiumRequiredException
+from eero.exceptions import EeroException, EeroNotFoundException, EeroPremiumRequiredException
 from rich.panel import Panel
 from rich.table import Table
 
@@ -28,7 +28,7 @@ from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
 from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ..transformers import extract_data, extract_profiles, normalize_profile
-from ..utils import run_with_client, write_if_changed
+from ..utils import looks_like_sdk_reference, run_with_client, write_if_changed
 
 
 def _find_profile(profiles: list, identifier: str) -> Optional[Dict[str, Any]]:
@@ -235,21 +235,48 @@ def profile_show(
 
     async def run_cmd() -> None:
         async def get_profile(client: EeroClient) -> None:
-            with cli_ctx.status("Finding profile..."):
-                raw_response = await client.get_profiles(cli_ctx.network_id)
+            # A path/URL/hostile-shaped identifier goes straight to the
+            # id-validated SDK method, verbatim -- never pre-validated here
+            # (migration plan §2.5 decision 2). `EeroValidationException` is
+            # deliberately not caught: it propagates to `run_with_client` and
+            # maps to exit 2. Only a well-shaped-but-absent id/path/URL
+            # (`EeroNotFoundException`, or an empty envelope) falls through
+            # to "not found"; plain names skip straight to the existing
+            # list-and-match resolution below.
+            profile: Optional[Dict[str, Any]] = None
+            if looks_like_sdk_reference(profile_identifier):
+                with cli_ctx.status("Getting profile details..."):
+                    try:
+                        raw_detail = await client.get_profile(
+                            profile_identifier, cli_ctx.network_id
+                        )
+                    except EeroNotFoundException:
+                        raw_detail = None
 
-            profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_identifier)
+                data = extract_data(raw_detail) if isinstance(raw_detail, dict) else None
+                if isinstance(data, dict) and data:
+                    profile = normalize_profile(data)
 
-            if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
-                console.print("[dim]Try: eero profile list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
+                if profile is None:
+                    console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                    console.print("[dim]Try: eero profile list[/dim]")
+                    sys.exit(ExitCode.NOT_FOUND)
+            else:
+                with cli_ctx.status("Finding profile..."):
+                    raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            with cli_ctx.status("Getting profile details..."):
-                raw_detail = await client.get_profile(target["id"], cli_ctx.network_id)
+                profiles = extract_profiles(raw_response)
+                target = _find_profile(profiles, profile_identifier)
 
-            profile = normalize_profile(extract_data(raw_detail))
+                if not target or not target.get("id"):
+                    console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                    console.print("[dim]Try: eero profile list[/dim]")
+                    sys.exit(ExitCode.NOT_FOUND)
+
+                with cli_ctx.status("Getting profile details..."):
+                    raw_detail = await client.get_profile(target["id"], cli_ctx.network_id)
+
+                profile = normalize_profile(extract_data(raw_detail))
 
             if cli_ctx.is_structured_output():
                 cli_ctx.render_structured(profile, "eero.profile.show/v1")
