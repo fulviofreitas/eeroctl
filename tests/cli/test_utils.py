@@ -8,6 +8,7 @@ Tests cover:
 """
 
 import json
+import logging
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -25,6 +26,7 @@ from eero.exceptions import (
 from eeroctl.exit_codes import ExitCode
 from eeroctl.utils import (
     DEFAULT_CONFIG,
+    backup_legacy_cookie_file,
     build_client,
     confirm_action,
     ensure_config,
@@ -281,6 +283,159 @@ class TestBuildClient:
             build_client(cookie_file=override)
 
         assert mock_client_class.call_args.kwargs["cookie_file"] == str(override)
+
+    def test_backs_up_the_cookie_file_before_constructing_the_client(self, tmp_path, monkeypatch):
+        """backup_legacy_cookie_file runs before EeroClient(...) is called."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        call_order = []
+
+        def fake_backup(cookie_file):
+            call_order.append("backup")
+            return None
+
+        def fake_client(**kwargs):
+            call_order.append("construct")
+
+        with (
+            patch(
+                "eeroctl.utils.backup_legacy_cookie_file", side_effect=fake_backup
+            ) as mock_backup,
+            patch("eeroctl.utils.EeroClient", side_effect=fake_client),
+        ):
+            build_client()
+
+        assert call_order == ["backup", "construct"]
+        mock_backup.assert_called_once_with(get_cookie_file())
+
+    def test_skips_backup_when_resolved_cookie_file_is_none(self, monkeypatch):
+        """Forward-compat guard for the future ephemeral-token mode (§3.4).
+
+        Today ``get_cookie_file()`` always returns a real path, so this
+        branch is unreachable through the public API; simulate the future
+        "no file backend at all" case by making the resolution return None
+        directly, and confirm the backup is skipped and EeroClient receives
+        ``cookie_file=None``.
+        """
+        monkeypatch.setattr("eeroctl.utils.get_cookie_file", lambda: None)
+
+        with (
+            patch("eeroctl.utils.backup_legacy_cookie_file") as mock_backup,
+            patch("eeroctl.utils.EeroClient") as mock_client_class,
+        ):
+            build_client(use_keyring=True)
+
+        mock_backup.assert_not_called()
+        mock_client_class.assert_called_once_with(cookie_file=None, use_keyring=True)
+
+
+# ========================== backup_legacy_cookie_file Tests ==========================
+
+
+class TestBackupLegacyCookieFile:
+    """Tests for backup_legacy_cookie_file (v8 migration plan §8.2)."""
+
+    def test_schema1_file_is_backed_up_with_identical_content_and_mode_0600(self, tmp_path):
+        cookie_file = tmp_path / "cookies.json"
+        content = json.dumps(
+            {
+                "session_id": "tok",
+                "refresh_token": "refresh-tok",
+                "session_expiry": "2099-12-31T23:59:59",
+            }
+        )
+        cookie_file.write_text(content)
+
+        result = backup_legacy_cookie_file(cookie_file)
+
+        backup_path = tmp_path / "cookies.json.pre-v8.bak"
+        assert result == backup_path
+        assert backup_path.exists()
+        assert backup_path.read_text() == content
+        assert (backup_path.stat().st_mode & 0o777) == 0o600
+
+    def test_schema2_file_is_not_backed_up(self, tmp_path):
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text(json.dumps({"session_id": "tok", "schema_version": 2}))
+
+        result = backup_legacy_cookie_file(cookie_file)
+
+        assert result is None
+        assert not (tmp_path / "cookies.json.pre-v8.bak").exists()
+
+    def test_missing_file_is_a_noop(self, tmp_path):
+        cookie_file = tmp_path / "cookies.json"
+
+        result = backup_legacy_cookie_file(cookie_file)
+
+        assert result is None
+        assert not (tmp_path / "cookies.json.pre-v8.bak").exists()
+
+    def test_idempotent_on_second_run(self, tmp_path):
+        """A second call never overwrites the existing backup."""
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text(json.dumps({"session_id": "tok"}))
+
+        first = backup_legacy_cookie_file(cookie_file)
+        backup_path = tmp_path / "cookies.json.pre-v8.bak"
+        original_backup_content = backup_path.read_text()
+        original_mtime_ns = backup_path.stat().st_mtime_ns
+
+        # The live file changing (as the SDK's migration would do) must not
+        # cause the second call to touch the existing backup.
+        cookie_file.write_text(json.dumps({"session_id": "tok-rewritten"}))
+        second = backup_legacy_cookie_file(cookie_file)
+
+        assert first == backup_path
+        assert second is None
+        assert backup_path.read_text() == original_backup_content
+        assert backup_path.stat().st_mtime_ns == original_mtime_ns
+
+    def test_ignores_sdk_temp_file_siblings(self, tmp_path):
+        """A `.cookies.json.<random>.tmp` sibling is never touched or matched."""
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text(json.dumps({"session_id": "tok"}))
+        tmp_sibling = tmp_path / ".cookies.json.abc123.tmp"
+        tmp_sibling.write_text("must never be read or overwritten")
+
+        result = backup_legacy_cookie_file(cookie_file)
+
+        assert result == tmp_path / "cookies.json.pre-v8.bak"
+        assert tmp_sibling.read_text() == "must never be read or overwritten"
+
+    def test_invalid_json_is_a_noop(self, tmp_path):
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text("{not valid json")
+
+        result = backup_legacy_cookie_file(cookie_file)
+
+        assert result is None
+        assert not (tmp_path / "cookies.json.pre-v8.bak").exists()
+
+    def test_non_object_json_is_a_noop(self, tmp_path):
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text(json.dumps(["not", "an", "object"]))
+
+        result = backup_legacy_cookie_file(cookie_file)
+
+        assert result is None
+
+    def test_directory_at_path_is_a_noop(self, tmp_path):
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.mkdir()
+
+        result = backup_legacy_cookie_file(cookie_file)
+
+        assert result is None
+
+    def test_logs_the_path_only_never_the_token(self, tmp_path, caplog):
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text(json.dumps({"session_id": "super-secret-token"}))
+
+        with caplog.at_level(logging.INFO, logger="eeroctl"):
+            backup_legacy_cookie_file(cookie_file)
+
+        assert "super-secret-token" not in caplog.text
+        assert str(tmp_path / "cookies.json.pre-v8.bak") in caplog.text
 
 
 # ========================== with_client Decorator Tests ==========================

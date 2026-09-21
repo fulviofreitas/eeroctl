@@ -3,6 +3,7 @@
 import asyncio
 import functools
 import json
+import logging
 import os
 import sys
 from pathlib import Path
@@ -19,7 +20,69 @@ if TYPE_CHECKING:
 # Create console for rich output
 console = Console()
 
+logger = logging.getLogger("eeroctl")
+
 T = TypeVar("T")
+
+
+def backup_legacy_cookie_file(cookie_file: Path) -> Optional[Path]:
+    """Back up a pre-v8 (schema 1) credential file before the SDK migrates it.
+
+    eero-api 8 rewrites a schema-1 record to schema 2 on first load, and in
+    keyring mode ``ChainedStorage`` promotes the token into the keyring and
+    then **deletes** the cookie file entirely (v8 migration plan §8.2, §2.1;
+    ``CREDENTIAL_SCHEMA_VERSION`` at ``eero/const.py:86``). Backing up the
+    pre-migration file once means a rollback to a 7.x release does not lose
+    the stored session.
+
+    No-op, and never raises, when:
+        - the file does not exist, or is a directory;
+        - the file's content is not valid JSON (or not a JSON object);
+        - the parsed record already has a ``schema_version`` key (already
+          schema 2+, nothing to protect);
+        - a backup already exists at ``<cookie_file>.pre-v8.bak`` (the
+          ``O_EXCL`` open fails) -- this makes the function idempotent.
+
+    Only ever touches the exact path passed in; never globs or otherwise
+    matches the SDK's own ``.cookies.json.<random>.tmp`` temp files
+    (``FileStorage.save``, eero-api 8.0.1).
+
+    Args:
+        cookie_file: The exact cookie file path eeroctl is about to hand to
+            the SDK.
+
+    Returns:
+        The backup file's path if a backup was written this call, else
+        ``None``.
+    """
+    try:
+        if not cookie_file.is_file():
+            return None
+        raw = cookie_file.read_text()
+        data = json.loads(raw)
+    except (OSError, ValueError):
+        return None
+
+    if not isinstance(data, dict) or "schema_version" in data:
+        return None
+
+    backup_path = cookie_file.with_name(cookie_file.name + ".pre-v8.bak")
+    try:
+        fd = os.open(str(backup_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except OSError:
+        # Either a backup already exists (O_EXCL) or the directory isn't
+        # writable; a failed backup must never block client construction.
+        return None
+
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(raw)
+    except OSError:
+        return None
+
+    # Log the path only -- never the token, which the raw content may carry.
+    logger.info("Backed up pre-v8 credential file to %s", backup_path)
+    return backup_path
 
 
 def build_client(
@@ -46,7 +109,10 @@ def build_client(
             construction only (e.g. an in-flight ``--no-keyring`` flag that
             has not been persisted yet). Defaults to ``get_use_keyring()``.
         cookie_file: Overrides the configured cookie file path for this
-            construction only. Defaults to ``get_cookie_file()``.
+            construction only. Defaults to ``get_cookie_file()``. Skips the
+            pre-v8 backup entirely when explicitly ``None`` (the future
+            ephemeral ``EEROCTL_SESSION_TOKEN`` mode, which passes no file
+            backend to the SDK at all).
 
     Returns:
         A configured, un-entered :class:`~eero.EeroClient`. Callers use it
@@ -56,8 +122,12 @@ def build_client(
     del cli_ctx  # Reserved for a later commit; unused today.
     resolved_cookie_file = cookie_file if cookie_file is not None else get_cookie_file()
     resolved_use_keyring = use_keyring if use_keyring is not None else get_use_keyring()
+    if resolved_cookie_file is not None:
+        # Runs for both auth methods: keyring mode still reads the file via
+        # SDK ChainedStorage on first load, promotes it, and deletes it.
+        backup_legacy_cookie_file(resolved_cookie_file)
     return EeroClient(
-        cookie_file=str(resolved_cookie_file),
+        cookie_file=str(resolved_cookie_file) if resolved_cookie_file is not None else None,
         use_keyring=resolved_use_keyring,
     )
 
