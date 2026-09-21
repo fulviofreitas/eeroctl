@@ -472,6 +472,8 @@ class TestWriteSpecsRegistry:
         "network password set",
         "network password clear",
         "network reboot",
+        "network thread set",
+        "troubleshoot diagnostics run",
         "network guest enable",
         "network guest disable",
         "network guest set",
@@ -643,6 +645,8 @@ class TestWriteSpecsRegistry:
         "apply_update": ["eero updates apply"],
         "set_network_password": ["network password set"],
         "clear_network_password": ["network password clear"],
+        "update_thread": ["network thread set"],
+        "regenerate_thread_credentials": ["network thread set"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

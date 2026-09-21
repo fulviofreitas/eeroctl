@@ -221,6 +221,24 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("set_dns_caching", (True, "nid"), {}, "network/dns.py:804"),
     # -- network/advanced.py, dhcp.py, forwards.py -------------------------
     ("get_thread", ("nid",), {}, "network/advanced.py:80"),
+    (
+        "update_thread",
+        (),
+        {"enable_credential_syncing": True, "network_id": "nid"},
+        "network/advanced.py:thread_set (client.py:1441)",
+    ),
+    (
+        "regenerate_thread_credentials",
+        ("nid",),
+        {},
+        "network/advanced.py:thread_set (client.py:1465)",
+    ),
+    (
+        "run_diagnostics",
+        ("nid",),
+        {"device": "did", "symptom": "no_internet"},
+        "troubleshoot.py:diagnostics_run (client.py:1251)",
+    ),
     ("get_support", ("nid",), {}, "network/advanced.py:127,182"),
     ("get_reservations", ("nid",), {}, "network/dhcp.py:45"),
     (

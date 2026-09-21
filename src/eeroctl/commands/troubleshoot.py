@@ -5,8 +5,10 @@ Commands:
 - eero troubleshoot ping: Ping a host
 - eero troubleshoot trace: Traceroute to a host
 - eero troubleshoot doctor: Run diagnostic checks
+- eero troubleshoot diagnostics run: Run network diagnostics
 """
 
+import sys
 from typing import Optional
 
 import click
@@ -15,7 +17,9 @@ from rich.panel import Panel
 from rich.table import Table
 
 from ..context import ensure_cli_context
-from ..options import apply_options, network_option, output_option
+from ..exit_codes import ExitCode
+from ..options import apply_options, force_option, network_option, output_option
+from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ..transformers import (
     extract_data,
     extract_devices,
@@ -46,6 +50,7 @@ def troubleshoot_group(ctx: click.Context) -> None:
       ping         - Ping a target host
       trace        - Traceroute to target
       doctor       - Run diagnostic checks
+      diagnostics  - Run network diagnostics (write)
 
     \b
     Examples:
@@ -352,3 +357,68 @@ async def troubleshoot_doctor(
             console.print("\n[bold yellow]⚠ Some warnings detected.[/bold yellow]")
         else:
             console.print("\n[bold green]✓ All checks passed![/bold green]")
+
+
+@troubleshoot_group.group(name="diagnostics")
+@click.pass_context
+def diagnostics_group(ctx: click.Context) -> None:
+    """Run network diagnostics.
+
+    \b
+    Commands:
+      run - Run network diagnostics
+    """
+    pass
+
+
+@diagnostics_group.command(name="run")
+@click.option("--device", help="Device id/MAC/name to focus diagnostics on")
+@click.option("--symptom", help="Symptom identifier")
+@force_option
+@network_option
+@click.pass_context
+@with_client
+async def diagnostics_run(
+    ctx: click.Context,
+    client: EeroClient,
+    device: Optional[str],
+    symptom: Optional[str],
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Run network diagnostics.
+
+    \b
+    Options:
+      --device TEXT   Device id/MAC/name to focus diagnostics on
+      --symptom TEXT  Symptom identifier
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+
+    spec = get_write_spec("troubleshoot diagnostics run")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    with cli_ctx.status("Running diagnostics..."):
+        result = await client.run_diagnostics(cli_ctx.network_id, device=device, symptom=symptom)
+
+    meta = result.get("meta", {}) if isinstance(result, dict) else {}
+    if meta.get("code") == 200 or result:
+        console.print("[bold green]Diagnostics run started.[/bold green]")
+    else:
+        console.print("[red]Failed to run diagnostics[/red]")
+        sys.exit(ExitCode.GENERIC_ERROR)

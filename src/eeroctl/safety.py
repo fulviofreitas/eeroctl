@@ -643,6 +643,22 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             read_command="eero network show",
             phrase="REBOOT",
         ),
+        # -- network thread set / troubleshoot diagnostics run: migration
+        # plan §4 phase C row 40. --
+        "network thread set": WriteSpec(
+            command="network thread set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network thread show",
+        ),
+        "troubleshoot diagnostics run": WriteSpec(
+            command="troubleshoot diagnostics run",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero troubleshoot doctor",
+        ),
         # -- network guest: `set_guest_network`/`set_guest_password` are
         # both in the SDK's live-verified allowlist. --
         "network guest enable": WriteSpec(
