@@ -276,6 +276,14 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/backup.py:236 (client.py:2974, GET, verified)",
     ),
+    # -- network/subnets.py (phase A, commit 20) -----------------------------
+    ("get_subnets_config", ("nid",), {}, "network/subnets.py:50 (client.py:2991)"),
+    (
+        "get_subnet_content_filters",
+        ("sid", "nid"),
+        {},
+        "network/subnets.py:88 (client.py:3023)",
+    ),
 ]
 
 

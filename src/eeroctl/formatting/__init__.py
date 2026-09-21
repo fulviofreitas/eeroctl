@@ -90,6 +90,9 @@ from .profile import (
     print_profile_details,
 )
 
+# Subnets formatting
+from .subnets import print_subnet_content_filters, print_subnets_config
+
 # WPA3 / fast-transition formatting
 from .wpa3 import print_fast_transition, print_wpa3_per_band
 
@@ -157,4 +160,7 @@ __all__ = [
     # Backup access points
     "print_backup_access_points",
     "print_backup_ssid_discovery",
+    # Subnets
+    "print_subnets_config",
+    "print_subnet_content_filters",
 ]

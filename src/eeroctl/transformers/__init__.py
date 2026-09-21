@@ -39,6 +39,7 @@ from .notifications import (
 from .permissions import extract_capability_map, extract_permissions, extract_role
 from .power_saving import extract_power_saving_schedules
 from .profile import extract_profile, extract_profiles, normalize_profile
+from .subnets import extract_subnet_content_filters, extract_subnets_config
 from .wpa3 import extract_fast_transition, extract_wpa3_per_band
 
 __all__ = [
@@ -99,4 +100,7 @@ __all__ = [
     # Backup access points
     "extract_backup_access_points",
     "extract_backup_ssid_discovery",
+    # Subnets
+    "extract_subnets_config",
+    "extract_subnet_content_filters",
 ]

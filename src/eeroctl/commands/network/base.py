@@ -59,6 +59,7 @@ def network_group(ctx: click.Context) -> None:
       members   - Network members and pending invites
       wpa3      - Per-band WPA3 mode (read-only in phase A)
       power-saving - Power-saving schedules (read-only in phase A)
+      subnets   - Subnet configuration and content filters
 
     \b
     Examples:
@@ -379,6 +380,7 @@ from .power_saving import power_saving_group  # noqa: E402
 from .security import security_group  # noqa: E402
 from .speedtest import speedtest_group  # noqa: E402
 from .sqm import sqm_group  # noqa: E402
+from .subnets import subnets_group  # noqa: E402
 from .wpa3 import wpa3_per_band_group  # noqa: E402
 
 # Register all subcommand groups
@@ -402,3 +404,4 @@ network_group.add_command(notifications_group)
 network_group.add_command(members_group)
 network_group.add_command(wpa3_per_band_group)
 network_group.add_command(power_saving_group)
+network_group.add_command(subnets_group)
