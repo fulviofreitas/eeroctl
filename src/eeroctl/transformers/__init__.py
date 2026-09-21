@@ -5,6 +5,10 @@ eero-api library into structured data for display and processing.
 """
 
 from .account import extract_premium_customer
+from .backup_access_points import (
+    extract_backup_access_points,
+    extract_backup_ssid_discovery,
+)
 from .base import extract_data, extract_id_from_url, extract_list, safe_get
 from .device import extract_device, extract_devices, normalize_device
 from .dns_policy import extract_dns_policy
@@ -92,4 +96,7 @@ __all__ = [
     "extract_fast_transition",
     # Power saving
     "extract_power_saving_schedules",
+    # Backup access points
+    "extract_backup_access_points",
+    "extract_backup_ssid_discovery",
 ]

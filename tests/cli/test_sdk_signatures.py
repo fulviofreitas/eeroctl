@@ -263,6 +263,19 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/power_saving.py:61 (client.py:2830, verified)",
     ),
+    # -- network/backup.py: access-points subgroup (phase A, commit 19) -----
+    (
+        "list_backup_access_points",
+        ("nid",),
+        {},
+        "network/backup.py:218 (client.py:2910)",
+    ),
+    (
+        "discover_backup_ssids",
+        ("nid",),
+        {},
+        "network/backup.py:236 (client.py:2974, GET, verified)",
+    ),
 ]
 
 

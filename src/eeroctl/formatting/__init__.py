@@ -10,6 +10,9 @@ for backward compatibility with existing imports.
 # Account formatting
 from .account import print_account_premium
 
+# Backup access-points formatting
+from .backup_access_points import print_backup_access_points, print_backup_ssid_discovery
+
 # Base utilities
 from .base import (
     DetailLevel,
@@ -151,4 +154,7 @@ __all__ = [
     "print_fast_transition",
     # Power saving
     "print_power_saving_schedules",
+    # Backup access points
+    "print_backup_access_points",
+    "print_backup_ssid_discovery",
 ]

@@ -15,7 +15,7 @@ Note: eero-api 8.0.1 removed `get_backup_network`, `get_backup_status`,
 import asyncio
 import json
 import sys
-from typing import Any
+from typing import Any, Optional
 
 import click
 from eero import EeroClient
@@ -24,8 +24,17 @@ from rich.panel import Panel
 
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
+from ...formatting.backup_access_points import (
+    print_backup_access_points,
+    print_backup_ssid_discovery,
+)
+from ...options import apply_options, common_options
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
+from ...transformers.backup_access_points import (
+    extract_backup_access_points,
+    extract_backup_ssid_discovery,
+)
 from ...utils import run_with_client, write_if_changed
 
 
@@ -204,5 +213,67 @@ def backup_status(ctx: click.Context) -> None:
                 )
 
         await run_with_client(get_status)
+
+    asyncio.run(run_cmd())
+
+
+# ==================== Backup Access Points (read-only, phase A) ====================
+#
+# list_backup_access_points/discover_backup_ssids (client.py:2910/2974) are
+# GETs; commit 5 already rewired `backup show`/`backup status` above onto the
+# get_backup_internet/get_cellular_backup_* family and left this family
+# alone. add/update/delete/rearrange/discover-start/connectivity-check are
+# phase C.
+
+
+@backup_group.group(name="access-points")
+@click.pass_context
+def backup_access_points_group(ctx: click.Context) -> None:
+    """View backup access points (Eero Plus feature).
+
+    \b
+    Commands:
+      list     - List configured backup access points
+      discover - Discover nearby backup SSIDs
+    """
+    pass
+
+
+@backup_access_points_group.command(name="list")
+@common_options
+@click.pass_context
+def backup_access_points_list(
+    ctx: click.Context, output: Optional[str], network_id: Optional[str]
+) -> None:
+    """List configured backup access points."""
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
+
+    async def run_cmd() -> None:
+        async def get_access_points(client: EeroClient) -> None:
+            with cli_ctx.status("Getting backup access points..."):
+                raw = await client.list_backup_access_points(cli_ctx.network_id)
+            print_backup_access_points(cli_ctx, extract_backup_access_points(raw))
+
+        await run_with_client(get_access_points)
+
+    asyncio.run(run_cmd())
+
+
+@backup_access_points_group.command(name="discover")
+@common_options
+@click.pass_context
+def backup_access_points_discover(
+    ctx: click.Context, output: Optional[str], network_id: Optional[str]
+) -> None:
+    """Discover nearby backup SSIDs."""
+    cli_ctx = apply_options(ctx, output=output, network_id=network_id)
+
+    async def run_cmd() -> None:
+        async def discover(client: EeroClient) -> None:
+            with cli_ctx.status("Discovering backup SSIDs..."):
+                raw = await client.discover_backup_ssids(cli_ctx.network_id)
+            print_backup_ssid_discovery(cli_ctx, extract_backup_ssid_discovery(raw))
+
+        await run_with_client(discover)
 
     asyncio.run(run_cmd())
