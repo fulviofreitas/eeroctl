@@ -14,6 +14,7 @@ Tests cover:
 
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
 
 from eeroctl.exit_codes import ExitCode
@@ -828,3 +829,89 @@ class TestRequireWriteConfirmation:
         result = require_write_confirmation(spec, "Living Room")
 
         assert result is True
+
+
+# ========================== Security-toggle getattr-dispatch coverage ==========================
+
+
+class TestSecurityToggleDispatchCoverage:
+    """Regression coverage for the `getattr(client, api_method)` dynamic
+    dispatch in `network/security.py` (security-review follow-up).
+
+    The source-walking completeness test above (and the SDK's own mypy
+    checks) only see literal `await client.<verb>(` call sites. The five
+    security toggles (wpa3, band-steering, upnp, ipv6, thread) call through
+    `method = getattr(client, api_method); await method(...)`, where
+    `api_method` is a function parameter, not a literal at the call site --
+    invisible to any regex over `await client\\.`. This is exactly the shape
+    that let the string-dispatch mypy blind spot ship in eero-api 7→8
+    (migration plan §2.4). These tests instead ground themselves in the
+    *other* place the toggle inventory is a literal: the
+    `_make_security_toggle(name, method, display)` registration calls at
+    the bottom of `network/security.py`.
+
+    What fails if a toggle is unwired: a new call like
+    `_make_security_toggle("newsetting", "set_new", "New")` reaches
+    `_set_security_setting`, which calls
+    `get_write_spec(f"network security {setting_name} {action}")` before
+    doing anything else (including before the confirmation prompt) --
+    `get_write_spec` raises `KeyError` for any command path not in
+    `WRITE_SPECS`, so an unregistered toggle fails loudly and immediately,
+    never silently reaching `getattr`/the write. `test_unwired_toggle_fails_loudly_via_get_write_spec`
+    proves this by registering exactly such a throwaway toggle and
+    confirming it raises instead of silently writing.
+    """
+
+    @staticmethod
+    def _registered_toggles():
+        """Extract (setting_name, sdk_method) pairs from the literal
+        `_make_security_toggle(...)` calls in network/security.py -- the
+        actual, ground-truth toggle inventory, not a hand-maintained list
+        that could drift from it.
+        """
+        import inspect
+        import re
+
+        from eeroctl.commands.network import security as security_module
+
+        source = inspect.getsource(security_module)
+        pattern = re.compile(r'_make_security_toggle\(\s*"([^"]+)"\s*,\s*"(set_\w+)"')
+        return pattern.findall(source)
+
+    def test_every_registered_toggle_has_both_enable_and_disable_specs(self):
+        toggles = self._registered_toggles()
+        assert toggles, "No _make_security_toggle(...) calls found -- extraction regex is stale"
+
+        for setting_name, _method in toggles:
+            for action in ("enable", "disable"):
+                command = f"network security {setting_name} {action}"
+                assert command in WRITE_SPECS, (
+                    f"{command!r} (from _make_security_toggle({setting_name!r}, ...)) "
+                    "has no WriteSpec"
+                )
+
+    def test_registered_toggle_count_matches_expected(self):
+        """Pins the toggle inventory so a newly added toggle is caught here
+        (and its coverage checked above) rather than silently expanding the
+        getattr-dispatch blind spot."""
+        toggles = self._registered_toggles()
+        assert {name for name, _ in toggles} == {
+            "wpa3",
+            "band-steering",
+            "upnp",
+            "ipv6",
+            "thread",
+        }
+
+    def test_unwired_toggle_fails_loudly_via_get_write_spec(self):
+        """Proof: an unregistered toggle raises KeyError from get_write_spec
+        before any confirmation prompt or SDK call -- it cannot silently
+        dispatch an unconfirmed, unregistered write."""
+        from eeroctl.commands.network.security import _set_security_setting
+        from eeroctl.context import EeroCliContext
+
+        ctx = click.Context(click.Command("bogus"))
+        ctx.obj = EeroCliContext()
+
+        with pytest.raises(KeyError):
+            _set_security_setting(ctx, "bogus-unregistered", "set_bogus", "Bogus", True, True)
