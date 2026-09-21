@@ -40,6 +40,7 @@ from .permissions import extract_capability_map, extract_permissions, extract_ro
 from .power_saving import extract_power_saving_schedules
 from .profile import extract_profile, extract_profiles, normalize_profile
 from .subnets import extract_subnet_content_filters, extract_subnets_config
+from .wan import extract_multistaticip
 from .wpa3 import extract_fast_transition, extract_wpa3_per_band
 
 __all__ = [
@@ -103,4 +104,6 @@ __all__ = [
     # Subnets
     "extract_subnets_config",
     "extract_subnet_content_filters",
+    # WAN
+    "extract_multistaticip",
 ]

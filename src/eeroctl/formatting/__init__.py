@@ -93,6 +93,9 @@ from .profile import (
 # Subnets formatting
 from .subnets import print_subnet_content_filters, print_subnets_config
 
+# WAN formatting
+from .wan import print_multistaticip, print_multistaticip_not_configured
+
 # WPA3 / fast-transition formatting
 from .wpa3 import print_fast_transition, print_wpa3_per_band
 
@@ -163,4 +166,7 @@ __all__ = [
     # Subnets
     "print_subnets_config",
     "print_subnet_content_filters",
+    # WAN
+    "print_multistaticip",
+    "print_multistaticip_not_configured",
 ]

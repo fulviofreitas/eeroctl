@@ -284,6 +284,8 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/subnets.py:88 (client.py:3023)",
     ),
+    # -- network/wan.py (phase A, commit 21) ---------------------------------
+    ("get_multistaticip", ("nid",), {}, "network/wan.py:81 (client.py:3032)"),
 ]
 
 
