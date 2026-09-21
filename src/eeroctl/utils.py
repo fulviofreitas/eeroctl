@@ -145,7 +145,7 @@ def backup_legacy_cookie_file(cookie_file: Path) -> Optional[Path]:
     if not isinstance(data, dict) or "schema_version" in data:
         return None
 
-    backup_path = cookie_file.with_name(cookie_file.name + ".pre-v8.bak")
+    backup_path = get_legacy_backup_path(cookie_file)
     try:
         fd = os.open(str(backup_path), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     except OSError:
@@ -157,11 +157,27 @@ def backup_legacy_cookie_file(cookie_file: Path) -> Optional[Path]:
         with os.fdopen(fd, "w") as f:
             f.write(raw)
     except OSError:
+        # Don't leave a truncated/partial file behind masquerading as a
+        # good backup -- best-effort removal, still never raises.
+        try:
+            os.unlink(backup_path)
+        except OSError:
+            pass
         return None
 
     # Log the path only -- never the token, which the raw content may carry.
     logger.info("Backed up pre-v8 credential file to %s", backup_path)
     return backup_path
+
+
+def get_legacy_backup_path(cookie_file: Path) -> Path:
+    """The path :func:`backup_legacy_cookie_file` writes/would write to.
+
+    Shared with the callers that need to check for or remove that backup
+    (``auth clear``, ``auth logout``, ``auth status``) so the naming
+    convention lives in exactly one place.
+    """
+    return cookie_file.with_name(cookie_file.name + ".pre-v8.bak")
 
 
 def _resolve_cli_ctx(cli_ctx: Optional[EeroCliContext]) -> Optional[EeroCliContext]:

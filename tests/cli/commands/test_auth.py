@@ -170,11 +170,15 @@ class TestAuthLogout:
         assert "Failed to logout" in result.output
 
     @patch("eeroctl.commands.auth.build_client")
-    def test_logout_validation_exception_maps_to_exit_2(self, mock_build_client, runner):
+    @patch("eeroctl.commands.auth.get_cookie_file")
+    def test_logout_validation_exception_maps_to_exit_2(
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
+    ):
         """A construction-time EeroValidationException (e.g. a bad
         EEROCTL_ACCEPT_LANGUAGE) exits 2, not an unhandled traceback."""
         from eero.exceptions import EeroValidationException
 
+        mock_cookie_file.return_value = tmp_path / "cookies.json"
         mock_build_client.side_effect = EeroValidationException(
             "accept_language", "must be printable ASCII"
         )
@@ -182,6 +186,46 @@ class TestAuthLogout:
         result = runner.invoke(cli, ["auth", "logout"])
 
         assert result.exit_code == 2
+
+    @patch("eeroctl.commands.auth.build_client")
+    @patch("eeroctl.commands.auth.get_cookie_file")
+    def test_logout_removes_pre_v8_backup(
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
+    ):
+        """auth logout unlinks the plaintext pre-v8 credential backup, if present."""
+        cookie_file = tmp_path / "cookies.json"
+        mock_cookie_file.return_value = cookie_file
+        backup_path = tmp_path / "cookies.json.pre-v8.bak"
+        backup_path.write_text('{"session_id": "old-token"}')
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = False
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "logout"])
+
+        assert not backup_path.exists()
+        assert "removed pre-v8 credential backup" in result.stderr
+
+    @patch("eeroctl.commands.auth.build_client")
+    @patch("eeroctl.commands.auth.get_cookie_file")
+    def test_logout_with_no_backup_prints_nothing_extra(
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
+    ):
+        """No backup file present -> no message, no error."""
+        mock_cookie_file.return_value = tmp_path / "cookies.json"
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = False
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "logout"])
+
+        assert "removed pre-v8 credential backup" not in result.stderr
 
 
 class TestAuthClear:
@@ -236,6 +280,71 @@ class TestAuthClear:
 
         assert "Authentication data cleared" in result.output
 
+    @patch("eeroctl.commands.auth.build_client")
+    @patch("eeroctl.commands.auth.get_cookie_file")
+    def test_clear_removes_pre_v8_backup(
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
+    ):
+        """auth clear unlinks the plaintext pre-v8 credential backup, if present."""
+        cookie_file = tmp_path / "cookies.json"
+        mock_cookie_file.return_value = cookie_file
+        backup_path = tmp_path / "cookies.json.pre-v8.bak"
+        backup_path.write_text('{"session_id": "old-token"}')
+
+        mock_client = AsyncMock()
+        mock_client._api = MagicMock()
+        mock_client._api.auth = MagicMock()
+        mock_client._api.auth.clear_auth_data = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "clear", "--force"])
+
+        assert not backup_path.exists()
+        assert "removed pre-v8 credential backup" in result.stderr
+
+    @patch("eeroctl.commands.auth.build_client")
+    @patch("eeroctl.commands.auth.get_cookie_file")
+    def test_clear_with_no_backup_prints_nothing_extra(
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
+    ):
+        """No backup file present -> no message, no error."""
+        mock_cookie_file.return_value = tmp_path / "cookies.json"
+
+        mock_client = AsyncMock()
+        mock_client._api = MagicMock()
+        mock_client._api.auth = MagicMock()
+        mock_client._api.auth.clear_auth_data = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "clear", "--force"])
+
+        assert "removed pre-v8 credential backup" not in result.stderr
+
+    @patch("eeroctl.commands.auth.build_client")
+    @patch("eeroctl.commands.auth.get_cookie_file")
+    def test_clear_cancelled_confirmation_leaves_backup(
+        self, mock_cookie_file, mock_build_client, runner, tmp_path
+    ):
+        """Declining the confirmation prompt must not remove the backup either."""
+        cookie_file = tmp_path / "cookies.json"
+        mock_cookie_file.return_value = cookie_file
+        backup_path = tmp_path / "cookies.json.pre-v8.bak"
+        backup_path.write_text('{"session_id": "old-token"}')
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "clear"], input="n\n")
+
+        assert "Cancelled" in result.output
+        assert backup_path.exists()
+
     def test_clear_non_interactive_without_force_fails(self, runner):
         """Test clear in non-interactive mode without --force fails."""
         result = runner.invoke(cli, ["--non-interactive", "auth", "clear"])
@@ -271,11 +380,12 @@ class TestAuthStatus:
         return CliRunner()
 
     @staticmethod
-    def _session_info(tmp_path, *, present=True, schema_version=2):
+    def _session_info(tmp_path, *, present=True, schema_version=2, legacy_backup_present=False):
         return {
             "path": str(tmp_path / "cookies.json"),
             "present": present,
             "schema_version": schema_version,
+            "legacy_backup_present": legacy_backup_present,
         }
 
     @staticmethod
@@ -653,6 +763,53 @@ class TestAuthStatus:
         result = runner.invoke(cli, ["--output", "list", "auth", "status"])
 
         assert "schema_version      2" in result.output
+
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_reports_legacy_backup_present(
+        self, mock_build_client, mock_keyring, runner, schema2_cookie_file, monkeypatch
+    ):
+        """A .pre-v8.bak sibling reports legacy_backup_present: True."""
+        monkeypatch.setattr("eeroctl.commands.auth.get_cookie_file", lambda: schema2_cookie_file)
+        backup_path = schema2_cookie_file.with_name(schema2_cookie_file.name + ".pre-v8.bak")
+        backup_path.write_text('{"session_id": "old-token"}')
+        mock_keyring.return_value = False
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(return_value=self._account_response())
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        table_result = runner.invoke(cli, ["auth", "status"])
+        json_result = runner.invoke(cli, ["--output", "json", "auth", "status"])
+
+        assert "Legacy Backup" in table_result.output
+        assert "Present" in table_result.output
+        data = json.loads(json_result.output)
+        assert data["data"]["storage"]["cookie_file"]["legacy_backup_present"] is True
+
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_reports_no_legacy_backup(
+        self, mock_build_client, mock_keyring, runner, schema2_cookie_file, monkeypatch
+    ):
+        """No .pre-v8.bak sibling reports legacy_backup_present: False."""
+        monkeypatch.setattr("eeroctl.commands.auth.get_cookie_file", lambda: schema2_cookie_file)
+        mock_keyring.return_value = False
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(return_value=self._account_response())
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["--output", "json", "auth", "status"])
+
+        data = json.loads(result.output)
+        assert data["data"]["storage"]["cookie_file"]["legacy_backup_present"] is False
 
 
 class TestCheckKeyringAvailable:

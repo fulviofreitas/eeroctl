@@ -30,6 +30,7 @@ from ..utils import (
     get_auth_method,
     get_config_file,
     get_cookie_file,
+    get_legacy_backup_path,
     get_session_token_override,
     prepare_client,
     set_auth_method,
@@ -55,6 +56,23 @@ def _refuse_if_session_token_managed(cli_ctx: EeroCliContext) -> bool:
         return False
     cli_ctx.renderer.render_error(_SESSION_TOKEN_REFUSAL)
     return True
+
+
+def _remove_legacy_backup_if_present(cli_ctx: EeroCliContext) -> None:
+    """Delete the plaintext pre-v8 credential backup, if one exists.
+
+    ``backup_legacy_cookie_file`` (utils.py) writes this file so a
+    rollback to a 7.x release does not lose the session. Once credentials
+    are explicitly logged out of or cleared, that plaintext copy must not
+    linger indefinitely (v8 migration plan §8.2; security review).
+    """
+    backup_path = get_legacy_backup_path(get_cookie_file())
+    try:
+        if backup_path.exists():
+            backup_path.unlink()
+            cli_ctx.err_console.print("removed pre-v8 credential backup")
+    except OSError as ex:
+        logger.debug("Failed to remove pre-v8 credential backup: %s", ex)
 
 
 class _UserData(TypedDict):
@@ -92,6 +110,7 @@ class _SessionInfo(TypedDict):
     path: str
     present: bool
     schema_version: int | None
+    legacy_backup_present: bool
 
 
 @click.group(name="auth")
@@ -310,6 +329,10 @@ def auth_logout(ctx: click.Context) -> None:
     if _refuse_if_session_token_managed(cli_ctx):
         sys.exit(ExitCode.USAGE_ERROR)
 
+    # A stale plaintext pre-v8 backup has no reason to survive a logout,
+    # regardless of whether there was an active session to end.
+    _remove_legacy_backup_if_present(cli_ctx)
+
     async def run() -> None:
         async with build_client() as client:
             if not client.is_authenticated:
@@ -369,6 +392,10 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
         async with build_client() as client:
             await clear_all_credentials(client)
 
+        # Also remove the plaintext pre-v8 backup: "clear all stored
+        # authentication data" must not leave a copy of the token behind.
+        _remove_legacy_backup_if_present(cli_ctx)
+
         # Also delete config.json (contains preferences)
         config_file = get_config_file()
         if config_file.exists():
@@ -401,6 +428,7 @@ def _get_session_info() -> _SessionInfo:
         path=str(cookie_file),
         present=cookie_file.exists(),
         schema_version=None,
+        legacy_backup_present=get_legacy_backup_path(cookie_file).exists(),
     )
 
     if info["present"]:
@@ -456,9 +484,14 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
         session_token = get_session_token_override()
         if session_token is not None:
             # No file or keyring is used in this mode; report accordingly
-            # regardless of what may happen to exist on disk.
+            # regardless of what may happen to exist on disk. A pre-v8
+            # backup, if any, is still a real leftover file worth surfacing.
+            cookie_file = get_cookie_file()
             session_info = _SessionInfo(
-                path=str(get_cookie_file()), present=False, schema_version=None
+                path=str(cookie_file),
+                present=False,
+                schema_version=None,
+                legacy_backup_present=get_legacy_backup_path(cookie_file).exists(),
             )
             keyring_available = False
         else:
@@ -546,6 +579,7 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
                             "path": session_info["path"],
                             "present": session_info["present"],
                             "schema_version": schema_version,
+                            "legacy_backup_present": session_info["legacy_backup_present"],
                         },
                     },
                     "account": account_data,
@@ -569,6 +603,7 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
                     f"schema_version      {schema_version if schema_version is not None else 'N/A'}"
                 )
                 print(f"keyring_available   {keyring_available}")
+                print(f"legacy_backup       {session_info['legacy_backup_present']}")
                 if account_data:
                     print(f"account_id          {account_data['id']}")
                     print(f"account_name        {account_data['name'] or 'N/A'}")
@@ -604,6 +639,14 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
                     "[green]Yes[/green]" if keyring_available else "[dim]No[/dim]",
                 )
                 session_table.add_row("Cookie File", session_info["path"])
+                session_table.add_row(
+                    "Legacy Backup",
+                    (
+                        "[yellow]Present[/yellow]"
+                        if session_info["legacy_backup_present"]
+                        else "[dim]No[/dim]"
+                    ),
+                )
 
                 console.print(session_table)
 

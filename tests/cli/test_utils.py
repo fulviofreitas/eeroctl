@@ -549,6 +549,39 @@ class TestBackupLegacyCookieFile:
         assert "super-secret-token" not in caplog.text
         assert str(tmp_path / "cookies.json.pre-v8.bak") in caplog.text
 
+    def test_partial_write_failure_leaves_no_backup_file(self, tmp_path, monkeypatch):
+        """A write failure mid-backup must not leave a truncated file behind."""
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text(json.dumps({"session_id": "tok"}))
+
+        import eeroctl.utils as utils_module
+
+        real_fdopen = utils_module.os.fdopen
+
+        class _FailingWriter:
+            def __init__(self, real_file):
+                self._real_file = real_file
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                self._real_file.close()
+                return False
+
+            def write(self, data):
+                raise OSError("simulated disk full")
+
+        def failing_fdopen(fd, mode="r", *args, **kwargs):
+            return _FailingWriter(real_fdopen(fd, mode, *args, **kwargs))
+
+        monkeypatch.setattr(utils_module.os, "fdopen", failing_fdopen)
+
+        result = backup_legacy_cookie_file(cookie_file)
+
+        assert result is None
+        assert not (tmp_path / "cookies.json.pre-v8.bak").exists()
+
 
 # ========================== with_client Decorator Tests ==========================
 
