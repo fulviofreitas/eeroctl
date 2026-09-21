@@ -43,27 +43,32 @@ def looks_like_sdk_reference(value: str) -> bool:
     - it starts with ``/``, ``http://`` or ``https://`` (a host-relative
       path or absolute URL, per ``resource_url``'s three branches,
       ``links.py:223-276``); or
-    - it contains any of ``/ ? # { }`` -- a bare
-      ``_IDENTIFIER_RE``-validated id can never contain these, so their
-      presence means either a path/URL shape or a string the SDK is
-      guaranteed to reject (e.g. ``"a/b"``, ``"x?y=1"``, ``"{x}"``); or
-    - it is the empty string -- never a valid name/serial/MAC to resolve
-      locally, and the one corpus case (``""``) not already covered by the
-      character check above; the SDK rejects it the same way (empty does
-      not match ``_IDENTIFIER_RE``).
+    - it contains ``/`` -- a bare ``_IDENTIFIER_RE``-validated id can never
+      contain a slash, so its presence means either a path/URL shape or a
+      string the SDK is guaranteed to reject (e.g. ``"a/b"``,
+      ``"../../account"``).
+
+    Deliberately does **not** trigger on ``?``, ``#``, ``{``, ``}`` or the
+    empty string: those characters are legal in real device/profile
+    nicknames (e.g. ``"Guest #2"``, ``"Kid's iPad w/ case"``), and
+    forwarding them to an id-scoped SDK method would stop those names from
+    resolving at all (exit 2 instead of a normal lookup) -- a real
+    usability regression for a marginal, already-covered security benefit:
+    a string built only from those characters (``"x?y=1"``, ``"{x}"``,
+    ``""``) still fails to match anything in the list and exits 5 (not
+    found) rather than reaching the transport, so nothing hostile becomes
+    reachable by relaxing this.
 
     Everything else (plain names, serials, MAC addresses like
     ``"aabbccddeeff"``, bare numeric ids) returns False and keeps going
     through the existing list-and-match resolvers -- names must keep
     working exactly as before.
     """
-    if not isinstance(value, str):
+    if not isinstance(value, str) or value == "":
         return False
-    if value == "":
-        return True
     if value.startswith(("/", "http://", "https://")):
         return True
-    return any(ch in value for ch in "/?#{}")
+    return "/" in value
 
 
 def get_session_token_override() -> Optional[str]:

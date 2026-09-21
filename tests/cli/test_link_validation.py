@@ -35,6 +35,21 @@ Two things are pinned here, at two different layers:
    ``resolve_eero_identifier``) are no longer ``xfail``: they assert the
    real, fixed behaviour.
 
+   ``fix(cli): keep names with ? and # while forwarding paths and URLs``
+   (Low finding follow-on) then narrowed ``looks_like_sdk_reference`` to
+   drop ``? # { }`` from the trigger set: those characters are legal in real
+   nicknames (e.g. ``"Guest #2"``), and forwarding them would stop such
+   names resolving at all. Only ``../../account`` and ``a/b`` (both contain
+   ``/``) still forward to the SDK and exit 2; ``x?y=1``, ``{x}`` and ``""``
+   now take the list-and-match path like any other non-matching name and
+   exit 5 (not found) -- they never reach the id-scoped SDK method, so
+   nothing hostile becomes reachable by relaxing this (see
+   ``HOSTILE_IDS_FORWARDED_TO_SDK`` / ``HOSTILE_IDS_RESOLVED_VIA_LIST``
+   below). Note: ``"Kid's iPad w/ case"`` was also requested as a
+   must-resolve nickname, but it contains a literal ``/`` (in ``"w/"``) and
+   so is *still* forwarded and rejected under the ``contains "/"`` rule --
+   see ``NICKNAME_CONTAINING_SLASH`` / ``TestNicknameContainingSlashStillForwards``.
+
    ``TestForwardsShowRejectsHostileIds`` stays ``xfail(strict=True)``: the
    facade exposes no singular id-validated *read* for a port forward (only
    ``get_forwards`` -- a list -- plus ``update_forward``/``delete_forward``,
@@ -72,6 +87,38 @@ HOSTILE_IDS = ("../../account", "x?y=1", "a/b", "{x}", "")
 # `id_from_url` before validation (not exercised by any eeroctl call site
 # today, kept here for parity with the SDK's own corpus).
 NORMALIZED_ID_HOSTILE_IDS = ("x?y=1", "{x}", "")
+
+# `looks_like_sdk_reference` (utils.py) only forwards a value that starts
+# with `/`/`http://`/`https://` or contains `/` -- `?`/`#`/`{`/`}` were
+# dropped (Low finding follow-on) because they are legal in real device/
+# profile nicknames. Of HOSTILE_IDS, only these two contain `/` and are
+# still forwarded to the SDK's own validation (exit 2, before any request).
+HOSTILE_IDS_FORWARDED_TO_SDK = ("../../account", "a/b")
+
+# The rest of HOSTILE_IDS no longer looks like an SDK reference at the CLI
+# routing layer: eeroctl treats them like any other non-matching name and
+# takes the list-and-match path, which reaches the *list* endpoint (not the
+# id-scoped one) and reports "not found" (exit 5) once nothing matches.
+HOSTILE_IDS_RESOLVED_VIA_LIST = ("x?y=1", "{x}", "")
+
+# Real nicknames that must keep resolving by name -- the whole point of
+# dropping `? # { }` from the trigger set. NOTE: "Kid's iPad w/ case" was
+# also requested as a must-resolve-via-list case, but it contains a literal
+# "/" (in "w/") -- under the "contains /" rule (kept, since it is the
+# anti-path-traversal mechanism: a bare id can never contain a slash) this
+# string *does* look like an SDK reference and is forwarded, exiting 2, not
+# resolved via the list. That contradicts the request; see
+# TestRealisticNicknamesWithSpecialCharsResolveViaList's docstring and the
+# follow-on report for detail. Not silently "fixed" here by weakening the
+# slash check, which would reopen exactly the path-traversal gap the whole
+# fix exists to close.
+REALISTIC_NICKNAMES_WITH_SPECIAL_CHARS = ("Guest #2",)
+
+#: Requested as a must-resolve-via-list positive control, but contains "/"
+#: (in "w/") so it is forwarded to the SDK under the "contains /" rule and
+#: exits 2 instead. Kept as its own constant so the contradiction is a named,
+#: visible thing rather than silently dropped from the corpus.
+NICKNAME_CONTAINING_SLASH = "Kid's iPad w/ case"
 
 #: A device link a caller could plausibly paste from ``eero device list -o
 #: json`` on network 999999, then pass to a command addressing network
@@ -227,17 +274,17 @@ class TestEeroShowRejectsHostileIds:
     ``resolve_eero_identifier`` (``commands/eero/base.py``) now attempts a
     direct, id-validated ``client.get_eero(...)`` call, verbatim, whenever
     ``identifier.isdigit()`` OR ``looks_like_sdk_reference(identifier)``
-    (``utils.py``) -- every string in the SDK's hostile-id corpus matches
-    the latter (each contains one of ``/ ? # { }`` or is empty), so it is
-    forwarded to the SDK's own ``_IDENTIFIER_RE`` check, which raises
-    ``EeroValidationException`` before any request. ``EeroNotFoundException``
-    is the only exception the resolver still swallows to fall through to the
-    list+match branch -- every other exception, including
-    ``EeroValidationException``, propagates to ``run_with_client`` and maps
-    to exit 2.
+    (``utils.py``) -- of the SDK's hostile-id corpus, only the two that
+    contain ``/`` match (``? # { }`` were dropped so real nicknames keep
+    resolving), so only those are forwarded to the SDK's own
+    ``_IDENTIFIER_RE`` check, which raises ``EeroValidationException``
+    before any request. ``EeroNotFoundException`` is the only exception the
+    resolver still swallows to fall through to the list+match branch --
+    every other exception, including ``EeroValidationException``,
+    propagates to ``run_with_client`` and maps to exit 2.
     """
 
-    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS)
+    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS_FORWARDED_TO_SDK)
     def test_rejects_hostile_id_before_any_request(
         self, runner, wired_client, guarded_transport, hostile_id
     ):
@@ -245,6 +292,22 @@ class TestEeroShowRejectsHostileIds:
         assert result.exit_code == ExitCode.USAGE_ERROR, result.output
         assert "invalid" in result.output.lower(), result.output
         guarded_transport.assert_not_awaited()
+
+    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS_RESOLVED_VIA_LIST)
+    def test_resolves_via_list_and_reports_not_found(self, runner, monkeypatch, hostile_id):
+        """`x?y=1`/`{x}`/`""` no longer look like SDK references, so they
+        take the list-and-match path like any other non-matching name --
+        the transport is still reached (for the list), but never for the
+        id-scoped `get_eero`, and the result is "not found" (exit 5), never
+        "invalid" (exit 2)."""
+        mock_client = _mock_client(get_eeros={"meta": {"code": 200}, "data": []})
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "eero", "show", hostile_id])
+
+        assert result.exit_code == ExitCode.NOT_FOUND, result.output
+        mock_client.get_eeros.assert_awaited_once()
+        mock_client.get_eero.assert_not_called()
 
 
 class TestDeviceShowRejectsHostileIds:
@@ -254,15 +317,17 @@ class TestDeviceShowRejectsHostileIds:
     ``looks_like_sdk_reference(device_identifier)`` before doing anything
     else: when it matches, the raw identifier is forwarded verbatim to
     ``client.get_device(...)`` instead of listing devices and matching
-    locally via ``_find_device``. Every hostile corpus string and every
-    foreign-network/query/fragment child link matches, so each reaches the
-    SDK's own validation (``_IDENTIFIER_RE`` / ``_require_nested_family``)
-    before any request, and ``EeroValidationException`` propagates to exit
-    2. Plain names/MACs (e.g. ``"iPhone"``, ``"aabbccddeeff"``) still don't
-    match and keep going through the list+match resolver unchanged.
+    locally via ``_find_device``. Only the corpus strings containing ``/``
+    (path/URL shapes, and the two hostile ids that happen to contain a
+    slash) match, so those reach the SDK's own validation
+    (``_IDENTIFIER_RE`` / ``_require_nested_family``) before any request,
+    and ``EeroValidationException`` propagates to exit 2. Plain
+    names/MACs/nicknames (e.g. ``"iPhone"``, ``"aabbccddeeff"``, ``"Guest
+    #2"``) still don't match and keep going through the list+match resolver
+    unchanged.
     """
 
-    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS)
+    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS_FORWARDED_TO_SDK)
     def test_rejects_hostile_id_before_any_request(
         self, runner, wired_client, guarded_transport, hostile_id
     ):
@@ -270,6 +335,17 @@ class TestDeviceShowRejectsHostileIds:
         assert result.exit_code == ExitCode.USAGE_ERROR, result.output
         assert "invalid" in result.output.lower(), result.output
         guarded_transport.assert_not_awaited()
+
+    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS_RESOLVED_VIA_LIST)
+    def test_resolves_via_list_and_reports_not_found(self, runner, monkeypatch, hostile_id):
+        mock_client = _mock_client(get_devices={"meta": {"code": 200}, "data": []})
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "device", "show", hostile_id])
+
+        assert result.exit_code == ExitCode.NOT_FOUND, result.output
+        mock_client.get_devices.assert_awaited_once()
+        mock_client.get_device.assert_not_called()
 
     @pytest.mark.parametrize("child_link", CHILD_LINK_HOSTILE_CASES)
     def test_rejects_foreign_network_device_link(
@@ -291,7 +367,7 @@ class TestProfileShowRejectsHostileIds:
     locally via ``_find_profile``.
     """
 
-    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS)
+    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS_FORWARDED_TO_SDK)
     def test_rejects_hostile_id_before_any_request(
         self, runner, wired_client, guarded_transport, hostile_id
     ):
@@ -299,6 +375,17 @@ class TestProfileShowRejectsHostileIds:
         assert result.exit_code == ExitCode.USAGE_ERROR, result.output
         assert "invalid" in result.output.lower(), result.output
         guarded_transport.assert_not_awaited()
+
+    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS_RESOLVED_VIA_LIST)
+    def test_resolves_via_list_and_reports_not_found(self, runner, monkeypatch, hostile_id):
+        mock_client = _mock_client(get_profiles={"meta": {"code": 200}, "data": []})
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "profile", "show", hostile_id])
+
+        assert result.exit_code == ExitCode.NOT_FOUND, result.output
+        mock_client.get_profiles.assert_awaited_once()
+        mock_client.get_profile.assert_not_called()
 
 
 class TestForwardsShowRejectsHostileIds:
@@ -346,7 +433,7 @@ class TestLedShowRejectsHostileIds:
     ``TestEeroShowRejectsHostileIds``.
     """
 
-    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS)
+    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS_FORWARDED_TO_SDK)
     def test_rejects_hostile_id_before_any_request(
         self, runner, wired_client, guarded_transport, hostile_id
     ):
@@ -354,6 +441,17 @@ class TestLedShowRejectsHostileIds:
         assert result.exit_code == ExitCode.USAGE_ERROR, result.output
         assert "invalid" in result.output.lower(), result.output
         guarded_transport.assert_not_awaited()
+
+    @pytest.mark.parametrize("hostile_id", HOSTILE_IDS_RESOLVED_VIA_LIST)
+    def test_resolves_via_list_and_reports_not_found(self, runner, monkeypatch, hostile_id):
+        mock_client = _mock_client(get_eeros={"meta": {"code": 200}, "data": []})
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "eero", "led", "show", hostile_id])
+
+        assert result.exit_code == ExitCode.NOT_FOUND, result.output
+        mock_client.get_eeros.assert_awaited_once()
+        mock_client.get_eero.assert_not_called()
 
 
 # =====================================================================
@@ -549,3 +647,86 @@ class TestPlainNamesStillResolveViaTheList:
 
         mock_client.get_profiles.assert_awaited_once()
         assert result.exit_code == ExitCode.SUCCESS, result.output
+
+
+class TestRealisticNicknamesWithSpecialCharsResolveViaList:
+    """Regression coverage for the Low finding: `?`/`#` in a real nickname
+    must not stop it resolving. `looks_like_sdk_reference` no longer
+    triggers on those characters, so `device_show`/`profile_show` still take
+    the list-and-match path for them -- never the id-scoped method.
+
+    ``"Kid's iPad w/ case"`` was also requested as a must-resolve case, but
+    it contains a literal ``/`` (in ``"w/"``) and the ``contains "/"`` rule
+    was kept (it is the anti-path-traversal mechanism -- a bare id can never
+    contain a slash), so this specific string still forwards to the SDK and
+    exits 2 rather than resolving via the list. See
+    ``TestNicknameContainingSlashStillForwards`` below, which pins the
+    actual behaviour instead of silently asserting the requested-but-
+    contradictory outcome.
+    """
+
+    @pytest.mark.parametrize("nickname", REALISTIC_NICKNAMES_WITH_SPECIAL_CHARS)
+    def test_device_show_resolves_nickname_via_list(self, runner, monkeypatch, nickname):
+        mock_client = _mock_client(
+            get_devices={
+                "meta": {"code": 200},
+                "data": [
+                    {
+                        "url": "/2.2/networks/111111/devices/aabbccddeeff",
+                        "nickname": nickname,
+                    }
+                ],
+            },
+            get_device={
+                "meta": {"code": 200},
+                "data": {"id": "aabbccddeeff", "nickname": nickname},
+            },
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "device", "show", nickname])
+
+        mock_client.get_devices.assert_awaited_once()
+        mock_client.get_device.assert_awaited_once_with("aabbccddeeff", "111111")
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+    @pytest.mark.parametrize("nickname", REALISTIC_NICKNAMES_WITH_SPECIAL_CHARS)
+    def test_profile_show_resolves_nickname_via_list(self, runner, monkeypatch, nickname):
+        mock_client = _mock_client(
+            get_profiles={
+                "meta": {"code": 200},
+                "data": [{"url": "/2.2/networks/111111/profiles/p1", "name": nickname}],
+            },
+            get_profile={"meta": {"code": 200}, "data": {"id": "p1", "name": nickname}},
+        )
+        monkeypatch.setattr("eeroctl.utils.build_client", lambda *a, **k: mock_client)
+
+        result = runner.invoke(cli, ["-n", "111111", "profile", "show", nickname])
+
+        mock_client.get_profiles.assert_awaited_once()
+        mock_client.get_profile.assert_awaited_once_with("p1", "111111")
+        assert result.exit_code == ExitCode.SUCCESS, result.output
+
+
+class TestNicknameContainingSlashStillForwards:
+    """Pins the actual (rule-consistent) behaviour for a nickname that
+    happens to contain "/" (e.g. the common "w/" abbreviation): it still
+    matches ``looks_like_sdk_reference`` under the "contains /" rule and is
+    forwarded to the SDK's own validation, exiting 2 -- it does NOT resolve
+    via the list, unlike ``"Guest #2"``. This was requested as a
+    must-resolve-via-list case; kept here as a named, visible pin of the
+    actual behaviour rather than silently dropped or asserted incorrectly.
+    Flagged to the coordinator rather than "fixed" by weakening the slash
+    check, which is the mechanism that stops path-traversal ids like
+    ``"../../account"`` from resolving locally.
+    """
+
+    def test_device_show_forwards_and_rejects(self, runner, wired_client, guarded_transport):
+        result = runner.invoke(cli, ["-n", "111111", "device", "show", NICKNAME_CONTAINING_SLASH])
+        assert result.exit_code == ExitCode.USAGE_ERROR, result.output
+        guarded_transport.assert_not_awaited()
+
+    def test_profile_show_forwards_and_rejects(self, runner, wired_client, guarded_transport):
+        result = runner.invoke(cli, ["-n", "111111", "profile", "show", NICKNAME_CONTAINING_SLASH])
+        assert result.exit_code == ExitCode.USAGE_ERROR, result.output
+        guarded_transport.assert_not_awaited()

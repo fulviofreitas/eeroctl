@@ -1231,16 +1231,33 @@ class TestLooksLikeSdkReference:
         "value",
         [
             pytest.param("../../account", id="path-traversal"),
-            pytest.param("x?y=1", id="query-string"),
             pytest.param("a/b", id="multi-segment"),
+        ],
+    )
+    def test_hostile_corpus_strings_containing_slash_look_like_references(self, value):
+        """Of the SDK's hostile-id corpus, only the strings containing `/`
+        must be forwarded -- so the SDK's own validation can reject them.
+        `?`/`#`/`{`/`}` were dropped from the trigger set (Low finding
+        follow-on): they are legal in real nicknames, so forwarding them
+        would stop those names resolving by name at all.
+        """
+        assert looks_like_sdk_reference(value) is True
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            pytest.param("x?y=1", id="query-string"),
             pytest.param("{x}", id="format-template"),
             pytest.param("", id="empty-string"),
         ],
     )
-    def test_hostile_corpus_strings_look_like_references(self, value):
-        """Every string in the SDK's own hostile-id corpus must be forwarded,
-        not resolved locally -- so the SDK's own validation can reject it."""
-        assert looks_like_sdk_reference(value) is True
+    def test_hostile_corpus_strings_without_slash_no_longer_look_like_references(self, value):
+        """These no longer trigger forwarding: they take the list-and-match
+        path like any other non-matching name and are reported "not found"
+        (exit 5) once nothing matches -- they never reach the id-scoped SDK
+        method, so nothing hostile becomes reachable by not forwarding them.
+        """
+        assert looks_like_sdk_reference(value) is False
 
     @pytest.mark.parametrize(
         "value",
@@ -1263,13 +1280,27 @@ class TestLooksLikeSdkReference:
             pytest.param("aabbccddeeff", id="bare-mac"),
             pytest.param("SERIAL123", id="bare-serial"),
             pytest.param("123", id="bare-numeric-id"),
+            pytest.param("Guest #2", id="nickname-with-hash"),
+            pytest.param("Kid's room?", id="nickname-with-question-mark"),
+            pytest.param("{Curly}", id="nickname-with-braces"),
         ],
     )
     def test_plain_names_serials_and_macs_do_not_look_like_references(self, value):
         """Names/serials/MACs must keep resolving via the existing
         list-and-match path -- this is the "names must keep working"
-        requirement from the fix."""
+        requirement from the fix, extended by the Low finding follow-on to
+        cover realistic nicknames containing `? # { }`.
+        """
         assert looks_like_sdk_reference(value) is False
+
+    def test_nickname_containing_slash_still_looks_like_a_reference(self):
+        """`"Kid's iPad w/ case"` contains a literal `/` (in `"w/"`), so it
+        still matches under the `contains "/"` rule and is forwarded --
+        the slash check is the anti-path-traversal mechanism and was not
+        weakened to accommodate this specific string. See
+        `tests/cli/test_link_validation.py::TestNicknameContainingSlashStillForwards`.
+        """
+        assert looks_like_sdk_reference("Kid's iPad w/ case") is True
 
 
 # ========================== get_session_token_override Tests ==========================
