@@ -16,6 +16,7 @@ from click.core import ParameterSource
 from rich.console import Console
 
 from .commands import (
+    account_group,
     activity_group,
     auth_group,
     completion_group,
@@ -334,6 +335,7 @@ def cli(
 # ==================== Register Command Groups ====================
 
 cli.add_command(auth_group, name="auth")
+cli.add_command(account_group, name="account")
 cli.add_command(network_group, name="network")
 cli.add_command(eero_group, name="eero")
 cli.add_command(device_group, name="device")

@@ -4,9 +4,11 @@ This package provides utilities to transform raw JSON responses from the
 eero-api library into structured data for display and processing.
 """
 
+from .account import extract_premium_customer
 from .base import extract_data, extract_id_from_url, extract_list, safe_get
 from .device import extract_device, extract_devices, normalize_device
 from .eero import extract_eero, extract_eeros, normalize_eero
+from .entitlements import extract_entitlements
 from .network import extract_network, extract_networks, normalize_network, normalize_network_status
 from .profile import extract_profile, extract_profiles, normalize_profile
 
@@ -33,4 +35,8 @@ __all__ = [
     "extract_profiles",
     "extract_profile",
     "normalize_profile",
+    # Entitlements
+    "extract_entitlements",
+    # Account
+    "extract_premium_customer",
 ]

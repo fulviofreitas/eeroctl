@@ -7,6 +7,9 @@ This __init__.py re-exports all public functions from submodules
 for backward compatibility with existing imports.
 """
 
+# Account formatting
+from .account import print_account_premium
+
 # Base utilities
 from .base import (
     DetailLevel,
@@ -35,6 +38,16 @@ from .eero import (
     create_eeros_table,
     print_eero_details,
 )
+
+# Entitlements formatting
+from .entitlements import (
+    print_entitlements_capabilities,
+    print_entitlements_show,
+    print_entitlements_upsell,
+)
+
+# Generic key/value renderer (undocumented response shapes)
+from .generic import render_generic
 
 # Miscellaneous formatting
 from .misc import (
@@ -87,4 +100,12 @@ __all__ = [
     # Misc
     "print_speedtest_results",
     "create_blacklist_table",
+    # Generic
+    "render_generic",
+    # Entitlements
+    "print_entitlements_show",
+    "print_entitlements_upsell",
+    "print_entitlements_capabilities",
+    # Account
+    "print_account_premium",
 ]

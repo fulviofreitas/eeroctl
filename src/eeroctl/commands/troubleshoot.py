@@ -296,14 +296,19 @@ async def troubleshoot_doctor(
         except Exception:
             checks.append(("Diagnostics API", "warn", "Not available"))
 
-        # Check premium status
+        # Check premium status via entitlements (get_entitlement_features,
+        # client.py:2292). `is_premium(nid)` never existed on any SDK version
+        # (migration plan §1.3/§4, "replaces the dead is_premium in
+        # troubleshoot doctor"); the shape of `data` is undocumented, so this
+        # only checks for any truthy premium-ish flag rather than assuming a
+        # specific key.
         try:
-            raw_premium = await client.get_premium_status(cli_ctx.network_id)
-            premium_data = raw_premium.get("data", {}) if isinstance(raw_premium, dict) else {}
-            is_premium = bool(
-                premium_data.get("premium_status")
-                or premium_data.get("eero_plus")
-                or premium_data.get("premium_dns")
+            raw_entitlements = await client.get_entitlement_features(cli_ctx.network_id)
+            entitlements_data = extract_data(raw_entitlements)
+            is_premium = isinstance(entitlements_data, dict) and any(
+                bool(value)
+                for key, value in entitlements_data.items()
+                if any(hint in key.lower() for hint in ("premium", "eero_plus", "plus"))
             )
             checks.append(("Eero Plus", "info", "Active" if is_premium else "Not active"))
         except Exception:

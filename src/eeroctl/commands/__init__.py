@@ -1,6 +1,7 @@
 """New command structure for the Eero CLI.
 
 This package contains the new noun-first command tree:
+- account: Account-scoped commands (not tied to a specific network)
 - auth: Authentication management
 - network: Network configuration and settings
 - eero: Mesh node management
@@ -11,6 +12,7 @@ This package contains the new noun-first command tree:
 - completion: Shell completion
 """
 
+from .account import account_group
 from .activity import activity_group
 from .auth import auth_group
 from .completion import completion_group
@@ -21,6 +23,7 @@ from .profile import profile_group
 from .troubleshoot import troubleshoot_group
 
 __all__ = [
+    "account_group",
     "auth_group",
     "network_group",
     "eero_group",

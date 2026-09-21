@@ -50,6 +50,7 @@ def network_group(ctx: click.Context) -> None:
       routing   - Routing information
       thread    - Thread protocol
       support   - Support bundle
+      entitlements - Premium entitlements and device capabilities
 
     \b
     Examples:
@@ -359,6 +360,7 @@ from .advanced import routing_show, support_group, thread_cmd_group  # noqa: E40
 from .backup import backup_group  # noqa: E402
 from .dhcp import dhcp_group  # noqa: E402
 from .dns import dns_group  # noqa: E402
+from .entitlements import entitlements_group  # noqa: E402
 from .forwards import forwards_group  # noqa: E402
 from .guest import guest_group  # noqa: E402
 from .security import security_group  # noqa: E402
@@ -377,3 +379,4 @@ network_group.add_command(dhcp_group)
 network_group.add_command(routing_show)
 network_group.add_command(thread_cmd_group)
 network_group.add_command(support_group)
+network_group.add_command(entitlements_group)
