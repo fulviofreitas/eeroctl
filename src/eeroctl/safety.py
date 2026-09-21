@@ -878,6 +878,29 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network forwards list",
         ),
+        # -- network dhcp reservation: create/update/delete are all
+        # unverified (migration plan §4 phase C row 33). --
+        "network dhcp reservation create": WriteSpec(
+            command="network dhcp reservation create",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network dhcp reservations",
+        ),
+        "network dhcp reservation update": WriteSpec(
+            command="network dhcp reservation update",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network dhcp reservations",
+        ),
+        "network dhcp reservation delete": WriteSpec(
+            command="network dhcp reservation delete",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network dhcp reservations",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.

@@ -501,6 +501,9 @@ class TestWriteSpecsRegistry:
         "network forwards create",
         "network forwards update",
         "network forwards delete",
+        "network dhcp reservation create",
+        "network dhcp reservation update",
+        "network dhcp reservation delete",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -601,6 +604,9 @@ class TestWriteSpecsRegistry:
         "create_forward": ["network forwards create"],
         "update_forward": ["network forwards update"],
         "delete_forward": ["network forwards delete"],
+        "create_reservation": ["network dhcp reservation create"],
+        "update_reservation": ["network dhcp reservation update"],
+        "delete_reservation": ["network dhcp reservation delete"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

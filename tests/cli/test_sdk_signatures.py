@@ -179,6 +179,24 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("get_thread", ("nid",), {}, "network/advanced.py:80"),
     ("get_support", ("nid",), {}, "network/advanced.py:127,182"),
     ("get_reservations", ("nid",), {}, "network/dhcp.py:45"),
+    (
+        "create_reservation",
+        ({"mac": "AA:BB:CC:DD:EE:FF", "ip": "10.0.0.5"}, "nid"),
+        {},
+        "network/dhcp.py:reservation_create",
+    ),
+    (
+        "update_reservation",
+        ("rid", {"ip": "10.0.0.6"}, "nid"),
+        {},
+        "network/dhcp.py:reservation_update",
+    ),
+    (
+        "delete_reservation",
+        ("rid", "nid"),
+        {"delete_forwards": True},
+        "network/dhcp.py:reservation_delete",
+    ),
     ("get_forwards", ("nid",), {}, "network/forwards.py:48,97"),
     # `forward_data`/`forward_id` are plain values (client.py:1543,1552,1562),
     # not an envelope -- unlike schedules, `update_forward`/`delete_forward`

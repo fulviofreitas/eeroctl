@@ -4,20 +4,45 @@ Commands:
 - eero network dhcp show: Show DHCP/lease/connection/wan-type read view
 - eero network dhcp reservations: List DHCP reservations
 - eero network dhcp leases: List current DHCP leases
+- eero network dhcp reservation create: Create a reservation
+- eero network dhcp reservation update: Update a reservation
+- eero network dhcp reservation delete: Delete a reservation
 """
 
 import asyncio
-from typing import Optional
+import json
+import sys
+from typing import Any, Optional
 
 import click
 from eero import EeroClient
 from rich.table import Table
 
 from ...context import get_cli_context
-from ...options import apply_options, common_options
+from ...exit_codes import ExitCode
+from ...options import apply_options, common_options, force_option, network_option
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, extract_devices, normalize_device
 from ...transformers.network import extract_network, extract_network_dhcp_view
 from ...utils import run_with_client
+
+
+def _parse_config_json(console: Any, raw: str) -> dict:
+    """Parse a `--config-json` option into a non-empty dict, or exit 2.
+
+    `reservation_data` is typed as an opaque ``Dict[str, Any]`` with no
+    documented shape (migration plan §4 phase C row 33); eeroctl accepts the
+    caller's JSON object verbatim rather than guessing field names.
+    """
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as e:
+        console.print(f"[red]Invalid --config-json: {e}[/red]")
+        sys.exit(ExitCode.USAGE_ERROR)
+    if not isinstance(parsed, dict) or not parsed:
+        console.print("[red]--config-json must be a non-empty JSON object[/red]")
+        sys.exit(ExitCode.USAGE_ERROR)
+    return parsed
 
 
 @click.group(name="dhcp")
@@ -30,8 +55,7 @@ def dhcp_group(ctx: click.Context) -> None:
       show         - DHCP/lease/connection/wan-type read view
       reservations - List DHCP reservations
       leases       - List current DHCP leases
-      reserve      - Create a reservation (stub)
-      unreserve    - Remove a reservation (stub)
+      reservation  - Create/update/delete a reservation
     """
     pass
 
@@ -156,5 +180,203 @@ def dhcp_leases(ctx: click.Context) -> None:
                 console.print(table)
 
         await run_with_client(get_leases)
+
+    asyncio.run(run_cmd())
+
+
+@dhcp_group.group(name="reservation")
+@click.pass_context
+def reservation_group(ctx: click.Context) -> None:
+    """Create, update or delete a DHCP reservation.
+
+    \b
+    Commands:
+      create - Create a reservation
+      update - Update a reservation
+      delete - Delete a reservation
+    """
+    pass
+
+
+@reservation_group.command(name="create")
+@click.option(
+    "--config-json",
+    required=True,
+    help='Reservation definition as a JSON object, e.g. \'{"mac": "...", "ip": "..."}\'',
+)
+@force_option
+@network_option
+@click.pass_context
+def reservation_create(
+    ctx: click.Context, config_json: str, force: Optional[bool], network_id: Optional[str]
+) -> None:
+    """Create a DHCP reservation.
+
+    The shape of the reservation object is not documented by the SDK; pass
+    exactly what the API expects via --config-json.
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+    reservation_data = _parse_config_json(console, config_json)
+
+    spec = get_write_spec("network dhcp reservation create")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def create(client: EeroClient) -> None:
+            with cli_ctx.status("Creating DHCP reservation..."):
+                result = await client.create_reservation(reservation_data, cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") in (200, 201) or result:
+                console.print("[bold green]DHCP reservation created.[/bold green]")
+                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
+            else:
+                console.print("[red]Failed to create DHCP reservation[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(create)
+
+    asyncio.run(run_cmd())
+
+
+@reservation_group.command(name="update")
+@click.argument("reservation_id")
+@click.option(
+    "--config-json",
+    required=True,
+    help="Fields to update, as a JSON object (at least one field required)",
+)
+@force_option
+@network_option
+@click.pass_context
+def reservation_update(
+    ctx: click.Context,
+    reservation_id: str,
+    config_json: str,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Update a DHCP reservation.
+
+    \b
+    Arguments:
+      RESERVATION_ID  The reservation's id
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+    reservation_data = _parse_config_json(console, config_json)
+
+    spec = get_write_spec("network dhcp reservation update")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target=reservation_id,
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def update(client: EeroClient) -> None:
+            with cli_ctx.status("Updating DHCP reservation..."):
+                result = await client.update_reservation(
+                    reservation_id, reservation_data, cli_ctx.network_id
+                )
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print("[bold green]DHCP reservation updated.[/bold green]")
+                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
+            else:
+                console.print("[red]Failed to update DHCP reservation[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(update)
+
+    asyncio.run(run_cmd())
+
+
+@reservation_group.command(name="delete")
+@click.argument("reservation_id")
+@click.option(
+    "--delete-forwards/--keep-forwards",
+    default=None,
+    help="Also delete port forwards tied to this reservation.",
+)
+@force_option
+@network_option
+@click.pass_context
+def reservation_delete(
+    ctx: click.Context,
+    reservation_id: str,
+    delete_forwards: Optional[bool],
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Delete a DHCP reservation.
+
+    \b
+    Arguments:
+      RESERVATION_ID  The reservation's id
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.console
+
+    spec = get_write_spec("network dhcp reservation delete")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target=reservation_id,
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def delete(client: EeroClient) -> None:
+            with cli_ctx.status("Deleting DHCP reservation..."):
+                result = await client.delete_reservation(
+                    reservation_id,
+                    cli_ctx.network_id,
+                    delete_forwards=delete_forwards,
+                )
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print("[bold green]DHCP reservation deleted.[/bold green]")
+            else:
+                console.print("[red]Failed to delete DHCP reservation[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(delete)
 
     asyncio.run(run_cmd())
