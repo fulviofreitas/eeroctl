@@ -2,6 +2,13 @@
 
 from enum import Enum
 
+# Keyring service/account names the eero-api SDK stores credentials under
+# (eero.api.auth_storage.KeyringStorage.SERVICE_NAME / ACCOUNT_NAME). Pinned
+# by tests/cli/test_sdk_signatures.py::test_eeroctl_keyring_constants_match_the_sdk
+# so a future SDK rename fails CI instead of silently breaking the keyring probe.
+KEYRING_SERVICE_NAME = "eero-api"
+KEYRING_ACCOUNT_NAME = "auth-tokens"
+
 
 class EeroDeviceType(str, Enum):
     """Enum for Eero device types."""

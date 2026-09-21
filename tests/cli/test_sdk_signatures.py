@@ -326,3 +326,16 @@ def test_keyring_storage_constants_match_expected_values() -> None:
     """
     assert KeyringStorage.SERVICE_NAME == "eero-api"
     assert KeyringStorage.ACCOUNT_NAME == "auth-tokens"
+
+
+def test_eeroctl_keyring_constants_match_the_sdk() -> None:
+    """`eeroctl.const.KEYRING_*` must track the SDK's own storage constants.
+
+    `_check_keyring_available()` probes the keyring under these names; if the
+    SDK ever renames its service/account, this test fails loudly instead of
+    the probe silently always returning ``False``.
+    """
+    from eeroctl.const import KEYRING_ACCOUNT_NAME, KEYRING_SERVICE_NAME
+
+    assert KEYRING_SERVICE_NAME == KeyringStorage.SERVICE_NAME
+    assert KEYRING_ACCOUNT_NAME == KeyringStorage.ACCOUNT_NAME

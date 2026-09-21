@@ -10,9 +10,8 @@ Commands:
 import asyncio
 import json
 import logging
-import os
 import sys
-from typing import Any, TypedDict
+from typing import Any, Optional, TypedDict
 
 import click
 from eero import EeroClient
@@ -21,6 +20,7 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
+from ..const import KEYRING_ACCOUNT_NAME, KEYRING_SERVICE_NAME
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..output import OutputFormat
@@ -57,6 +57,21 @@ class _AccountData(TypedDict):
     premium_expiry: str | None
     created_at: str | None
     users: list[_UserData]
+
+
+class _SessionInfo(TypedDict):
+    """An informational-only probe of the cookie file.
+
+    Never used to determine session validity: schema 2 (eero-api v8) drops
+    ``session_expiry``/``refresh_token`` entirely, and a valid session can
+    live in the keyring alone with no cookie file on disk at all. Validity is
+    always a live ``client.is_authenticated`` / ``get_account()`` probe (see
+    the v8 migration plan, §2.1).
+    """
+
+    path: str
+    present: bool
+    schema_version: int | None
 
 
 @click.group(name="auth")
@@ -127,49 +142,56 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
     try:
         asyncio.run(run())
     except EeroAuthenticationException as e:
-        cli_ctx.renderer.render_error(str(e))
+        cli_ctx.renderer.render_error(_render_auth_error(e))
         sys.exit(ExitCode.AUTH_REQUIRED)
     except EeroException as e:
         cli_ctx.renderer.render_error(str(e))
         sys.exit(ExitCode.GENERIC_ERROR)
 
 
+def _render_auth_error(exc: EeroAuthenticationException) -> str:
+    """Render an auth exception's message, appending ``error_code`` if present.
+
+    ``error_code`` only exists on eero-api 8+ (``getattr`` with a default
+    keeps this safe on 7.0.0 too). Never renders ``.envelope``: it can carry
+    user tokens, emails or phone numbers.
+    """
+    message = str(exc)
+    error_code = getattr(exc, "error_code", None)
+    if error_code:
+        message = f"{message} (error code: {error_code})"
+    return message
+
+
 async def _interactive_login(
     client: EeroClient, force: bool, console, cli_ctx: EeroCliContext
 ) -> bool:
     """Interactive login process."""
-    cookie_file = get_cookie_file()
+    # Check for an existing session via the client's own state, never the
+    # cookie file directly: schema 2 drops session_expiry (migration plan
+    # §2.1), and a valid session can live in the keyring alone with no
+    # cookie file on disk.
+    if client.is_authenticated and not force:
+        console.print(
+            Panel.fit(
+                "An existing authentication session was found.",
+                title="Eero Login",
+                border_style="blue",
+            )
+        )
+        reuse = Confirm.ask("Do you want to reuse the existing session?")
 
-    # Check for existing session
-    if os.path.exists(cookie_file) and not force:
-        try:
-            with open(cookie_file, "r") as f:
-                cookies = json.load(f)
-                # Check for session_id (current) - user_token was used in older versions
-                if cookies.get("session_id"):
+        if reuse:
+            with cli_ctx.status("Testing existing session..."):
+                try:
+                    networks = await client.get_networks()
                     console.print(
-                        Panel.fit(
-                            "An existing authentication session was found.",
-                            title="Eero Login",
-                            border_style="blue",
-                        )
+                        f"[bold green]Session valid! Found {len(networks)} network(s).[/bold green]"
                     )
-                    reuse = Confirm.ask("Do you want to reuse the existing session?")
-
-                    if reuse:
-                        with cli_ctx.status("Testing existing session..."):
-                            try:
-                                networks = await client.get_networks()
-                                console.print(
-                                    f"[bold green]Session valid! "
-                                    f"Found {len(networks)} network(s).[/bold green]"
-                                )
-                                return True
-                            except Exception as ex:
-                                logger.debug("Session validation failed: %s", ex)
-                                console.print("[yellow]Existing session invalid.[/yellow]")
-        except Exception as ex:
-            logger.debug("Failed to check existing session: %s", ex)
+                    return True
+                except EeroException as ex:
+                    logger.debug("Session validation failed: %s", ex)
+                    console.print("[yellow]Existing session invalid.[/yellow]")
 
     # Clear existing auth data
     await clear_all_credentials(client)
@@ -188,13 +210,21 @@ async def _interactive_login(
     with cli_ctx.status("Requesting verification code..."):
         try:
             result = await client.login(user_identifier)
-            if not result:
-                console.print("[bold red]Failed to request verification code[/bold red]")
-                return False
-            console.print("[bold green]Verification code sent![/bold green]")
         except EeroException as ex:
-            console.print(f"[bold red]Error:[/bold red] {ex}")
-            return False
+            # Every login() failure exits 3: on eero-api 8+, a rejected
+            # identifier (malformed email/phone) already surfaces as
+            # EeroAuthenticationException, so there is no separate
+            # EeroValidationException case to special-case here.
+            error_code = getattr(ex, "error_code", None)
+            message = f"[bold red]Error:[/bold red] {ex}"
+            if error_code:
+                message = f"{message} (error code: {error_code})"
+            console.print(message)
+            sys.exit(ExitCode.AUTH_REQUIRED)
+        if not result:
+            console.print("[bold red]Failed to request verification code[/bold red]")
+            sys.exit(ExitCode.AUTH_REQUIRED)
+        console.print("[bold green]Verification code sent![/bold green]")
 
     # Verification loop
     max_attempts = 3
@@ -318,83 +348,95 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
     asyncio.run(run())
 
 
-def _get_session_info() -> dict:
-    """Read session info from cookie file."""
-    from datetime import datetime
+def _get_session_info() -> _SessionInfo:
+    """Probe the cookie file for informational purposes only.
 
+    Never derive session validity from this: see :class:`_SessionInfo`.
+    ``schema_version`` is ``None`` for a missing file or a legacy (pre-v8,
+    schema 1) record that predates the ``schema_version`` key.
+    """
     cookie_file = get_cookie_file()
-    session_info = {
-        "cookie_file": str(cookie_file),
-        "cookie_exists": cookie_file.exists(),
-        "session_expiry": None,
-        "session_expired": True,  # Default to expired
-        "has_token": False,
-        "preferred_network_id": None,
-    }
+    info = _SessionInfo(
+        path=str(cookie_file),
+        present=cookie_file.exists(),
+        schema_version=None,
+    )
 
-    if cookie_file.exists():
+    if info["present"]:
         try:
             with open(cookie_file, "r") as f:
                 data = json.load(f)
-            session_info["session_expiry"] = data.get("session_expiry")
-            session_info["preferred_network_id"] = data.get("preferred_network_id")
-            # Check for session_id (current) or user_token (legacy) to determine if authenticated
-            session_info["has_token"] = bool(data.get("session_id") or data.get("user_token"))
-
-            # Check if session is expired based on expiry date
-            expiry_str = data.get("session_expiry")
-            if expiry_str:
-                try:
-                    expiry = datetime.fromisoformat(expiry_str)
-                    session_info["session_expired"] = datetime.now() > expiry
-                except ValueError:
-                    logger.debug("Failed to parse session expiry date: %s", expiry_str)
-        except Exception as ex:
+            info["schema_version"] = data.get("schema_version")
+        except (OSError, ValueError) as ex:
             logger.debug("Failed to read cookie file: %s", ex)
 
-    return session_info
+    return info
 
 
 def _check_keyring_available() -> bool:
-    """Check if keyring is available and has eero credentials."""
+    """Check if the keyring holds a stored eero-api credential."""
     try:
         import keyring
 
-        token = keyring.get_password("eero", "user_token")
+        token = keyring.get_password(KEYRING_SERVICE_NAME, KEYRING_ACCOUNT_NAME)
         return token is not None
     except Exception:
+        # keyring backends raise a wide, platform-specific variety of errors
+        # (missing backend, locked keychain, ...); "not available" for any
+        # of them is the correct fallback, not an EeroException.
         return False
 
 
 @auth_group.command(name="status")
+@click.option(
+    "--offline",
+    is_flag=True,
+    help="Report stored state only; skip the live account probe (no API call)",
+)
+@click.option(
+    "--check",
+    "check_only",
+    is_flag=True,
+    help="Exit 3 if not authenticated or the stored session is invalid",
+)
 @click.pass_context
-def auth_status(ctx: click.Context) -> None:
+def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
     """Show current authentication status.
 
-    Displays session info, authentication method, and account details.
+    Displays session info, authentication method, and account details. By
+    default this makes one live API call (`GET /account`) to confirm the
+    stored session actually works; pass --offline to skip it and report only
+    what is stored locally.
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
-    async def run() -> None:
+    async def run() -> bool:
         session_info = _get_session_info()
         keyring_available = _check_keyring_available()
 
         async with build_client() as client:
             is_auth = client.is_authenticated
             account_data: _AccountData | None = None
+            # True: live probe confirmed the session works. False: not
+            # authenticated, or the probe rejected the stored token
+            # (EeroAuthenticationException/other API error). None: unknown
+            # because --offline skipped the probe.
+            session_valid: Optional[bool]
 
-            # Determine session validity based on expiry date, not API call
-            # (API call may fail due to network issues, not expired session)
-            session_valid = (
-                is_auth and session_info["has_token"] and not session_info["session_expired"]
-            )
-
-            # Try to get account info if we have a valid session
-            if session_valid:
+            if not is_auth:
+                session_valid = False
+            elif offline:
+                session_valid = None
+            else:
                 try:
                     with cli_ctx.status("Getting account info..."):
                         raw_account = await client.get_account()
+                except EeroException as ex:
+                    logger.debug("Account probe failed: %s", ex)
+                    session_valid = False
+                else:
+                    session_valid = True
                     # Extract data from raw response envelope
                     account = raw_account.get("data", raw_account)
                     if isinstance(account, dict):
@@ -433,37 +475,44 @@ def auth_status(ctx: click.Context) -> None:
                             ),
                             users=users_list,
                         )
-                except Exception as ex:
-                    # API call failed but session may still be valid per expiry date
-                    logger.debug("Session verification API call failed: %s", ex)
 
             # Determine auth method
             auth_method = "keyring" if keyring_available else "cookie"
+            schema_version = session_info["schema_version"]
 
             if cli_ctx.is_structured_output():
                 data = {
                     "authenticated": is_auth,
                     "session_valid": session_valid,
                     "auth_method": auth_method,
-                    "session": {
-                        "cookie_file": session_info["cookie_file"],
-                        "expiry": session_info["session_expiry"],
-                        "preferred_network_id": session_info["preferred_network_id"],
+                    "storage": {
+                        "keyring": {"present": keyring_available},
+                        "cookie_file": {
+                            "path": session_info["path"],
+                            "present": session_info["present"],
+                            "schema_version": schema_version,
+                        },
                     },
-                    "keyring_available": keyring_available,
                     "account": account_data,
                 }
-                cli_ctx.render_structured(data, "eero.auth.status/v1")
+                cli_ctx.render_structured(data, "eero.auth.status/v2")
 
             elif cli_ctx.output_format == OutputFormat.LIST:
                 # List format - parseable key-value rows
-                status = (
-                    "valid" if session_valid else ("expired" if is_auth else "not_authenticated")
-                )
+                if session_valid is True:
+                    status = "valid"
+                elif session_valid is None:
+                    status = "stored_not_verified"
+                elif is_auth:
+                    status = "invalid"
+                else:
+                    status = "not_authenticated"
                 print(f"status              {status}")
                 print(f"auth_method         {auth_method}")
-                print(f"cookie_file         {session_info['cookie_file']}")
-                print(f"session_expiry      {session_info['session_expiry'] or 'N/A'}")
+                print(f"cookie_file         {session_info['path']}")
+                print(
+                    f"schema_version      {schema_version if schema_version is not None else 'N/A'}"
+                )
                 print(f"keyring_available   {keyring_available}")
                 if account_data:
                     print(f"account_id          {account_data['id']}")
@@ -480,21 +529,26 @@ def auth_status(ctx: click.Context) -> None:
                 session_table.add_column("Property", style="cyan")
                 session_table.add_column("Value")
 
-                if session_valid:
+                if session_valid is True:
                     status_display = "[green]Valid[/green]"
-                elif is_auth and session_info["session_expired"]:
-                    status_display = "[yellow]Expired[/yellow]"
+                elif session_valid is None:
+                    status_display = "[blue]Stored, not verified[/blue]"
+                elif is_auth:
+                    status_display = "[yellow]Invalid[/yellow]"
                 else:
-                    status_display = "[red]Not Authenticated[/red]"
+                    status_display = "[red]Not authenticated[/red]"
 
                 session_table.add_row("Status", status_display)
                 session_table.add_row("Auth Method", f"[blue]{auth_method}[/blue]")
-                session_table.add_row("Cookie File", session_info["cookie_file"])
-                session_table.add_row("Session Expiry", session_info["session_expiry"] or "N/A")
+                session_table.add_row(
+                    "Credential Schema",
+                    str(schema_version) if schema_version is not None else "N/A",
+                )
                 session_table.add_row(
                     "Keyring Available",
                     "[green]Yes[/green]" if keyring_available else "[dim]No[/dim]",
                 )
+                session_table.add_row("Cookie File", session_info["path"])
 
                 console.print(session_table)
 
@@ -528,8 +582,15 @@ def auth_status(ctx: click.Context) -> None:
                             users_table.add_row(u["email"], u["name"] or "", u["role"])
 
                         console.print(users_table)
-                elif not session_valid:
+                elif session_valid is not True:
                     console.print()
                     console.print("[yellow]Run `eero auth login` to authenticate.[/yellow]")
 
-    asyncio.run(run())
+            # "ok" for --check: authenticated, and either confirmed valid or
+            # unverified (--offline); never ok when the live probe rejected
+            # the token, and never ok with no token at all.
+            return is_auth and session_valid is not False
+
+    ok = asyncio.run(run())
+    if check_only and not ok:
+        sys.exit(ExitCode.AUTH_REQUIRED)

@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from click.testing import CliRunner
+from eero.exceptions import EeroAuthenticationException
 
+from eeroctl.const import KEYRING_ACCOUNT_NAME, KEYRING_SERVICE_NAME
 from eeroctl.main import cli
 
 
@@ -240,31 +242,58 @@ class TestAuthStatus:
         """Create a CLI runner."""
         return CliRunner()
 
+    @staticmethod
+    def _session_info(tmp_path, *, present=True, schema_version=2):
+        return {
+            "path": str(tmp_path / "cookies.json"),
+            "present": present,
+            "schema_version": schema_version,
+        }
+
+    @staticmethod
+    def _account_response():
+        return {
+            "meta": {"code": 200},
+            "data": {
+                "url": "/2.2/accounts/account_123",
+                "id": "account_123",
+                "name": "Test Account",
+                "premium_status": "active",
+                "premium_expiry": None,
+                "created_at": None,
+                "users": [
+                    {
+                        "id": "user_123",
+                        "name": "Test User",
+                        "email": "test@example.com",
+                        "phone": None,
+                        "role": "owner",
+                        "created_at": None,
+                    }
+                ],
+            },
+        }
+
     def test_auth_status_help(self, runner):
         """Test auth status shows help."""
         result = runner.invoke(cli, ["auth", "status", "--help"])
 
         assert result.exit_code == 0
         assert "Show current authentication status" in result.output
+        assert "--offline" in result.output
+        assert "--check" in result.output
 
     @patch("eeroctl.commands.auth._get_session_info")
     @patch("eeroctl.commands.auth._check_keyring_available")
     @patch("eeroctl.commands.auth.build_client")
-    @patch("eeroctl.commands.auth.get_cookie_file")
     def test_status_when_not_authenticated(
-        self, mock_cookie_file, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
     ):
         """Test status shows not authenticated."""
-        mock_cookie_file.return_value = tmp_path / "cookies.json"
         mock_keyring.return_value = False
-        mock_session_info.return_value = {
-            "cookie_file": str(tmp_path / "cookies.json"),
-            "cookie_exists": False,
-            "session_expiry": None,
-            "session_expired": True,
-            "has_token": False,
-            "preferred_network_id": None,
-        }
+        mock_session_info.return_value = self._session_info(
+            tmp_path, present=False, schema_version=None
+        )
 
         mock_client = AsyncMock()
         mock_client.is_authenticated = False
@@ -274,53 +303,43 @@ class TestAuthStatus:
 
         result = runner.invoke(cli, ["auth", "status"])
 
-        assert "Not Authenticated" in result.output
+        assert "Not authenticated" in result.output
 
     @patch("eeroctl.commands.auth._get_session_info")
     @patch("eeroctl.commands.auth._check_keyring_available")
     @patch("eeroctl.commands.auth.build_client")
-    @patch("eeroctl.commands.auth.get_cookie_file")
-    def test_status_when_authenticated(
-        self, mock_cookie_file, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+    def test_status_not_authenticated_check_exits_auth_required(
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
     ):
-        """Test status shows authenticated with account info."""
-        mock_cookie_file.return_value = tmp_path / "cookies.json"
+        """--check exits 3 when there is no stored token at all."""
         mock_keyring.return_value = False
-        mock_session_info.return_value = {
-            "cookie_file": str(tmp_path / "cookies.json"),
-            "cookie_exists": True,
-            "session_expiry": "2099-12-31T23:59:59",
-            "session_expired": False,
-            "has_token": True,
-            "preferred_network_id": "123",
-        }
+        mock_session_info.return_value = self._session_info(
+            tmp_path, present=False, schema_version=None
+        )
 
-        # Create mock account as raw response (eero-api v2.0.0 returns raw JSON)
-        mock_account_response = {
-            "meta": {"code": 200},
-            "data": {
-                "url": "/2.2/accounts/account_123",
-                "id": "account_123",
-                "name": "Test Account",
-                "premium_status": "active",
-                "premium_expiry": None,
-                "created_at": None,
-                "users": [
-                    {
-                        "id": "user_123",
-                        "name": "Test User",
-                        "email": "test@example.com",
-                        "phone": None,
-                        "role": "owner",
-                        "created_at": None,
-                    }
-                ],
-            },
-        }
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = False
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "status", "--check"])
+
+        assert result.exit_code == 3
+
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_when_authenticated(
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+    ):
+        """Test status shows authenticated with account info when the live probe succeeds."""
+        mock_keyring.return_value = False
+        mock_session_info.return_value = self._session_info(tmp_path)
 
         mock_client = AsyncMock()
         mock_client.is_authenticated = True
-        mock_client.get_account = AsyncMock(return_value=mock_account_response)
+        mock_client.get_account = AsyncMock(return_value=self._account_response())
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_build_client.return_value = mock_client
@@ -330,94 +349,214 @@ class TestAuthStatus:
         # Check for session and account info
         assert "Valid" in result.output or "valid" in result.output
         assert "Account" in result.output or "account_123" in result.output
+        mock_client.get_account.assert_awaited_once()
 
     @patch("eeroctl.commands.auth._get_session_info")
     @patch("eeroctl.commands.auth._check_keyring_available")
     @patch("eeroctl.commands.auth.build_client")
-    @patch("eeroctl.commands.auth.get_cookie_file")
-    def test_status_json_output(
-        self, mock_cookie_file, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+    def test_status_invalid_session_shows_invalid(
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
     ):
-        """Test status with JSON output format."""
-        mock_cookie_file.return_value = tmp_path / "cookies.json"
+        """A stored token that the live probe rejects renders as Invalid, not a crash."""
         mock_keyring.return_value = False
-        mock_session_info.return_value = {
-            "cookie_file": str(tmp_path / "cookies.json"),
-            "cookie_exists": True,
-            "session_expiry": "2099-12-31T23:59:59",
-            "session_expired": False,
-            "has_token": True,
-            "preferred_network_id": "123",
-        }
-
-        # Create mock account as raw response (eero-api v2.0.0 returns raw JSON)
-        mock_account_response = {
-            "meta": {"code": 200},
-            "data": {
-                "url": "/2.2/accounts/account_123",
-                "id": "account_123",
-                "name": "Test Account",
-                "premium_status": "active",
-                "premium_expiry": None,
-                "created_at": None,
-                "users": [
-                    {
-                        "id": "user_123",
-                        "name": "Test User",
-                        "email": "test@example.com",
-                        "phone": None,
-                        "role": "owner",
-                        "created_at": None,
-                    }
-                ],
-            },
-        }
+        mock_session_info.return_value = self._session_info(tmp_path)
 
         mock_client = AsyncMock()
         mock_client.is_authenticated = True
-        mock_client.get_account = AsyncMock(return_value=mock_account_response)
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock()
-        mock_build_client.return_value = mock_client
-
-        result = runner.invoke(cli, ["--output", "json", "auth", "status"])
-
-        # Should be valid JSON
-        try:
-            data = json.loads(result.output)
-            assert "data" in data
-            assert data["data"]["authenticated"] is True
-            assert data["data"]["session_valid"] is True
-            assert data["data"]["account"]["id"] == "account_123"
-        except json.JSONDecodeError:
-            # Output might have other content, just check it ran
-            pass
-
-    @patch("eeroctl.commands.auth._get_session_info")
-    @patch("eeroctl.commands.auth._check_keyring_available")
-    @patch("eeroctl.commands.auth.build_client")
-    @patch("eeroctl.commands.auth.get_cookie_file")
-    def test_status_session_expired(
-        self, mock_cookie_file, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
-    ):
-        """Test status shows expired when session is invalid."""
-        mock_cookie_file.return_value = tmp_path / "cookies.json"
-        mock_keyring.return_value = False
-        mock_session_info.return_value = {
-            "cookie_file": str(tmp_path / "cookies.json"),
-            "cookie_exists": True,
-            "session_expiry": "2020-01-01T00:00:00",  # Past date = expired
-            "session_expired": True,
-            "has_token": True,
-            "preferred_network_id": "123",
-        }
-
-        mock_client = AsyncMock()
-        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(side_effect=EeroAuthenticationException("expired"))
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_build_client.return_value = mock_client
 
         result = runner.invoke(cli, ["auth", "status"])
 
-        assert "Expired" in result.output or "login" in result.output.lower()
+        assert result.exit_code == 0
+        assert "Invalid" in result.output
+
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_invalid_session_check_exits_auth_required(
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+    ):
+        """--check exits 3 when the stored token is present but the probe rejects it."""
+        mock_keyring.return_value = False
+        mock_session_info.return_value = self._session_info(tmp_path)
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(side_effect=EeroAuthenticationException("expired"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "status", "--check"])
+
+        assert result.exit_code == 3
+
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_offline_skips_the_live_probe(
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+    ):
+        """--offline makes no get_account() call and reports 'Stored, not verified'."""
+        mock_keyring.return_value = False
+        mock_session_info.return_value = self._session_info(tmp_path)
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(return_value=self._account_response())
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "status", "--offline"])
+
+        mock_client.get_account.assert_not_awaited()
+        assert "Stored, not verified" in result.output
+
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_offline_check_does_not_fail(
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+    ):
+        """--check with --offline does not exit 3: an unverified token is not a failure."""
+        mock_keyring.return_value = False
+        mock_session_info.return_value = self._session_info(tmp_path)
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["auth", "status", "--offline", "--check"])
+
+        assert result.exit_code == 0
+
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_json_output(
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+    ):
+        """Test status with JSON output format uses the eero.auth.status/v2 schema."""
+        mock_keyring.return_value = True
+        mock_session_info.return_value = self._session_info(tmp_path)
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(return_value=self._account_response())
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["--output", "json", "auth", "status"])
+
+        data = json.loads(result.output)
+        assert data["schema"] == "eero.auth.status/v2"
+        assert data["data"]["authenticated"] is True
+        assert data["data"]["session_valid"] is True
+        assert data["data"]["auth_method"] == "keyring"
+        assert data["data"]["storage"]["keyring"]["present"] is True
+        assert data["data"]["storage"]["cookie_file"]["present"] is True
+        assert data["data"]["storage"]["cookie_file"]["schema_version"] == 2
+        assert data["data"]["account"]["id"] == "account_123"
+        assert "session_expiry" not in json.dumps(data)
+
+    @patch("eeroctl.commands.auth._get_session_info")
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_list_output_has_schema_version_not_session_expiry(
+        self, mock_build_client, mock_keyring, mock_session_info, runner, tmp_path
+    ):
+        """list format drops session_expiry and adds schema_version."""
+        mock_keyring.return_value = False
+        mock_session_info.return_value = self._session_info(tmp_path, schema_version=2)
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(return_value=self._account_response())
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["--output", "list", "auth", "status"])
+
+        assert "session_expiry" not in result.output
+        assert "schema_version      2" in result.output
+
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_reports_schema1_cookie_file(
+        self, mock_build_client, mock_keyring, runner, schema1_cookie_file, monkeypatch
+    ):
+        """A legacy (schema 1) cookie file reports schema_version None."""
+        monkeypatch.setattr("eeroctl.commands.auth.get_cookie_file", lambda: schema1_cookie_file)
+        mock_keyring.return_value = False
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(return_value=self._account_response())
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["--output", "list", "auth", "status"])
+
+        assert "schema_version      N/A" in result.output
+
+    @patch("eeroctl.commands.auth._check_keyring_available")
+    @patch("eeroctl.commands.auth.build_client")
+    def test_status_reports_schema2_cookie_file(
+        self, mock_build_client, mock_keyring, runner, schema2_cookie_file, monkeypatch
+    ):
+        """A current (schema 2) cookie file reports schema_version 2."""
+        monkeypatch.setattr("eeroctl.commands.auth.get_cookie_file", lambda: schema2_cookie_file)
+        mock_keyring.return_value = False
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = True
+        mock_client.get_account = AsyncMock(return_value=self._account_response())
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+        mock_build_client.return_value = mock_client
+
+        result = runner.invoke(cli, ["--output", "list", "auth", "status"])
+
+        assert "schema_version      2" in result.output
+
+
+class TestCheckKeyringAvailable:
+    """Tests for _check_keyring_available, the keyring probe helper."""
+
+    def test_probes_using_the_sdk_constants(self, monkeypatch):
+        """The probe must use eeroctl.const.KEYRING_*, not a hardcoded literal."""
+        from eeroctl.commands import auth as auth_module
+
+        calls = []
+
+        class _FakeKeyring:
+            @staticmethod
+            def get_password(service, account):
+                calls.append((service, account))
+                return "a-token"
+
+        monkeypatch.setitem(__import__("sys").modules, "keyring", _FakeKeyring())
+
+        assert auth_module._check_keyring_available() is True
+        assert calls == [(KEYRING_SERVICE_NAME, KEYRING_ACCOUNT_NAME)]
+
+    def test_returns_false_when_no_token_stored(self, monkeypatch):
+        from eeroctl.commands import auth as auth_module
+
+        class _FakeKeyring:
+            @staticmethod
+            def get_password(service, account):
+                return None
+
+        monkeypatch.setitem(__import__("sys").modules, "keyring", _FakeKeyring())
+
+        assert auth_module._check_keyring_available() is False
