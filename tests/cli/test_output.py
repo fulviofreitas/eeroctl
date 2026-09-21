@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from rich.console import Console
 
+from eeroctl.const import EeroNetworkStatus
 from eeroctl.output import (
     CLIENT_TABLE_COLUMNS,
     EERO_TABLE_COLUMNS,
@@ -493,15 +494,40 @@ class TestOutputManager:
         result = manager._format_value({"key": "value"})
         assert "..." in result
 
-    def test_format_value_enum_like(self, manager):
-        """Test _format_value handles enum-like strings."""
-        result = manager._format_value("EeroNetworkStatus.ONLINE")
+    def test_format_value_real_enum_is_flattened(self, manager):
+        """Test _format_value flattens a real Enum instance to its lowercase name."""
+        result = manager._format_value(EeroNetworkStatus.ONLINE)
         assert result == "online"
 
     def test_format_value_plain_string(self, manager):
         """Test _format_value passes through plain strings."""
         result = manager._format_value("hello world")
         assert result == "hello world"
+
+    def test_format_value_does_not_truncate_email(self, manager):
+        """A plain string that merely contains a dot (an email) must pass through
+        unchanged -- it is not an Enum instance. Regression test for the
+        security-review finding: 'victim@example.com' -> 'com'.
+        """
+        result = manager._format_value("victim@example.com")
+        assert result == "victim@example.com"
+
+    def test_format_value_does_not_truncate_api_url_path(self, manager):
+        """Regression test: '/2.2/networks/123' must not become '2/networks/123'."""
+        result = manager._format_value("/2.2/networks/123")
+        assert result == "/2.2/networks/123"
+
+    def test_format_value_does_not_truncate_version_string(self, manager):
+        """Regression test: '6.2' must not become '2'."""
+        result = manager._format_value("6.2")
+        assert result == "6.2"
+
+    def test_format_value_enum_like_string_is_not_an_enum(self, manager):
+        """A bare string that merely looks like a stringified enum (not an
+        actual Enum instance) must pass through unchanged.
+        """
+        result = manager._format_value("EeroNetworkStatus.ONLINE")
+        assert result == "EeroNetworkStatus.ONLINE"
 
     def test_get_columns_for_schema_network(self, manager):
         """Test column selection for network schema."""

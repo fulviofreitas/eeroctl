@@ -615,12 +615,16 @@ class OutputManager:
             if isinstance(value, list):
                 return f"[dim]{len(value)} items[/dim]"
             return "[dim]...[/dim]"
-        # Handle enum values
-        value_str = str(value)
-        if "." in value_str and value_str.count(".") == 1:
-            # Likely an enum like "EeroNetworkStatus.ONLINE"
-            value_str = value_str.split(".")[-1].lower()
-        return value_str
+        # Handle enum values (e.g. EeroNetworkStatus.ONLINE -> "online"). Only
+        # real Enum instances are flattened this way -- plain strings that
+        # happen to contain a single dot (an email, a "/2.2/networks/123" API
+        # path, a "6.2" version string) must never be truncated. See
+        # eeroctl-context security-review.md and the batch-1/2 review that
+        # found `victim@example.com` -> `com` and `/2.2/networks/123` ->
+        # `2/networks/123` from the previous substring-based heuristic.
+        if isinstance(value, Enum):
+            return str(value.name).lower()
+        return str(value)
 
     def _render_table(self, data: Union[Dict, List], schema: str = "") -> None:
         """Render as Rich table with smart column selection."""
