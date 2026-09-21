@@ -802,6 +802,50 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero eero led show",
         ),
+        "eero led cycle": WriteSpec(
+            command="eero led cycle",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero eero led show",
+        ),
+        # -- eero: location/pppoe/ports/port -- migration plan §4 phase C
+        # row 36. --
+        "eero location set": WriteSpec(
+            command="eero location set",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero eero show <id>",
+        ),
+        "eero pppoe set": WriteSpec(
+            command="eero pppoe set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero eero show <id>",
+        ),
+        "eero ports cycle": WriteSpec(
+            command="eero ports cycle",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero eero list",
+        ),
+        "eero ports cycle --reboot": WriteSpec(
+            command="eero ports cycle --reboot",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="eero",
+            read_command="eero eero list",
+        ),
+        "eero port": WriteSpec(
+            command="eero port",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero eero show <id>",
+        ),
         # -- eero nightlight: none of the nightlight writes are in the
         # live-verified allowlist, and no Beacon was available to confirm
         # them by hand either (migration plan Q4). --
@@ -828,6 +872,13 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
         ),
         "eero nightlight schedule": WriteSpec(
             command="eero nightlight schedule",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero eero nightlight show",
+        ),
+        "eero nightlight override": WriteSpec(
+            command="eero nightlight override",
             risk=OperationRisk.LOW,
             status=WriteStatus.UNVERIFIED,
             reboots="none",

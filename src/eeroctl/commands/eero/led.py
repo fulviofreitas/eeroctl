@@ -5,6 +5,7 @@ Commands:
 - eero eero led on: Turn LED on
 - eero eero led off: Turn LED off
 - eero eero led brightness: Set LED brightness
+- eero eero led cycle: Cycle the LED through a sequence of colors
 """
 
 import asyncio
@@ -34,6 +35,7 @@ def led_group(ctx: click.Context) -> None:
       on         - Turn LED on
       off        - Turn LED off
       brightness - Set LED brightness
+      cycle      - Cycle the LED through a sequence of colors
     """
     pass
 
@@ -219,5 +221,81 @@ def led_brightness(ctx: click.Context, eero_identifier: str, value: int) -> None
             )
 
         await run_with_client(set_brightness)
+
+    asyncio.run(run_cmd())
+
+
+@led_group.command(name="cycle")
+@click.argument("eero_identifier")
+@click.option("--colors", required=True, help="Comma-separated list of colors")
+@click.option("--duration", required=True, help="Total cycle duration")
+@click.option("--time-per-color", required=True, help="Time spent on each color")
+@click.pass_context
+def led_cycle(
+    ctx: click.Context,
+    eero_identifier: str,
+    colors: str,
+    duration: str,
+    time_per_color: str,
+) -> None:
+    """Cycle the LED through a sequence of colors.
+
+    \b
+    Arguments:
+      EERO_IDENTIFIER  Node ID, serial number, or name/location
+    """
+    cli_ctx = get_cli_context(ctx)
+    console = cli_ctx.console
+
+    spec = get_write_spec("eero led cycle")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target=eero_identifier,
+            ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    colors_list = [c.strip() for c in colors.split(",") if c.strip()]
+
+    async def run_cmd() -> None:
+        async def cycle(client: EeroClient) -> None:
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
+
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            # `led_cycle` addresses the eero by its serial, not its id
+            # (client.py:3095).
+            serial = eero.get("serial")
+            if not serial:
+                console.print(f"[red]No serial number available for '{eero_identifier}'[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+            with cli_ctx.status("Cycling LED colors..."):
+                result = await client.led_cycle(
+                    serial,
+                    colors=colors_list,
+                    duration=duration,
+                    time_per_color=time_per_color,
+                )
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print("[bold green]LED cycle started.[/bold green]")
+            else:
+                console.print("[red]Failed to start LED cycle[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(cycle)
 
     asyncio.run(run_cmd())

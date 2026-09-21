@@ -6,6 +6,7 @@ Commands:
 - eero eero nightlight off: Turn nightlight off
 - eero eero nightlight brightness: Set brightness
 - eero eero nightlight schedule: Set schedule
+- eero eero nightlight override: One-shot brightness override
 """
 
 import asyncio
@@ -36,6 +37,7 @@ def nightlight_group(ctx: click.Context) -> None:
       off        - Turn nightlight off
       brightness - Set brightness
       schedule   - Set schedule
+      override   - One-shot brightness override
     """
     pass
 
@@ -310,5 +312,75 @@ def nightlight_schedule(
                 sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(set_schedule)
+
+    asyncio.run(run_cmd())
+
+
+@nightlight_group.command(name="override")
+@click.argument("eero_identifier")
+@click.option(
+    "--brightness", required=True, type=click.IntRange(0, 100), help="Brightness percentage"
+)
+@click.pass_context
+def nightlight_override(ctx: click.Context, eero_identifier: str, brightness: int) -> None:
+    """Apply a one-shot nightlight brightness override.
+
+    Distinct from `nightlight brightness`: this calls the SDK's dedicated
+    `nightlight_override` action rather than `set_nightlight`.
+    """
+    cli_ctx = get_cli_context(ctx)
+    console = cli_ctx.console
+
+    spec = get_write_spec("eero nightlight override")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target=eero_identifier,
+            ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
+            console=cli_ctx.console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def set_override(client: EeroClient) -> None:
+            with cli_ctx.status(f"Finding Eero '{eero_identifier}'..."):
+                resolved_id, eero = await resolve_eero_identifier(
+                    client, eero_identifier, cli_ctx.network_id
+                )
+
+            if not resolved_id or not eero:
+                console.print(f"[red]Eero '{eero_identifier}' not found[/red]")
+                console.print("[dim]Try: eero eero list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            eero_id_str = str(resolved_id)
+            with cli_ctx.status(f"Applying nightlight override ({brightness}%)..."):
+                try:
+                    result = await client.nightlight_override(
+                        eero_id_str,
+                        brightness_percentage=brightness,
+                        network_id=cli_ctx.network_id,
+                    )
+                except Exception as e:
+                    if isinstance(e, EeroFeatureUnavailableException):
+                        console.print(
+                            "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
+                        )
+                        sys.exit(ExitCode.FEATURE_UNAVAILABLE)
+                    raise
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print(
+                    f"[bold green]Nightlight override applied ({brightness}%)[/bold green]"
+                )
+            else:
+                console.print("[red]Failed to apply nightlight override[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(set_override)
 
     asyncio.run(run_cmd())

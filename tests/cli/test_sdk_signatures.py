@@ -163,6 +163,37 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         "eero/nightlight.py:243",
     ),
     ("get_updates", ("nid",), {}, "eero/updates.py:43,77"),
+    # -- eero: location/pppoe/ports/port/led-cycle/nightlight-override,
+    # migration plan §4 phase C row 36. --
+    ("set_location", ("eid", "Office", "nid"), {}, "eero/base.py:location_set (client.py:643)"),
+    # `set_pppoe` has no `network_id` parameter (client.py:2726).
+    (
+        "set_pppoe",
+        ("eid",),
+        {"username": "user", "password": "pw"},
+        "eero/pppoe.py:pppoe_set (client.py:2726)",
+    ),
+    ("node_action", ("eid", "POWER_CYCLE_ALL_PORTS", "nid"), {}, "eero/base.py:ports_cycle"),
+    (
+        "port_action",
+        ("eid", "1", "ENABLE_PORT", "nid"),
+        {},
+        "eero/base.py:port_action_cmd (client.py:3086)",
+    ),
+    # `led_cycle` has no `network_id` parameter and addresses the eero by
+    # serial (client.py:3095).
+    (
+        "led_cycle",
+        ("SERIAL123",),
+        {"colors": ["red", "blue"], "duration": "10s", "time_per_color": "1s"},
+        "eero/led.py:led_cycle (client.py:3095)",
+    ),
+    (
+        "nightlight_override",
+        ("eid",),
+        {"brightness_percentage": 50, "network_id": "nid"},
+        "eero/nightlight.py:nightlight_override (client.py:3103)",
+    ),
     # -- network/base.py --------------------------------------------------
     ("set_preferred_network", ("nid",), {}, "network/base.py:176"),
     ("set_network_name", ("New Name", "nid"), {}, "network/base.py:279"),
