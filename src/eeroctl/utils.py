@@ -7,17 +7,15 @@ import logging
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional, TypeVar
+from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroAuthenticationException, EeroException
+from eero.exceptions import EeroAuthenticationException, EeroException, EeroValidationException
 from rich.console import Console
 
+from .context import EeroCliContext
 from .exit_codes import ExitCode
-
-if TYPE_CHECKING:
-    from .context import EeroCliContext
 
 # Create console for rich output
 console = Console()
@@ -66,6 +64,44 @@ def looks_like_sdk_reference(value: str) -> bool:
     if value.startswith(("/", "http://", "https://")):
         return True
     return any(ch in value for ch in "/?#{}")
+
+
+def get_session_token_override() -> Optional[str]:
+    """Return the ``EEROCTL_SESSION_TOKEN`` value, or ``None`` if unset/empty.
+
+    When set, eeroctl builds an ephemeral, in-memory session (SDK
+    ``MemoryStorage``, via ``cookie_file=None, use_keyring=False``) instead
+    of touching disk or the keyring at all -- v8 migration plan §3.4, Q6.
+    """
+    token = os.environ.get("EEROCTL_SESSION_TOKEN")
+    return token if token else None
+
+
+async def prepare_client(client: EeroClient) -> None:
+    """Apply ``EEROCTL_SESSION_TOKEN`` to an already-entered client, if set.
+
+    Must run *after* ``async with client:`` (``__aenter__`` opens the
+    aiohttp session -- v8.0.1 ``client.py:99-101``), so every call site that
+    builds a client via :func:`build_client` calls this immediately after
+    entering the context manager, before running command logic.
+
+    ``EeroClient.set_session_token`` is async (v8.0.1 ``client.py:362``:
+    ``async def set_session_token(self, token: str) -> None``), which is
+    why this cannot live inside :func:`build_client` itself (a sync
+    function that returns an un-entered client).
+
+    Never logs or echoes the token. A malformed value raises
+    ``EeroValidationException`` (v8.0.1 ``api/auth.py:530-532``, printable
+    ASCII / no CR-LF), which callers must let propagate: ``with_client``
+    and ``run_with_client`` both map it to exit 2 via the existing error
+    handling.
+
+    Args:
+        client: An entered (``__aenter__``-ed) :class:`~eero.EeroClient`.
+    """
+    token = get_session_token_override()
+    if token is not None:
+        await client.set_session_token(token)
 
 
 def backup_legacy_cookie_file(cookie_file: Path) -> Optional[Path]:
@@ -128,8 +164,27 @@ def backup_legacy_cookie_file(cookie_file: Path) -> Optional[Path]:
     return backup_path
 
 
+def _resolve_cli_ctx(cli_ctx: Optional[EeroCliContext]) -> Optional[EeroCliContext]:
+    """Resolve the active CLI context when the caller didn't pass one.
+
+    Most ``run_with_client`` call sites across the command modules predate
+    the ``cli_ctx`` parameter; touching every one of them is out of scope
+    for this commit. Falling back to Click's own current context (which
+    already carries the ``EeroCliContext`` as ``ctx.obj``) means those
+    call sites still pick up ``accept_language``/``get_retries``/
+    ``send_legacy_cookie`` without any change.
+    """
+    if cli_ctx is not None:
+        return cli_ctx
+    click_ctx = click.get_current_context(silent=True)
+    if click_ctx is None:
+        return None
+    obj = click_ctx.obj
+    return obj if isinstance(obj, EeroCliContext) else None
+
+
 def build_client(
-    cli_ctx: Optional["EeroCliContext"] = None,
+    cli_ctx: Optional[EeroCliContext] = None,
     *,
     use_keyring: Optional[bool] = None,
     cookie_file: Optional[Path] = None,
@@ -142,36 +197,65 @@ def build_client(
     v8 migration plan, §3.4). All private-SDK access (``client._api...``)
     lives in :mod:`eeroctl.sdk_private`, never here or in a command module.
 
+    When ``EEROCTL_SESSION_TOKEN`` is set (see
+    :func:`get_session_token_override`), this always builds an ephemeral,
+    in-memory client (``cookie_file=None, use_keyring=False`` -> SDK
+    ``MemoryStorage``) regardless of *use_keyring*/*cookie_file*: the
+    pre-v8 backup is skipped too, since it never touches disk. Callers must
+    still call :func:`prepare_client` after entering the client to actually
+    apply the token (see that function's docstring for why).
+
     Args:
-        cli_ctx: The active CLI context. Not yet used to influence
-            construction; accepted now so callers do not need to change
-            again when a later commit plumbs constructor overrides
-            (``send_legacy_cookie``, ``accept_language``, ``get_retries``)
-            through it.
+        cli_ctx: The active CLI context. When ``None``, resolved via
+            :func:`_resolve_cli_ctx` (Click's current context) so callers
+            that cannot cheaply thread it through still get the right
+            ``accept_language``/``get_retries``/``send_legacy_cookie``.
         use_keyring: Overrides the saved auth-method preference for this
             construction only (e.g. an in-flight ``--no-keyring`` flag that
             has not been persisted yet). Defaults to ``get_use_keyring()``.
+            Ignored under ``EEROCTL_SESSION_TOKEN``.
         cookie_file: Overrides the configured cookie file path for this
             construction only. Defaults to ``get_cookie_file()``. Skips the
-            pre-v8 backup entirely when explicitly ``None`` (the future
-            ephemeral ``EEROCTL_SESSION_TOKEN`` mode, which passes no file
-            backend to the SDK at all).
+            pre-v8 backup entirely when explicitly ``None``. Ignored under
+            ``EEROCTL_SESSION_TOKEN``.
 
     Returns:
         A configured, un-entered :class:`~eero.EeroClient`. Callers use it
         as an async context manager, e.g. ``async with build_client() as
         client:``.
     """
-    del cli_ctx  # Reserved for a later commit; unused today.
-    resolved_cookie_file = cookie_file if cookie_file is not None else get_cookie_file()
-    resolved_use_keyring = use_keyring if use_keyring is not None else get_use_keyring()
-    if resolved_cookie_file is not None:
-        # Runs for both auth methods: keyring mode still reads the file via
-        # SDK ChainedStorage on first load, promotes it, and deletes it.
-        backup_legacy_cookie_file(resolved_cookie_file)
+    resolved_cli_ctx = _resolve_cli_ctx(cli_ctx)
+
+    if get_session_token_override() is not None:
+        resolved_cookie_file: Optional[Path] = None
+        resolved_use_keyring = False
+    else:
+        resolved_cookie_file = cookie_file if cookie_file is not None else get_cookie_file()
+        resolved_use_keyring = use_keyring if use_keyring is not None else get_use_keyring()
+        if resolved_cookie_file is not None:
+            # Runs for both auth methods: keyring mode still reads the file
+            # via SDK ChainedStorage on first load, promotes it, and
+            # deletes it.
+            backup_legacy_cookie_file(resolved_cookie_file)
+
+    accept_language = (
+        resolved_cli_ctx.accept_language if resolved_cli_ctx is not None else get_accept_language()
+    )
+    get_retries = (
+        resolved_cli_ctx.get_retries if resolved_cli_ctx is not None else get_get_retries()
+    )
+    send_legacy_cookie = (
+        resolved_cli_ctx.send_legacy_cookie
+        if resolved_cli_ctx is not None
+        else get_send_legacy_cookie()
+    )
+
     return EeroClient(
         cookie_file=str(resolved_cookie_file) if resolved_cookie_file is not None else None,
         use_keyring=resolved_use_keyring,
+        accept_language=accept_language,
+        get_retries=get_retries,
+        send_legacy_cookie=send_legacy_cookie,
     )
 
 
@@ -209,11 +293,20 @@ def with_client(func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
         async def run():
             try:
                 async with build_client() as client:
+                    await prepare_client(client)
                     return await func(*args, client=client, **kwargs)
             except EeroAuthenticationException:
                 console.print("[bold red]Not authenticated[/bold red]")
                 console.print("Please login first: [bold]eero auth login[/bold]")
                 sys.exit(3)  # ExitCode.AUTH_REQUIRED
+            except EeroValidationException as e:
+                # A malformed EEROCTL_SESSION_TOKEN surfaces here from
+                # prepare_client(); route it through the same mapping
+                # run_with_client uses so it exits 2, not an unhandled
+                # traceback.
+                from .errors import handle_cli_error
+
+                sys.exit(handle_cli_error(e, console))
 
         return asyncio.run(run())
 
@@ -233,15 +326,32 @@ def output_option(func):
 def get_config_dir() -> Path:
     """Get the configuration directory.
 
+    ``EEROCTL_CONFIG_DIR``, when set, overrides both the POSIX and Windows
+    defaults below (v8 migration plan §3.4, Q6).
+
     Returns:
         Path to the configuration directory
     """
-    if os.name == "nt":  # Windows
+    override = os.environ.get("EEROCTL_CONFIG_DIR")
+    if override:
+        config_dir = Path(override).expanduser()
+    elif os.name == "nt":  # Windows
         config_dir = Path(os.environ["APPDATA"]) / "eeroctl"
     else:
         config_dir = Path.home() / ".config" / "eeroctl"
 
-    config_dir.mkdir(parents=True, exist_ok=True)
+    # 0o700: the directory holds cookies.json (a bearer token) and its
+    # pre-v8 backup. mkdir's mode only applies to a newly created
+    # directory (subject to umask); chmod it explicitly too, so a
+    # directory that already existed with looser permissions is tightened
+    # on every run. Never fatal: an unowned or read-only parent must not
+    # block the CLI from working.
+    config_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    try:
+        os.chmod(config_dir, 0o700)
+    except OSError:
+        pass
+
     return config_dir
 
 
@@ -270,6 +380,9 @@ DEFAULT_CONFIG = {
     "default_output": "table",
     "auth_method": "keyring",
     "preferred_network_id": None,
+    "accept_language": "en-US",
+    "get_retries": 0,
+    "send_legacy_cookie": True,
 }
 
 # Valid values for config options
@@ -414,6 +527,39 @@ def get_use_keyring() -> bool:
     return get_auth_method() == "keyring"
 
 
+# ==================== EeroClient Constructor Options ====================
+
+
+def get_accept_language() -> str:
+    """Get the configured `Accept-Language` value for the SDK client.
+
+    Returns:
+        The configured value. Defaults to ``"en-US"`` if not set.
+    """
+    config = _load_config()
+    return config.get("accept_language", "en-US")
+
+
+def get_get_retries() -> int:
+    """Get the configured number of extra GET-only retry attempts.
+
+    Returns:
+        The configured value. Defaults to ``0`` if not set.
+    """
+    config = _load_config()
+    return config.get("get_retries", 0)
+
+
+def get_send_legacy_cookie() -> bool:
+    """Get whether the SDK should also send the legacy `s=` session cookie.
+
+    Returns:
+        The configured value. Defaults to ``True`` if not set.
+    """
+    config = _load_config()
+    return config.get("send_legacy_cookie", True)
+
+
 # ==================== Default Output ====================
 
 
@@ -442,7 +588,7 @@ def get_default_output() -> str:
     return config.get("default_output", "table")
 
 
-async def run_with_client(func, cli_ctx: Optional["EeroCliContext"] = None):
+async def run_with_client(func, cli_ctx: Optional[EeroCliContext] = None):
     """Run a function with an EeroClient instance.
 
     Respects the use_keyring preference saved during login.
@@ -455,14 +601,16 @@ async def run_with_client(func, cli_ctx: Optional["EeroCliContext"] = None):
     Args:
         func: Async function that takes an EeroClient as argument
         cli_ctx: The active CLI context, forwarded to :func:`build_client`.
-            Optional so existing callers do not need to change; a later
-            commit will start passing it.
+            Optional: when omitted, ``build_client`` resolves it from
+            Click's current context instead (see ``_resolve_cli_ctx``), so
+            existing callers do not need to change.
 
     Raises:
         SystemExit: With the mapped exit code when an SDK exception escapes.
     """
     try:
         async with build_client(cli_ctx) as client:
+            await prepare_client(client)
             await func(client)
     except EeroAuthenticationException:
         console.print("[bold red]Not authenticated[/bold red]")

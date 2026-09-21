@@ -2,6 +2,7 @@
 
 import inspect
 import json
+import logging
 from pathlib import Path
 from typing import Any, Callable, Dict, Optional, Type
 
@@ -14,6 +15,34 @@ from eero.exceptions import EeroException
 def cli_runner() -> CliRunner:
     """Provide a Click CLI test runner."""
     return CliRunner()
+
+
+@pytest.fixture(autouse=True)
+def _reset_debug_logging_state():
+    """Undo --debug's logger mutations between tests.
+
+    ``main._configure_debug_logging`` (invoked on every ``cli()`` call,
+    including via ``CliRunner``) sets ``propagate = False`` and attaches a
+    handler to the ``eero``/``eeroctl`` loggers while ``--debug`` is active,
+    to avoid double-printed log lines; it rebuilds that state fresh on
+    every call, but a test that never invokes ``cli()`` at all still needs
+    a clean baseline. Those are real, singleton ``logging.Logger`` objects
+    shared across the whole pytest process, so without this reset, any
+    test that runs after a ``--debug`` test would silently stop being
+    visible to ``caplog``-based assertions (caplog captures via the root
+    logger, which a non-propagating logger never reaches).
+    """
+
+    def _reset() -> None:
+        for name in ("eero", "eeroctl"):
+            target_logger = logging.getLogger(name)
+            target_logger.handlers.clear()
+            target_logger.propagate = True
+            target_logger.setLevel(logging.NOTSET)
+
+    _reset()
+    yield
+    _reset()
 
 
 @pytest.fixture

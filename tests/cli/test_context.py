@@ -35,6 +35,9 @@ class TestEeroCliContext:
         assert ctx.dry_run is False
         assert ctx.quiet is False
         assert ctx.debug is False
+        assert ctx.accept_language == "en-US"
+        assert ctx.get_retries == 0
+        assert ctx.send_legacy_cookie is True
 
     def test_custom_initialization(self):
         """Test EeroCliContext with custom values."""
@@ -45,6 +48,9 @@ class TestEeroCliContext:
             non_interactive=True,
             force=True,
             debug=True,
+            accept_language="fr-FR",
+            get_retries=2,
+            send_legacy_cookie=False,
         )
 
         assert ctx.network_id == "net_123"
@@ -53,6 +59,9 @@ class TestEeroCliContext:
         assert ctx.non_interactive is True
         assert ctx.force is True
         assert ctx.debug is True
+        assert ctx.accept_language == "fr-FR"
+        assert ctx.get_retries == 2
+        assert ctx.send_legacy_cookie is False
 
     def test_is_json_output_true(self):
         """Test is_json_output returns True for JSON format."""
@@ -130,6 +139,9 @@ class TestCreateCliContext:
         assert ctx.verbose is False
         assert ctx.output_format == "table"
         assert ctx.network_id is None
+        assert ctx.accept_language == "en-US"
+        assert ctx.get_retries == 0
+        assert ctx.send_legacy_cookie is True
 
     def test_creates_context_with_custom_values(self):
         """Test factory creates context with specified values."""
@@ -147,6 +159,9 @@ class TestCreateCliContext:
             timeout=60,
             retries=3,
             retry_backoff=1000,
+            accept_language="de-DE",
+            get_retries=5,
+            send_legacy_cookie=False,
         )
 
         assert ctx.debug is True
@@ -162,6 +177,9 @@ class TestCreateCliContext:
         assert ctx.timeout == 60
         assert ctx.retries == 3
         assert ctx.retry_backoff == 1000
+        assert ctx.accept_language == "de-DE"
+        assert ctx.get_retries == 5
+        assert ctx.send_legacy_cookie is False
 
     def test_creates_console_with_settings(self):
         """Test factory creates Console respecting no_color and quiet."""

@@ -15,7 +15,7 @@ from typing import Any, Optional, TypedDict
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroAuthenticationException, EeroException
+from eero.exceptions import EeroAuthenticationException, EeroException, EeroValidationException
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
@@ -30,11 +30,31 @@ from ..utils import (
     get_auth_method,
     get_config_file,
     get_cookie_file,
+    get_session_token_override,
+    prepare_client,
     set_auth_method,
     set_preferred_network,
 )
 
 logger = logging.getLogger(__name__)
+
+# EEROCTL_SESSION_TOKEN fully owns the session for the process; there is
+# nothing on disk or in the keyring to log in/out of or clear.
+_SESSION_TOKEN_REFUSAL = (
+    "session comes from EEROCTL_SESSION_TOKEN; unset it to manage stored credentials"
+)
+
+
+def _refuse_if_session_token_managed(cli_ctx: EeroCliContext) -> bool:
+    """Refuse auth login/logout/clear when EEROCTL_SESSION_TOKEN is set.
+
+    Returns:
+        True if the command must stop here (caller should ``sys.exit(2)``).
+    """
+    if get_session_token_override() is None:
+        return False
+    cli_ctx.renderer.render_error(_SESSION_TOKEN_REFUSAL)
+    return True
 
 
 class _UserData(TypedDict):
@@ -113,6 +133,9 @@ def auth_login(ctx: click.Context, force: bool, no_keyring: bool) -> None:
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+
+    if _refuse_if_session_token_managed(cli_ctx):
+        sys.exit(ExitCode.USAGE_ERROR)
 
     # Determine use_keyring setting:
     # - If --no-keyring is specified, use cookie_file method
@@ -284,6 +307,9 @@ def auth_logout(ctx: click.Context) -> None:
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
+    if _refuse_if_session_token_managed(cli_ctx):
+        sys.exit(ExitCode.USAGE_ERROR)
+
     async def run() -> None:
         async with build_client() as client:
             if not client.is_authenticated:
@@ -301,7 +327,13 @@ def auth_logout(ctx: click.Context) -> None:
                     console.print(f"[bold red]Error:[/bold red] {ex}")
                     sys.exit(ExitCode.GENERIC_ERROR)
 
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except EeroValidationException as e:
+        # A bad constructor option (e.g. EEROCTL_ACCEPT_LANGUAGE) raised at
+        # build_client() time, before any client method is even called.
+        cli_ctx.renderer.render_error(str(e))
+        sys.exit(ExitCode.USAGE_ERROR)
 
 
 @auth_group.command(name="clear")
@@ -315,6 +347,9 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
     """
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
+
+    if _refuse_if_session_token_managed(cli_ctx):
+        sys.exit(ExitCode.USAGE_ERROR)
 
     if not force and not cli_ctx.non_interactive:
         confirmed = Confirm.ask(
@@ -345,7 +380,13 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
 
         console.print("[bold green]Authentication data cleared[/bold green]")
 
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except EeroValidationException as e:
+        # A bad constructor option (e.g. EEROCTL_ACCEPT_LANGUAGE) raised at
+        # build_client() time, before any client method is even called.
+        cli_ctx.renderer.render_error(str(e))
+        sys.exit(ExitCode.USAGE_ERROR)
 
 
 def _get_session_info() -> _SessionInfo:
@@ -412,10 +453,20 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
     console = cli_ctx.console
 
     async def run() -> bool:
-        session_info = _get_session_info()
-        keyring_available = _check_keyring_available()
+        session_token = get_session_token_override()
+        if session_token is not None:
+            # No file or keyring is used in this mode; report accordingly
+            # regardless of what may happen to exist on disk.
+            session_info = _SessionInfo(
+                path=str(get_cookie_file()), present=False, schema_version=None
+            )
+            keyring_available = False
+        else:
+            session_info = _get_session_info()
+            keyring_available = _check_keyring_available()
 
         async with build_client() as client:
+            await prepare_client(client)
             is_auth = client.is_authenticated
             account_data: _AccountData | None = None
             # True: live probe confirmed the session works. False: not
@@ -476,8 +527,12 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
                             users=users_list,
                         )
 
-            # Determine auth method
-            auth_method = "keyring" if keyring_available else "cookie"
+            # Determine auth method: the *configured* method verbatim
+            # ("env" under EEROCTL_SESSION_TOKEN, else get_auth_method()'s
+            # "keyring"/"cookie_file"), independent of whether the keyring
+            # probe actually found a record there -- that's a separate
+            # fact, already carried by storage.keyring.present.
+            auth_method = "env" if session_token is not None else get_auth_method()
             schema_version = session_info["schema_version"]
 
             if cli_ctx.is_structured_output():
@@ -591,6 +646,12 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
             # the token, and never ok with no token at all.
             return is_auth and session_valid is not False
 
-    ok = asyncio.run(run())
+    try:
+        ok = asyncio.run(run())
+    except EeroValidationException as e:
+        # A malformed EEROCTL_SESSION_TOKEN, from prepare_client().
+        cli_ctx.renderer.render_error(str(e))
+        sys.exit(ExitCode.USAGE_ERROR)
+
     if check_only and not ok:
         sys.exit(ExitCode.AUTH_REQUIRED)

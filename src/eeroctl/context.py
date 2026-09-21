@@ -42,6 +42,12 @@ class EeroCliContext:
     quiet: bool = False
     no_color: bool = False
 
+    # Where `force=True` came from: "flag" (--force/-y/--yes on the command
+    # line), "env" (EEROCTL_FORCE), or None (force is False). Surfaced so
+    # `eero auth clear`-style destructive commands can be traced back to an
+    # environment variable silently disabling confirmation prompts.
+    force_source: Optional[str] = None
+
     # Debug/logging flags
     debug: bool = False
     verbose: bool = False
@@ -50,6 +56,11 @@ class EeroCliContext:
     timeout: Optional[int] = None
     retries: Optional[int] = None
     retry_backoff: Optional[int] = None
+
+    # EeroClient constructor options (v8 migration plan §3.4)
+    accept_language: str = "en-US"
+    get_retries: int = 0
+    send_legacy_cookie: bool = True
 
     # Additional storage for subcommand state
     _extra: Dict[str, Any] = field(default_factory=dict)
@@ -265,6 +276,10 @@ def create_cli_context(
     timeout: Optional[int] = None,
     retries: Optional[int] = None,
     retry_backoff: Optional[int] = None,
+    accept_language: str = "en-US",
+    get_retries: int = 0,
+    send_legacy_cookie: bool = True,
+    force_source: Optional[str] = None,
 ) -> EeroCliContext:
     """Create a new CLI context with the given settings.
 
@@ -285,6 +300,11 @@ def create_cli_context(
         timeout: Request timeout in seconds.
         retries: Number of retries for failed requests.
         retry_backoff: Backoff time between retries in milliseconds.
+        accept_language: `Accept-Language` value passed to the SDK client.
+        get_retries: Extra GET-only retry attempts passed to the SDK client.
+        send_legacy_cookie: Whether the SDK client also sends the legacy
+            `s=` session cookie.
+        force_source: Where `force` came from: "flag", "env", or None.
 
     Returns:
         A configured EeroCliContext instance.
@@ -300,6 +320,7 @@ def create_cli_context(
         detail_level=detail_level,
         non_interactive=non_interactive,
         force=force,
+        force_source=force_source,
         dry_run=dry_run,
         quiet=quiet,
         no_color=no_color,
@@ -308,4 +329,7 @@ def create_cli_context(
         timeout=timeout,
         retries=retries,
         retry_backoff=retry_backoff,
+        accept_language=accept_language,
+        get_retries=get_retries,
+        send_legacy_cookie=send_legacy_cookie,
     )

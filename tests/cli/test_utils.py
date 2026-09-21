@@ -23,6 +23,7 @@ from eero.exceptions import (
     EeroValidationException,
 )
 
+from eeroctl.context import EeroCliContext
 from eeroctl.exit_codes import ExitCode
 from eeroctl.utils import (
     DEFAULT_CONFIG,
@@ -36,7 +37,9 @@ from eeroctl.utils import (
     get_cookie_file,
     get_default_output,
     get_preferred_network,
+    get_session_token_override,
     looks_like_sdk_reference,
+    prepare_client,
     run_with_client,
     set_auth_method,
     set_default_output,
@@ -68,6 +71,25 @@ class TestGetConfigDir:
         assert config_dir.exists()
         assert config_dir.is_dir()
 
+    def test_creates_directory_with_mode_0700(self, tmp_path, monkeypatch):
+        """A newly created config dir is 0700: it holds cookies.json (a bearer token)."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        config_dir = get_config_dir()
+
+        assert (config_dir.stat().st_mode & 0o777) == 0o700
+
+    def test_tightens_mode_of_a_pre_existing_directory(self, tmp_path, monkeypatch):
+        """A pre-existing, more permissive directory is chmod'd to 0700."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        pre_existing = tmp_path / ".config" / "eeroctl"
+        pre_existing.mkdir(parents=True)
+        os.chmod(pre_existing, 0o755)
+
+        config_dir = get_config_dir()
+
+        assert (config_dir.stat().st_mode & 0o777) == 0o700
+
     @patch("os.name", "posix")
     def test_posix_path(self, tmp_path, monkeypatch):
         """Test config dir path on POSIX systems."""
@@ -90,6 +112,25 @@ class TestGetConfigDir:
 
         expected = tmp_path / "eeroctl"
         assert config_dir == expected
+
+    def test_eerctl_config_dir_env_var_overrides_default(self, tmp_path, monkeypatch):
+        """EEROCTL_CONFIG_DIR overrides both the POSIX and Windows defaults."""
+        override = tmp_path / "custom-config-dir"
+        monkeypatch.setenv("EEROCTL_CONFIG_DIR", str(override))
+
+        config_dir = get_config_dir()
+
+        assert config_dir == override
+        assert config_dir.exists()
+
+    def test_eeroctl_config_dir_expands_user(self, tmp_path, monkeypatch):
+        """EEROCTL_CONFIG_DIR supports a leading ~."""
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setenv("EEROCTL_CONFIG_DIR", "~/custom-eeroctl")
+
+        config_dir = get_config_dir()
+
+        assert config_dir == tmp_path / "custom-eeroctl"
 
 
 # ========================== Config File Tests ==========================
@@ -232,6 +273,9 @@ class TestBuildClient:
         mock_client_class.assert_called_once_with(
             cookie_file=str(get_cookie_file()),
             use_keyring=get_auth_method() == "keyring",
+            accept_language="en-US",
+            get_retries=0,
+            send_legacy_cookie=True,
         )
 
     def test_reflects_saved_cookie_file_auth_method(self, tmp_path, monkeypatch):
@@ -244,17 +288,53 @@ class TestBuildClient:
 
         assert mock_client_class.call_args.kwargs["use_keyring"] is False
 
-    def test_accepts_optional_cli_ctx_without_using_it_yet(self, tmp_path, monkeypatch):
-        """cli_ctx is accepted for future plumbing but does not change output today."""
+    def test_cli_ctx_constructor_options_are_forwarded(self, tmp_path, monkeypatch):
+        """accept_language/get_retries/send_legacy_cookie come from cli_ctx when given."""
         monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        ctx = EeroCliContext(
+            accept_language="fr-FR",
+            get_retries=3,
+            send_legacy_cookie=False,
+        )
 
         with patch("eeroctl.utils.EeroClient") as mock_client_class:
-            build_client(cli_ctx=object())
+            build_client(cli_ctx=ctx)
 
         mock_client_class.assert_called_once_with(
             cookie_file=str(get_cookie_file()),
             use_keyring=get_auth_method() == "keyring",
+            accept_language="fr-FR",
+            get_retries=3,
+            send_legacy_cookie=False,
         )
+
+    def test_without_cli_ctx_falls_back_to_config(self, tmp_path, monkeypatch):
+        """With no cli_ctx (and no Click context), constructor options come from config."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setattr("eeroctl.utils.click.get_current_context", lambda silent=True: None)
+
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            build_client()
+
+        assert mock_client_class.call_args.kwargs["accept_language"] == "en-US"
+        assert mock_client_class.call_args.kwargs["get_retries"] == 0
+        assert mock_client_class.call_args.kwargs["send_legacy_cookie"] is True
+
+    def test_resolves_cli_ctx_from_current_click_context_when_omitted(self, tmp_path, monkeypatch):
+        """When cli_ctx is omitted, build_client picks it up via click.get_current_context."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        ctx = EeroCliContext(accept_language="de-DE", get_retries=2, send_legacy_cookie=False)
+        fake_click_ctx = type("FakeClickCtx", (), {"obj": ctx})()
+        monkeypatch.setattr(
+            "eeroctl.utils.click.get_current_context", lambda silent=True: fake_click_ctx
+        )
+
+        with patch("eeroctl.utils.EeroClient") as mock_client_class:
+            build_client()
+
+        assert mock_client_class.call_args.kwargs["accept_language"] == "de-DE"
+        assert mock_client_class.call_args.kwargs["get_retries"] == 2
+        assert mock_client_class.call_args.kwargs["send_legacy_cookie"] is False
 
     def test_returns_the_constructed_client(self, tmp_path, monkeypatch):
         """build_client returns whatever EeroClient(...) produced, un-entered."""
@@ -310,13 +390,11 @@ class TestBuildClient:
         mock_backup.assert_called_once_with(get_cookie_file())
 
     def test_skips_backup_when_resolved_cookie_file_is_none(self, monkeypatch):
-        """Forward-compat guard for the future ephemeral-token mode (§3.4).
+        """A None-resolving cookie file (e.g. EEROCTL_SESSION_TOKEN mode) skips the backup.
 
-        Today ``get_cookie_file()`` always returns a real path, so this
-        branch is unreachable through the public API; simulate the future
-        "no file backend at all" case by making the resolution return None
-        directly, and confirm the backup is skipped and EeroClient receives
-        ``cookie_file=None``.
+        Simulated here by making ``get_cookie_file()`` itself return None;
+        the dedicated EEROCTL_SESSION_TOKEN tests below exercise the real
+        public-API path that reaches the same branch.
         """
         monkeypatch.setattr("eeroctl.utils.get_cookie_file", lambda: None)
 
@@ -327,7 +405,39 @@ class TestBuildClient:
             build_client(use_keyring=True)
 
         mock_backup.assert_not_called()
-        mock_client_class.assert_called_once_with(cookie_file=None, use_keyring=True)
+        mock_client_class.assert_called_once_with(
+            cookie_file=None,
+            use_keyring=True,
+            accept_language="en-US",
+            get_retries=0,
+            send_legacy_cookie=True,
+        )
+
+    def test_session_token_env_forces_ephemeral_construction(self, tmp_path, monkeypatch):
+        """EEROCTL_SESSION_TOKEN forces cookie_file=None, use_keyring=False.
+
+        This overrides any use_keyring=/cookie_file= the caller passed, and
+        the pre-v8 backup never runs since no file is touched.
+        """
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        monkeypatch.setenv("EEROCTL_SESSION_TOKEN", "a-token")
+        # A real, existing schema-1 file that would otherwise get backed up.
+        get_cookie_file().write_text(json.dumps({"session_id": "tok"}))
+
+        with (
+            patch("eeroctl.utils.backup_legacy_cookie_file") as mock_backup,
+            patch("eeroctl.utils.EeroClient") as mock_client_class,
+        ):
+            build_client(use_keyring=True, cookie_file=tmp_path / "explicit.json")
+
+        mock_backup.assert_not_called()
+        mock_client_class.assert_called_once_with(
+            cookie_file=None,
+            use_keyring=False,
+            accept_language="en-US",
+            get_retries=0,
+            send_legacy_cookie=True,
+        )
 
 
 # ========================== backup_legacy_cookie_file Tests ==========================
@@ -516,6 +626,56 @@ class TestWithClientDecorator:
 
         mock_build.assert_called_once_with()
 
+    def test_calls_prepare_client_after_entering(self, tmp_path, monkeypatch):
+        """prepare_client runs after __aenter__, before the wrapped function."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        call_order = []
+
+        @with_client
+        async def my_command(client):
+            call_order.append("command")
+            return "done"
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        async def fake_prepare(client):
+            call_order.append("prepare")
+
+        with (
+            patch("eeroctl.utils.build_client", return_value=mock_client),
+            patch("eeroctl.utils.prepare_client", side_effect=fake_prepare) as mock_prepare,
+        ):
+            my_command()
+
+        mock_prepare.assert_called_once_with(mock_client)
+        assert call_order == ["prepare", "command"]
+
+    def test_validation_exception_from_prepare_client_exits_2(self, tmp_path, monkeypatch):
+        """A malformed EEROCTL_SESSION_TOKEN (via prepare_client) exits 2."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        @with_client
+        async def my_command(client):
+            return "done"
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with (
+            patch("eeroctl.utils.build_client", return_value=mock_client),
+            patch(
+                "eeroctl.utils.prepare_client",
+                side_effect=EeroValidationException("token", "must be printable ASCII"),
+            ),
+            pytest.raises(SystemExit) as excinfo,
+        ):
+            my_command()
+
+        assert excinfo.value.code == ExitCode.USAGE_ERROR
+
 
 # ========================== run_with_client Tests ==========================
 
@@ -564,6 +724,31 @@ class TestRunWithClient:
             await run_with_client(my_func)
 
         mock_build.assert_called_once_with(None)
+
+    @pytest.mark.asyncio
+    async def test_calls_prepare_client_after_entering(self, tmp_path, monkeypatch):
+        """prepare_client runs after __aenter__, before func."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        call_order = []
+
+        async def my_func(client):
+            call_order.append("func")
+
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        async def fake_prepare(client):
+            call_order.append("prepare")
+
+        with (
+            patch("eeroctl.utils.build_client", return_value=mock_client),
+            patch("eeroctl.utils.prepare_client", side_effect=fake_prepare) as mock_prepare,
+        ):
+            await run_with_client(my_func)
+
+        mock_prepare.assert_called_once_with(mock_client)
+        assert call_order == ["prepare", "func"]
 
     @pytest.mark.asyncio
     async def test_forwards_cli_ctx_to_build_client(self, tmp_path, monkeypatch):
@@ -1052,3 +1237,62 @@ class TestLooksLikeSdkReference:
         list-and-match path -- this is the "names must keep working"
         requirement from the fix."""
         assert looks_like_sdk_reference(value) is False
+
+
+# ========================== get_session_token_override Tests ==========================
+
+
+class TestGetSessionTokenOverride:
+    """Tests for get_session_token_override (EEROCTL_SESSION_TOKEN, §3.4)."""
+
+    def test_returns_none_when_unset(self, monkeypatch):
+        monkeypatch.delenv("EEROCTL_SESSION_TOKEN", raising=False)
+
+        assert get_session_token_override() is None
+
+    def test_returns_none_when_empty(self, monkeypatch):
+        monkeypatch.setenv("EEROCTL_SESSION_TOKEN", "")
+
+        assert get_session_token_override() is None
+
+    def test_returns_the_value_when_set(self, monkeypatch):
+        monkeypatch.setenv("EEROCTL_SESSION_TOKEN", "a-real-token")
+
+        assert get_session_token_override() == "a-real-token"
+
+
+# ========================== prepare_client Tests ==========================
+
+
+class TestPrepareClient:
+    """Tests for prepare_client (EEROCTL_SESSION_TOKEN, §3.4)."""
+
+    @pytest.mark.asyncio
+    async def test_sets_the_session_token_when_env_var_present(self, monkeypatch):
+        monkeypatch.setenv("EEROCTL_SESSION_TOKEN", "a-real-token")
+        client = AsyncMock()
+
+        await prepare_client(client)
+
+        client.set_session_token.assert_awaited_once_with("a-real-token")
+
+    @pytest.mark.asyncio
+    async def test_does_nothing_when_env_var_absent(self, monkeypatch):
+        monkeypatch.delenv("EEROCTL_SESSION_TOKEN", raising=False)
+        client = AsyncMock()
+
+        await prepare_client(client)
+
+        client.set_session_token.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_propagates_validation_exception(self, monkeypatch):
+        """A malformed token's EeroValidationException is not swallowed here."""
+        monkeypatch.setenv("EEROCTL_SESSION_TOKEN", "bad\r\nvalue")
+        client = AsyncMock()
+        client.set_session_token = AsyncMock(
+            side_effect=EeroValidationException("token", "must be printable ASCII")
+        )
+
+        with pytest.raises(EeroValidationException):
+            await prepare_client(client)
