@@ -82,3 +82,42 @@ class TestDdnsDisable:
 
         assert result.exit_code == 0
         mock_client.disable_ddns.assert_awaited_once_with(None)
+
+    def test_skips_write_when_already_disabled(self, runner: CliRunner) -> None:
+        # --force would also bypass write_if_changed's skip-unchanged
+        # short-circuit, so answer the Y/N prompt instead.
+        mock_client = _client(
+            get_network=_NETWORK_ENVELOPE_DDNS_OFF,  # ddns: False
+            disable_ddns=AsyncMock(),
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "ddns", "disable"], input="y\n")
+
+        assert result.exit_code == 0
+        assert "already configured" in result.output.lower()
+        mock_client.disable_ddns.assert_not_called()
+
+    def test_force_writes_even_when_already_disabled(self, runner: CliRunner) -> None:
+        """--force writes anyway, per write_if_changed's --force contract."""
+        mock_client = _client(
+            get_network=_NETWORK_ENVELOPE_DDNS_OFF,  # ddns: False
+            disable_ddns={"meta": {"code": 200}},
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "ddns", "disable", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.disable_ddns.assert_awaited_once_with(None)
+
+    def test_non_interactive_without_force_fails(self, runner: CliRunner) -> None:
+        mock_client = _client(
+            get_network={"meta": {"code": 200}, "data": {"ddns": True}},
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["--non-interactive", "network", "ddns", "disable"])
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.disable_ddns.assert_not_called()

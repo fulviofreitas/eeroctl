@@ -22,6 +22,16 @@ _NETWORK_ENVELOPE = {
     },
 }
 
+_NETWORK_ENVELOPE_TRUE = {
+    "meta": {"code": 200},
+    "data": {
+        "url": "/2.2/networks/net1",
+        "mlo_mode": "disabled",
+        "passpoint": True,
+        "proxied_nodes": True,
+    },
+}
+
 
 def _client(**method_return_values) -> AsyncMock:
     client = AsyncMock()
@@ -117,6 +127,29 @@ class TestPasspointToggle:
         assert "already configured" in result.output.lower()
         mock_client.set_passpoint_enabled.assert_not_called()
 
+    def test_disable_calls_set_passpoint_enabled(self, runner: CliRunner) -> None:
+        mock_client = _client(
+            get_network=_NETWORK_ENVELOPE_TRUE,  # passpoint: True
+            set_passpoint_enabled={"meta": {"code": 200}},
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "security", "passpoint", "disable", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.set_passpoint_enabled.assert_awaited_once_with(False, None)
+
+    def test_non_interactive_without_force_fails(self, runner: CliRunner) -> None:
+        mock_client = _client(get_network=_NETWORK_ENVELOPE)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--non-interactive", "network", "security", "passpoint", "enable"]
+            )
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.set_passpoint_enabled.assert_not_called()
+
 
 class TestProxiedNodesToggle:
     @pytest.fixture
@@ -143,6 +176,61 @@ class TestProxiedNodesToggle:
         with patch("eeroctl.utils.EeroClient", return_value=mock_client):
             result = runner.invoke(
                 cli, ["--non-interactive", "network", "security", "proxied-nodes", "enable"]
+            )
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.set_proxied_nodes.assert_not_called()
+
+    def test_disable_calls_set_proxied_nodes(self, runner: CliRunner) -> None:
+        mock_client = _client(
+            get_network=_NETWORK_ENVELOPE_TRUE,  # proxied_nodes: True
+            set_proxied_nodes={"meta": {"code": 200}},
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["network", "security", "proxied-nodes", "disable", "--force"]
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_proxied_nodes.assert_awaited_once_with(False, None)
+
+    def test_skips_write_when_enable_direction_unchanged(self, runner: CliRunner) -> None:
+        mock_client = _client(
+            get_network=_NETWORK_ENVELOPE_TRUE,  # proxied_nodes: True
+            set_proxied_nodes=AsyncMock(),
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["network", "security", "proxied-nodes", "enable"], input="y\n"
+            )
+
+        assert result.exit_code == 0
+        assert "already configured" in result.output.lower()
+        mock_client.set_proxied_nodes.assert_not_called()
+
+    def test_skips_write_when_disable_direction_unchanged(self, runner: CliRunner) -> None:
+        mock_client = _client(
+            get_network=_NETWORK_ENVELOPE,  # proxied_nodes: False
+            set_proxied_nodes=AsyncMock(),
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["network", "security", "proxied-nodes", "disable"], input="y\n"
+            )
+
+        assert result.exit_code == 0
+        assert "already configured" in result.output.lower()
+        mock_client.set_proxied_nodes.assert_not_called()
+
+    def test_disable_non_interactive_without_force_fails(self, runner: CliRunner) -> None:
+        mock_client = _client(get_network=_NETWORK_ENVELOPE_TRUE)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--non-interactive", "network", "security", "proxied-nodes", "disable"]
             )
 
         assert result.exit_code == ExitCode.SAFETY_RAIL

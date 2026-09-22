@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from click.testing import CliRunner
+from eero.exceptions import EeroAccessDeniedException, EeroPremiumRequiredException
 
 from eeroctl.exit_codes import ExitCode
 from eeroctl.main import cli
@@ -59,6 +60,28 @@ class TestDiagnosticsRun:
 
         assert result.exit_code == 0
         mock_client.run_diagnostics.assert_awaited_once_with(None, device=None, symptom=None)
+
+    def test_premium_required_maps_to_exit_11(self, runner: CliRunner) -> None:
+        mock_client = _client()
+        mock_client.run_diagnostics = AsyncMock(
+            side_effect=EeroPremiumRequiredException("Diagnostics")
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["troubleshoot", "diagnostics", "run", "--force"])
+
+        assert result.exit_code == ExitCode.PREMIUM_REQUIRED
+
+    def test_access_denied_maps_to_exit_4(self, runner: CliRunner, api_error) -> None:
+        mock_client = _client()
+        mock_client.run_diagnostics = AsyncMock(
+            side_effect=api_error(EeroAccessDeniedException, 403, "error.access.denied")
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["troubleshoot", "diagnostics", "run", "--force"])
+
+        assert result.exit_code == ExitCode.FORBIDDEN
 
 
 class TestThreadSet:
@@ -134,3 +157,27 @@ class TestThreadSet:
 
         assert result.exit_code == ExitCode.SAFETY_RAIL
         mock_client.regenerate_thread_credentials.assert_not_called()
+
+    def test_premium_required_maps_to_exit_11(self, runner: CliRunner) -> None:
+        mock_client = _client()
+        mock_client.update_thread = AsyncMock(side_effect=EeroPremiumRequiredException("Thread"))
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["network", "thread", "set", "--credential-syncing", "--force"]
+            )
+
+        assert result.exit_code == ExitCode.PREMIUM_REQUIRED
+
+    def test_access_denied_maps_to_exit_4(self, runner: CliRunner, api_error) -> None:
+        mock_client = _client()
+        mock_client.update_thread = AsyncMock(
+            side_effect=api_error(EeroAccessDeniedException, 403, "error.access.denied")
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["network", "thread", "set", "--credential-syncing", "--force"]
+            )
+
+        assert result.exit_code == ExitCode.FORBIDDEN
