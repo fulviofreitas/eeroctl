@@ -10,8 +10,12 @@ Welcome to the Eero CLI documentation! This wiki provides comprehensive guides f
 | **[Usage Examples](Usage-Examples)** | Practical examples for common tasks |
 | **[Configuration](Configuration)** | Authentication storage and config files |
 | **[Troubleshooting](Troubleshooting)** | Common issues and solutions |
-| **[Legacy Commands](Legacy-Commands)** | Mapping from old commands to new structure |
+| **[Migration](Migration)** | Upgrading to 3.0.0: removed/renamed commands, exit codes, credentials, rollback |
 | **[Testing Checklist](Testing-Checklist)** | Manual verification scenarios |
+
+> **Upgrading from 2.x?** 3.0.0 requires eero-api 8.0.1 and changes exit codes,
+> `auth status` output, environment-variable names and where the session token is
+> stored. Read [Migration](Migration) first.
 
 ---
 
@@ -51,16 +55,27 @@ eero network list
 
 ### Common Tasks
 
-- **List connected devices:** `eero client list`
-- **Check network status:** `eero troubleshoot status`
-- **Run speed test:** `eero troubleshoot speedtest --force`
-- **Enable guest network:** `eero network guest enable --name "Guest" --password "pass123"`
+- **List connected devices:** `eero device list`
+- **Check connectivity:** `eero troubleshoot connectivity`
+- **Run a speed test:** `eero network speedtest run` then `eero network speedtest show`
+- **Enable the guest network:** `eero network guest set --name "Guest"` then `eero network guest password set`
+- **Check the session from a script:** `eero auth status --check`
+
+### Features
+
+- Noun-first commands: `eero <noun> <verb>`; every `<id>` accepts a bare id, API path or URL
+- Five output formats — `table`, `list`, `json`, `yaml`, `text` — with a schema envelope for scripting
+- Safety rails: Y/N prompts for disruptive writes, a typed `REBOOT` phrase for anything that restarts the mesh, an explicit note on writes the SDK has not verified
+- Read-first toggles: nothing is written when the setting already matches
+- Fourteen fixed exit codes, one condition each
+- Every global flag has an `EEROCTL_*` environment variable; `EEROCTL_SESSION_TOKEN` for CI
+- Shell completion for bash, zsh and fish
 
 ---
 
 ## 📦 Dependencies
 
-This CLI uses [eero-api](https://github.com/fulviofreitas/eero-api) for API communication with Eero networks.
+This CLI **requires [eero-api](https://github.com/fulviofreitas/eero-api) 8.0.1** (pinned exactly) for API communication with Eero networks. Python 3.12 or newer.
 
 ---
 
