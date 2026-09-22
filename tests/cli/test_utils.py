@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from eero.exceptions import (
+    EeroAccessDeniedException,
     EeroAPIException,
     EeroAuthenticationException,
     EeroException,
@@ -708,6 +709,86 @@ class TestWithClientDecorator:
             my_command()
 
         assert excinfo.value.code == ExitCode.USAGE_ERROR
+
+
+class TestWithClientErrorMapping:
+    """Every EeroException raised by a @with_client command maps to its exit code.
+
+    Before this fix ``with_client`` only caught ``EeroAuthenticationException``
+    and ``EeroValidationException`` from ``prepare_client()``; any other
+    ``EeroException`` raised by the wrapped command itself (e.g.
+    ``EeroPremiumRequiredException``, ``EeroAccessDeniedException``) escaped
+    to Click's generic exit 1 instead of the mapped exit code. This affects
+    every ``@with_client`` command, including ``activity.py`` and
+    ``troubleshoot.py``. ``run_with_client`` already routed every
+    ``EeroException`` through ``handle_cli_error`` and was unaffected.
+    """
+
+    @staticmethod
+    def _client():
+        """Build a mock EeroClient usable as an async context manager."""
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        # Must return falsy: a truthy __aexit__ suppresses the exception under test.
+        client.__aexit__ = AsyncMock(return_value=False)
+        return client
+
+    def _run_raising(self, tmp_path, monkeypatch, exc):
+        """Run a @with_client command that raises *exc*."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        @with_client
+        async def my_command(client):
+            raise exc
+
+        with patch("eeroctl.utils.build_client", return_value=self._client()):
+            with pytest.raises(SystemExit) as excinfo:
+                my_command()
+        return excinfo.value.code
+
+    def test_premium_required_maps_to_premium(self, tmp_path, monkeypatch):
+        """A premium-required exception exits 11, not the generic 1."""
+        exc = EeroPremiumRequiredException("Activity data")
+
+        code = self._run_raising(tmp_path, monkeypatch, exc)
+
+        assert code == ExitCode.PREMIUM_REQUIRED
+        assert code == 11
+
+    def test_access_denied_maps_to_forbidden(self, tmp_path, monkeypatch):
+        """An access-denied exception exits 4, not the generic 1."""
+        exc = EeroAccessDeniedException(403, "not allowed")
+
+        code = self._run_raising(tmp_path, monkeypatch, exc)
+
+        assert code == ExitCode.FORBIDDEN
+        assert code == 4
+
+    def test_auth_exception_still_exits_auth_required(self, tmp_path, monkeypatch):
+        """Pre-existing auth handling (exit 3) is unchanged by the wider catch."""
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
+        @with_client
+        async def my_command(client):
+            raise EeroAuthenticationException("expired")
+
+        with (
+            patch("eeroctl.utils.build_client", return_value=self._client()),
+            pytest.raises(SystemExit) as excinfo,
+        ):
+            my_command()
+
+        assert excinfo.value.code == ExitCode.AUTH_REQUIRED
+        assert excinfo.value.code == 3
+
+    def test_validation_exception_still_exits_usage_error(self, tmp_path, monkeypatch):
+        """Pre-existing validation handling (exit 2) is unchanged by the wider catch."""
+        exc = EeroValidationException("dns_servers", "at most 2 IPv4 servers are supported")
+
+        code = self._run_raising(tmp_path, monkeypatch, exc)
+
+        assert code == ExitCode.USAGE_ERROR
+        assert code == 2
 
 
 # ========================== run_with_client Tests ==========================

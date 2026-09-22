@@ -11,7 +11,7 @@ from typing import Any, Awaitable, Callable, Optional, TypeVar
 
 import click
 from eero import EeroClient
-from eero.exceptions import EeroAuthenticationException, EeroException, EeroValidationException
+from eero.exceptions import EeroAuthenticationException, EeroException
 from rich.console import Console
 
 from .context import EeroCliContext
@@ -320,11 +320,17 @@ def with_client(func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
                 console.print("[bold red]Not authenticated[/bold red]")
                 console.print("Please login first: [bold]eero auth login[/bold]")
                 sys.exit(3)  # ExitCode.AUTH_REQUIRED
-            except EeroValidationException as e:
+            except EeroException as e:
                 # A malformed EEROCTL_SESSION_TOKEN surfaces here from
-                # prepare_client(); route it through the same mapping
-                # run_with_client uses so it exits 2, not an unhandled
-                # traceback.
+                # prepare_client() as EeroValidationException; any other
+                # exception raised by *func* itself (e.g.
+                # EeroPremiumRequiredException, EeroAccessDeniedException)
+                # surfaces here too. Both route through the same mapping
+                # run_with_client uses, so every @with_client command exits
+                # with the correct code instead of falling through to
+                # Click's generic exit 1 for an unhandled exception.
+                # Deliberately not `except Exception`: see run_with_client's
+                # docstring for why a bare catch would be wrong here too.
                 from .errors import handle_cli_error
 
                 sys.exit(handle_cli_error(e, console))
