@@ -440,6 +440,7 @@ def password_set(
             "Network password",
             hide_input=True,
             confirmation_prompt=True,
+            err=True,
         )
 
     async def run_cmd() -> None:

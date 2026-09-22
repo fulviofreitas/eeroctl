@@ -130,6 +130,27 @@ class TestGuestPasswordSet:
         assert call_args[0][0] == "prompted-secret"
         assert "prompted-secret" not in result.output
 
+    def test_missing_password_prompt_leaves_stdout_valid_json(self, runner: CliRunner) -> None:
+        """The password prompt writes to stderr, so --output json's stdout
+        stays parseable (regression: click.prompt without err=True writes
+        the prompt text to stdout, ahead of the JSON envelope)."""
+        mock_client = _mock_client(set_guest_password=_OK_RESPONSE)
+
+        with patch(
+            "eeroctl.commands.network.guest.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli,
+                ["--output", "json", "network", "guest", "password", "set", "--force"],
+                input="prompted-secret\nprompted-secret\n",
+            )
+
+        assert result.exit_code == 0
+        assert '"ok": true' in result.stdout
+        assert "prompted-secret" not in result.stdout
+        assert "Guest network password" not in result.stdout
+
     def test_non_interactive_without_password_exits_usage_error(self, runner: CliRunner) -> None:
         mock_client = _mock_client(set_guest_password=_OK_RESPONSE)
 

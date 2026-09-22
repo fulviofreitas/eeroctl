@@ -319,6 +319,7 @@ def guest_password_set(ctx: click.Context, password: Optional[str], force: bool)
             "Guest network password",
             hide_input=True,
             confirmation_prompt=True,
+            err=True,
         )
 
     async def run_cmd() -> None:

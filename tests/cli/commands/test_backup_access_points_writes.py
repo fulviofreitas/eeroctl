@@ -5,6 +5,7 @@ Migration plan §4 phase C row 45 (#50). Mocks at the SDK boundary
 (`patch("eeroctl.utils.EeroClient", ...)`).
 """
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -89,6 +90,39 @@ class TestBackupAccessPointsAdd:
         )
         assert "hunter22" not in result.output
 
+    def test_password_prompt_leaves_stdout_empty_or_valid_json(self, runner: CliRunner) -> None:
+        """The password prompt writes to stderr, so --output json's stdout
+        stays parseable (regression: click.prompt without err=True writes
+        the prompt text to stdout, ahead of the JSON envelope)."""
+        mock_client = _client(add_backup_access_point={"meta": {"code": 201}, "data": {}})
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "--output",
+                    "json",
+                    "network",
+                    "backup",
+                    "access-points",
+                    "add",
+                    "--ssid",
+                    "Guest",
+                    "--force",
+                ],
+                input="hunter22\nhunter22\n",
+            )
+
+        assert result.exit_code == 0
+        # getpass's non-tty fallback (exercised under CliRunner, not a real
+        # terminal) echoes the prompt suffix's last character to stdout via
+        # the builtin input(); that pre-existing artifact is whitespace-only
+        # and unrelated to this fix, so strip it before validating.
+        stdout = result.stdout.strip()
+        assert stdout == "" or json.loads(stdout)
+        assert "hunter22" not in result.stdout
+        assert "Backup access point password" not in result.stdout
+
 
 class TestBackupAccessPointsUpdate:
     @pytest.fixture
@@ -134,6 +168,41 @@ class TestBackupAccessPointsUpdate:
             created=None,
             last_updated_at=None,
         )
+
+    def test_password_with_no_value_prompts_hidden_and_confirmed(self, runner: CliRunner) -> None:
+        """`--password` with no value (flag_value sentinel) prompts for the new
+        secret instead of taking it from argv; omitting `--password` entirely
+        still means "leave unchanged" (covered by test_updates_ssid above)."""
+        mock_client = _client(update_backup_access_point={"meta": {"code": 200}, "data": {}})
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "network",
+                    "backup",
+                    "access-points",
+                    "update",
+                    "bap1",
+                    "--password",
+                    "--force",
+                ],
+                input="newsecret\nnewsecret\n",
+            )
+
+        assert result.exit_code == 0
+        mock_client.update_backup_access_point.assert_awaited_once_with(
+            "bap1",
+            None,
+            ssid=None,
+            password="newsecret",
+            enabled=None,
+            uuid=None,
+            connectivity=None,
+            created=None,
+            last_updated_at=None,
+        )
+        assert "newsecret" not in result.output
 
 
 class TestBackupAccessPointsDelete:

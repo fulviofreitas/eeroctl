@@ -4,6 +4,7 @@ Migration plan §4 phase C row 39 -- both HIGH risk with a typed phrase.
 Mocks at the SDK boundary (`patch("eeroctl.utils.EeroClient", ...)`).
 """
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -64,6 +65,31 @@ class TestPasswordSet:
         assert result.exit_code == 0
         mock_client.set_network_password.assert_awaited_once_with("prompted-secret", None)
         assert "prompted-secret" not in result.output
+
+    def test_missing_password_prompt_leaves_stdout_empty_or_valid_json(
+        self, runner: CliRunner
+    ) -> None:
+        """The password prompt writes to stderr, so --output json's stdout
+        stays parseable (regression: click.prompt without err=True writes
+        the prompt text to stdout, ahead of the JSON envelope)."""
+        mock_client = _client(set_network_password={"meta": {"code": 200}})
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["--output", "json", "--force", "network", "password", "set"],
+                input="prompted-secret\nprompted-secret\n",
+            )
+
+        assert result.exit_code == 0
+        # getpass's non-tty fallback (exercised under CliRunner, not a real
+        # terminal) echoes the prompt suffix's last character to stdout via
+        # the builtin input(); that pre-existing artifact is whitespace-only
+        # and unrelated to this fix, so strip it before validating.
+        stdout = result.stdout.strip()
+        assert stdout == "" or json.loads(stdout)
+        assert "prompted-secret" not in result.stdout
+        assert "Network password" not in result.stdout
 
     def test_non_interactive_without_password_exits_usage_error(self, runner: CliRunner) -> None:
         mock_client = _client()

@@ -88,6 +88,7 @@ def pppoe_set(
             "PPPoE password",
             hide_input=True,
             confirmation_prompt=True,
+            err=True,
         )
 
     async def run_cmd() -> None:

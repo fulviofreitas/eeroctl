@@ -432,7 +432,10 @@ def backup_access_points_add(
 
     if password is None:
         password = click.prompt(
-            "Backup access point password", hide_input=True, confirmation_prompt=True
+            "Backup access point password",
+            hide_input=True,
+            confirmation_prompt=True,
+            err=True,
         )
 
     async def run_cmd() -> None:
@@ -460,8 +463,13 @@ def backup_access_points_add(
 @click.option("--ssid", default=None, help="New SSID.")
 @click.option(
     "--password",
-    default=None,
-    help="New password. Omitted, the password is left unchanged.",
+    is_flag=False,
+    flag_value="PROMPT",
+    help=(
+        "New password. Omitted, the password is left unchanged. Passed with no "
+        "value, prompts for it (input hidden, confirmed) instead of taking it "
+        "from argv."
+    ),
 )
 @click.option(
     "--enabled/--no-enabled", "enabled", default=None, help="Whether the entry is enabled."
@@ -510,6 +518,17 @@ def backup_access_points_update(
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
         sys.exit(e.exit_code)
+
+    # `--password` with no value prompts for the secret instead of taking it
+    # from argv (shell history, `ps`, CI logs). Omitted entirely, the
+    # password is left unchanged (see the None default above).
+    if password == "PROMPT":
+        password = click.prompt(
+            "Backup access point password",
+            hide_input=True,
+            confirmation_prompt=True,
+            err=True,
+        )
 
     async def run_cmd() -> None:
         async def update(client: EeroClient) -> None:

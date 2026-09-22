@@ -7,8 +7,11 @@ Commands:
 - eero network dns caching: Enable/disable DNS caching
 - eero network dns clear: Switch back to automatic DNS
 
-Every DNS write reboots every eero on the network, so all mutating commands
-require a typed confirmation unless --force is given.
+The mode, custom-server and caching writes reboot every eero on the network,
+so those commands require a typed ``REBOOT`` confirmation unless --force is
+given. The DNS-policy (content-filter) writes -- ``dns policy allow|block|
+allow-cnames`` -- do not reboot the mesh; they are MEDIUM-tier writes with
+their own (non-typed) confirmation.
 """
 
 import asyncio
@@ -774,7 +777,7 @@ def dns_caching_disable(ctx: click.Context, force: bool) -> None:
 
 def _set_dns_caching(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
     """Set DNS caching state."""
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     action = "enable" if enable else "disable"
 
     if not _confirm_dns_write(cli_ctx, f"network dns caching {action}", "on this network", force):

@@ -521,6 +521,17 @@ class TestDNSShow:
         assert set(payload["data"]["ipv6"]) == {"name_servers"}
         assert payload["data"]["dns"]["mode"] == "custom"
 
+    def test_json_output_lands_on_stdout(self, runner):
+        """``dns show`` is a read command: its rendered JSON belongs on
+        stdout, not stderr (guards against over-correcting the write-path
+        stderr fix onto this read command)."""
+        result = self._invoke(runner, _dns_response(), "--output", "json")
+
+        assert result.exit_code == 0
+        payload = json.loads(result.stdout)
+        assert payload["schema"] == "eero.network.dns.show/v2"
+        assert result.stderr == ""
+
     def test_yaml_output_is_not_the_table_panel(self, runner):
         """YAML previously fell through to the Rich panel."""
         result = self._invoke(runner, _dns_response(), "--output", "yaml")

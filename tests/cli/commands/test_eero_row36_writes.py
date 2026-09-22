@@ -5,6 +5,7 @@ Migration plan §4 phase C row 36. Mocks at the SDK boundary
 (`patch("eeroctl.utils.EeroClient", ...)`).
 """
 
+import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -100,6 +101,41 @@ class TestPppoeSet:
 
         assert result.exit_code == ExitCode.USAGE_ERROR
         mock_client.set_pppoe.assert_not_called()
+
+    def test_missing_password_prompt_leaves_stdout_empty_or_valid_json(
+        self, runner: CliRunner
+    ) -> None:
+        """The password prompt writes to stderr, so --output json's stdout
+        stays parseable (regression: click.prompt without err=True writes
+        the prompt text to stdout, ahead of the JSON envelope)."""
+        mock_client = _client(get_eero=_EERO_ENVELOPE, set_pppoe={"meta": {"code": 200}})
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "--output",
+                    "json",
+                    "eero",
+                    "pppoe",
+                    "set",
+                    "123",
+                    "--username",
+                    "isp-user",
+                    "--force",
+                ],
+                input="isp-pass\nisp-pass\n",
+            )
+
+        assert result.exit_code == 0
+        # getpass's non-tty fallback (exercised under CliRunner, not a real
+        # terminal) echoes the prompt suffix's last character to stdout via
+        # the builtin input(); that pre-existing artifact is whitespace-only
+        # and unrelated to this fix, so strip it before validating.
+        stdout = result.stdout.strip()
+        assert stdout == "" or json.loads(stdout)
+        assert "isp-pass" not in result.stdout
+        assert "PPPoE password" not in result.stdout
 
 
 class TestPortsCycle:
