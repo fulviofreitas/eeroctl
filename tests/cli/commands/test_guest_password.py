@@ -11,6 +11,7 @@ are on the SDK's live-verified allowlist (MEDIUM risk, VERIFIED,
 - --force skips the Y/N confirmation
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -164,6 +165,31 @@ class TestGuestPasswordSet:
             )
 
         assert result.exit_code == ExitCode.USAGE_ERROR
+        mock_client.set_guest_password.assert_not_called()
+
+    def test_non_interactive_without_password_leaves_stdout_empty_or_valid_json(
+        self, runner: CliRunner
+    ) -> None:
+        """The `--password is required` error is ancillary text, not a
+        command result: it must go to stderr, leaving stdout empty (or
+        valid JSON) even under --output json (regression: the error used
+        to print via cli_ctx.console, landing on stdout ahead of --non
+        -interactive ever reaching a JSON envelope)."""
+        mock_client = _mock_client(set_guest_password=_OK_RESPONSE)
+
+        with patch(
+            "eeroctl.commands.network.guest.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli,
+                ["--output", "json", "--non-interactive", "network", "guest", "password", "set"],
+            )
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        stdout = result.stdout.strip()
+        assert stdout == "" or json.loads(stdout)
+        assert "--password is required" in result.stderr
         mock_client.set_guest_password.assert_not_called()
 
     def test_non_interactive_with_password_still_writes(self, runner: CliRunner) -> None:
@@ -336,6 +362,28 @@ class TestGuestPasswordClear:
             result = runner.invoke(cli, ["network", "guest", "password", "clear", "--force"])
 
         assert result.exit_code != 0
+
+    def test_falsy_response_error_leaves_stdout_empty_or_valid_json(
+        self, runner: CliRunner
+    ) -> None:
+        """`clear` also binds its ancillary console to err_console: the
+        'Failed to clear...' message must land on stderr, not stdout, even
+        under --output json (equivalent conversion to `password set`'s)."""
+        mock_client = _mock_client(clear_guest_password=None)
+
+        with patch(
+            "eeroctl.commands.network.guest.run_with_client",
+            side_effect=_make_run_with_client(mock_client),
+        ):
+            result = runner.invoke(
+                cli,
+                ["--output", "json", "network", "guest", "password", "clear", "--force"],
+            )
+
+        assert result.exit_code != 0
+        stdout = result.stdout.strip()
+        assert stdout == "" or json.loads(stdout)
+        assert "Failed to clear guest network password" in result.stderr
 
     def test_interactive_yes_confirms_and_writes(self, runner: CliRunner) -> None:
         """MEDIUM risk without --force prompts Y/N; 'y' proceeds to the write."""

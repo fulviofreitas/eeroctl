@@ -468,7 +468,9 @@ def backup_access_points_add(
     help=(
         "New password. Omitted, the password is left unchanged. Passed with no "
         "value, prompts for it (input hidden, confirmed) instead of taking it "
-        "from argv."
+        "from argv. The literal value PROMPT is reserved for this sentinel: "
+        "'--password PROMPT' prompts rather than setting that string as the "
+        "password."
     ),
 )
 @click.option(
@@ -500,6 +502,14 @@ def backup_access_points_update(
 
     if ssid is None and password is None and enabled is None and uuid_ is None:
         console.print("[red]At least one field must be supplied to update[/red]")
+        sys.exit(ExitCode.USAGE_ERROR)
+
+    # `--password` with no value is the PROMPT sentinel: it can never be
+    # satisfied under --non-interactive (no prompt will run), so this guard
+    # stays before the confirmation, mirroring the `password is None and
+    # non_interactive` guards on the other secret-prompting commands.
+    if password == "PROMPT" and cli_ctx.non_interactive:
+        console.print("[red]--password requires a value when --non-interactive is set[/red]")
         sys.exit(ExitCode.USAGE_ERROR)
 
     spec = get_write_spec("network backup access-points update")

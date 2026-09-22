@@ -167,7 +167,7 @@ def _set_guest_network(
     force: bool,
 ) -> None:
     """Set guest network settings."""
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     action = "enable" if enable else "disable"
     effective_force = force or cli_ctx.force
     spec = get_write_spec(command)
@@ -283,7 +283,7 @@ def guest_password_set(ctx: click.Context, password: Optional[str], force: bool)
       eero network guest password set
     """
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     effective_force = force or cli_ctx.force
 
     # --non-interactive without --password can never be satisfied (no prompt
@@ -354,7 +354,7 @@ def guest_password_clear(ctx: click.Context, force: bool) -> None:
     Disconnects guest clients while the change propagates.
     """
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     effective_force = force or cli_ctx.force
 
     spec = get_write_spec("network guest password clear")

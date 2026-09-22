@@ -204,6 +204,34 @@ class TestBackupAccessPointsUpdate:
         )
         assert "newsecret" not in result.output
 
+    def test_password_sentinel_with_non_interactive_exits_usage_error(
+        self, runner: CliRunner
+    ) -> None:
+        """`--password` with no value is the PROMPT sentinel: under
+        --non-interactive no prompt can run, so this must exit 2 before
+        ever reaching the confirmation prompt, click.prompt, or the SDK
+        (currently masked by the UNVERIFIED write-confirmation abort, but
+        must hold if this write is ever promoted to VERIFIED)."""
+        mock_client = _client()
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "--non-interactive",
+                    "network",
+                    "backup",
+                    "access-points",
+                    "update",
+                    "bap1",
+                    "--password",
+                    "--force",
+                ],
+            )
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        mock_client.update_backup_access_point.assert_not_called()
+
 
 class TestBackupAccessPointsDelete:
     @pytest.fixture
