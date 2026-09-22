@@ -554,6 +554,11 @@ class TestWriteSpecsRegistry:
         "network members cancel-pending-admin",
         # -- writes-engineer batch (#48-#52) --
         "network usage report set",
+        "network power-saving enable",
+        "network power-saving disable",
+        "network power-saving schedules create",
+        "network power-saving schedules update",
+        "network power-saving schedules delete",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -703,6 +708,10 @@ class TestWriteSpecsRegistry:
         "cancel_pending_admin": ["network members cancel-pending-admin"],
         # -- writes-engineer batch (#48-#52) --
         "set_data_usage_report_settings": ["network usage report set"],
+        "set_power_saving": ["network power-saving enable", "network power-saving disable"],
+        "create_power_saving_schedule": ["network power-saving schedules create"],
+        "update_power_saving_schedule": ["network power-saving schedules update"],
+        "delete_power_saving_schedule": ["network power-saving schedules delete"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

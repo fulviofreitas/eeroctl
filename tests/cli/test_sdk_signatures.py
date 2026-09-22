@@ -762,6 +762,43 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {"cadence": "daily", "notification_day": "monday", "network_id": "nid"},
         "network/usage.py report set (client.py:1776)",
     ),
+    # -- writes-engineer batch: network/power_saving.py writes (#49) --------
+    (
+        "set_power_saving",
+        ("nid",),
+        {"enable": True, "power_saving_schedule_enabled": None},
+        "network/power_saving.py enable/disable (client.py:2812)",
+    ),
+    (
+        "create_power_saving_schedule",
+        ("nid",),
+        {
+            "name": "Night",
+            "days": ["monday"],
+            "start_time": "23:00",
+            "end_time": "06:00",
+            "enabled": True,
+        },
+        "network/power_saving.py schedules create (client.py:2837)",
+    ),
+    (
+        "update_power_saving_schedule",
+        ("sid", "nid"),
+        {
+            "name": None,
+            "days": None,
+            "start_time": None,
+            "end_time": None,
+            "enabled": False,
+        },
+        "network/power_saving.py schedules update (client.py:2858)",
+    ),
+    (
+        "delete_power_saving_schedule",
+        ("sid", "nid"),
+        {},
+        "network/power_saving.py schedules delete (client.py:2881)",
+    ),
 ]
 
 

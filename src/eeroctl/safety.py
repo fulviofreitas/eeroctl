@@ -1292,6 +1292,47 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network usage report show",
         ),
+        # -- network power-saving: `set_power_saving` is a documented
+        # mesh-reboot write; the schedule CRUD trio is unverified but does
+        # not reboot anything on its own (migration plan §4 phase C row
+        # 44/#49). --
+        "network power-saving enable": WriteSpec(
+            command="network power-saving enable",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network power-saving schedules list",
+            phrase="REBOOT",
+        ),
+        "network power-saving disable": WriteSpec(
+            command="network power-saving disable",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network power-saving schedules list",
+            phrase="REBOOT",
+        ),
+        "network power-saving schedules create": WriteSpec(
+            command="network power-saving schedules create",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network power-saving schedules list",
+        ),
+        "network power-saving schedules update": WriteSpec(
+            command="network power-saving schedules update",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network power-saving schedules list",
+        ),
+        "network power-saving schedules delete": WriteSpec(
+            command="network power-saving schedules delete",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network power-saving schedules list",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.
