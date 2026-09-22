@@ -1281,6 +1281,17 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network members invites",
         ),
+        # -- network usage report set: `set_data_usage_report_settings` is
+        # not in the SDK's live-verified allowlist; both `cadence` and
+        # `notification_day` are required, so it is a full replace, not a
+        # partial update (migration plan §4 phase C row 43/#48). --
+        "network usage report set": WriteSpec(
+            command="network usage report set",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network usage report show",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.

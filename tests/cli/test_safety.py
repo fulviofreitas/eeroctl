@@ -552,6 +552,8 @@ class TestWriteSpecsRegistry:
         "network members promote",
         "network members remove-admin",
         "network members cancel-pending-admin",
+        # -- writes-engineer batch (#48-#52) --
+        "network usage report set",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -699,6 +701,8 @@ class TestWriteSpecsRegistry:
         "promote_member": ["network members promote"],
         "remove_admin": ["network members remove-admin"],
         "cancel_pending_admin": ["network members cancel-pending-admin"],
+        # -- writes-engineer batch (#48-#52) --
+        "set_data_usage_report_settings": ["network usage report set"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

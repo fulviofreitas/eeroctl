@@ -21,13 +21,26 @@ Commands:
   at the SDK layer, to keep one flag contract across the flag)
 - eero network usage report show        -- get_data_usage_report_settings
   (client.py:1766, no time window)
+- eero network usage report set --cadence --notification-day
+  -- set_data_usage_report_settings (client.py:1776); LOW + unverified;
+  read-first via get_data_usage_report_settings. Both `cadence` and
+  `notification_day` are required, non-optional keyword-only arguments on
+  the facade (`api/data_usage.py:568-608`), so this is a full replace, not
+  a `>=1 field` partial update like `network forwards update`. `cadence`
+  is validated by the SDK against `REPORT_SETTINGS_CADENCES` --
+  ``("daily", "hourly")`` (`api/data_usage.py:26-31`), the same two values
+  as every other data-usage `cadence` parameter -- deviates from the task
+  brief's placeholder `daily|weekly|monthly`. `notification_day` is
+  forwarded unchanged by the SDK (no documented format), so it stays a
+  plain string option.
 
 All time-windowed commands use `time_window_options(include_timezone=True)`;
 `--timezone` maps straight to the facade's `timezone` kwarg.
 """
 
 import asyncio
-from typing import Optional
+import sys
+from typing import Any, Optional
 
 import click
 from eero import EeroClient
@@ -44,9 +57,21 @@ from ...formatting.data_usage import (
     print_unprofiled_data_usage_summary,
     print_unprofiled_devices_data_usage,
 )
-from ...options import apply_options, common_options, resolve_time_window, time_window_options
+from ...options import (
+    apply_options,
+    common_options,
+    force_option,
+    network_option,
+    resolve_time_window,
+    time_window_options,
+)
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers.data_usage import extract_data_usage
-from ...utils import run_with_client
+from ...utils import run_with_client, write_if_changed
+
+REPORT_SETTINGS_CADENCES = ("daily", "hourly")
+"""Mirrors `eero.api.data_usage.REPORT_SETTINGS_CADENCES` (`api/data_usage.py:31`,
+itself an alias of `CADENCE_VALUES`, `_params.py:25`)."""
 
 
 @click.group(name="usage")
@@ -400,6 +425,7 @@ def usage_report_group(ctx: click.Context) -> None:
     \b
     Commands:
       show - Current report settings
+      set  - Set report settings
     """
     pass
 
@@ -418,5 +444,84 @@ def usage_report_show(ctx: click.Context, output: Optional[str], network_id: Opt
             print_data_usage_report_settings(cli_ctx, extract_data_usage(raw))
 
         await run_with_client(get_report_settings)
+
+    asyncio.run(run_cmd())
+
+
+@usage_report_group.command(name="set")
+@click.option(
+    "--cadence",
+    required=True,
+    type=click.Choice(REPORT_SETTINGS_CADENCES),
+    help="Report cadence.",
+)
+@click.option(
+    "--notification-day",
+    "notification_day",
+    required=True,
+    help="Day value for the report notification, forwarded to the API unchanged.",
+)
+@force_option
+@network_option
+@click.pass_context
+def usage_report_set(
+    ctx: click.Context,
+    cadence: str,
+    notification_day: str,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Set data usage report settings.
+
+    Both --cadence and --notification-day are required by the API (this is
+    a full replace, not a partial update).
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    spec = get_write_spec("network usage report set")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def set_report_settings(client: EeroClient) -> None:
+            async def read() -> tuple:
+                with cli_ctx.status("Reading current report settings..."):
+                    raw = await client.get_data_usage_report_settings(cli_ctx.network_id)
+                data = extract_data_usage(raw)
+                current = data if isinstance(data, dict) else {}
+                return (current.get("cadence"), current.get("notification_day"))
+
+            async def write() -> Any:
+                with cli_ctx.status("Setting data usage report settings..."):
+                    return await client.set_data_usage_report_settings(
+                        cadence=cadence,
+                        notification_day=notification_day,
+                        network_id=cli_ctx.network_id,
+                    )
+
+            await write_if_changed(
+                read,
+                (cadence, notification_day),
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
+
+        await run_with_client(set_report_settings)
 
     asyncio.run(run_cmd())

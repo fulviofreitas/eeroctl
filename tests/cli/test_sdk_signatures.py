@@ -755,6 +755,13 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ),
     # -- network/guest.py: show rewired onto the dedicated endpoint (24c) ----
     ("get_guest_network", ("nid",), {}, "network/guest.py:68 (client.py:1118)"),
+    # -- writes-engineer batch: network/usage.py report set (#48) -----------
+    (
+        "set_data_usage_report_settings",
+        (),
+        {"cadence": "daily", "notification_day": "monday", "network_id": "nid"},
+        "network/usage.py report set (client.py:1776)",
+    ),
 ]
 
 
