@@ -462,7 +462,7 @@ def dns_mode_set(
       eero network dns mode set auto
     """
     cli_ctx = apply_options(ctx, network_id=network_id)
-    console_out = cli_ctx.console
+    console_out = cli_ctx.err_console
 
     # Validate --servers before anything else, so invalid input never reaches
     # the confirmation prompt.
@@ -708,7 +708,7 @@ def dns_clear(
     Applying this reboots every eero on the network.
     """
     cli_ctx = apply_options(ctx, network_id=network_id)
-    console_out = cli_ctx.console
+    console_out = cli_ctx.err_console
     scope = f" ({family})" if family else ""
 
     async def run_cmd() -> None:
