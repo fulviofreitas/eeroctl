@@ -528,8 +528,9 @@ def capture_all(manifest: list[CaptureItem], python: str, out_dir: Path) -> list
         parsed = _parse_stdout(out)
         redacted = redact_payload(parsed)
 
+        masked_command = _mask_value_patterns(["eero", *item.argv])
         payload = {
-            "command": ["eero", *item.argv],
+            "command": masked_command,
             "exit_code": code,
             "stdout": redacted,
             "stderr": _mask_string(err),
@@ -541,7 +542,7 @@ def capture_all(manifest: list[CaptureItem], python: str, out_dir: Path) -> list
         results.append(
             CaptureResult(
                 slug=item.slug,
-                command=item.argv,
+                command=masked_command,
                 exit_code=code,
                 stdout=redacted,
                 stderr=payload["stderr"],
