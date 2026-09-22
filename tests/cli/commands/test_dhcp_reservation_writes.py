@@ -125,6 +125,48 @@ class TestReservationUpdate:
         assert call_args[0][0] == "r1"
         assert call_args[0][1] == {"ip": "10.0.0.9"}
 
+    def test_invalid_json_exits_usage_error(self, runner: CliRunner) -> None:
+        mock_client = _client()
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "network",
+                    "dhcp",
+                    "reservation",
+                    "update",
+                    "r1",
+                    "--config-json",
+                    "nope",
+                    "--force",
+                ],
+            )
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        mock_client.update_reservation.assert_not_called()
+
+    def test_non_interactive_without_force_fails(self, runner: CliRunner) -> None:
+        mock_client = _client()
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "--non-interactive",
+                    "network",
+                    "dhcp",
+                    "reservation",
+                    "update",
+                    "r1",
+                    "--config-json",
+                    '{"ip": "10.0.0.9"}',
+                ],
+            )
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.update_reservation.assert_not_called()
+
 
 class TestReservationDelete:
     @pytest.fixture

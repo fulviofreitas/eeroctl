@@ -129,6 +129,46 @@ class TestForwardsUpdate:
 
         assert result.exit_code != 0
 
+    def test_invalid_json_exits_usage_error(self, runner: CliRunner) -> None:
+        mock_client = _client()
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "network",
+                    "forwards",
+                    "update",
+                    "fwd1",
+                    "--config-json",
+                    "{not json",
+                    "--force",
+                ],
+            )
+
+        assert result.exit_code == ExitCode.USAGE_ERROR
+        mock_client.update_forward.assert_not_called()
+
+    def test_non_interactive_without_force_fails(self, runner: CliRunner) -> None:
+        mock_client = _client()
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "--non-interactive",
+                    "network",
+                    "forwards",
+                    "update",
+                    "fwd1",
+                    "--config-json",
+                    '{"name": "SSH2"}',
+                ],
+            )
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.update_forward.assert_not_called()
+
 
 class TestForwardsDelete:
     @pytest.fixture
