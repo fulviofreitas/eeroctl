@@ -210,3 +210,24 @@ class TestFastTransitionToggle:
 
         assert result.exit_code == ExitCode.SAFETY_RAIL
         mock_client.set_fast_transition.assert_not_called()
+
+    def test_disable_writes_when_currently_enabled(self, runner: CliRunner) -> None:
+        # Unlike test_skips_write_when_already_disabled above, the read
+        # reports the feature enabled, so `disable` is a real change and
+        # must actually call set_fast_transition(False, ...) after the
+        # REBOOT phrase (regression: only the skip-unchanged and
+        # non-interactive paths were previously covered for `disable`).
+        mock_client = _client(
+            get_fast_transition={"meta": {"code": 200}, "data": {"enabled": True}},
+            set_fast_transition={"meta": {"code": 200}},
+        )
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                ["network", "security", "fast-transition", "disable"],
+                input="REBOOT\n",
+            )
+
+        assert result.exit_code == 0
+        mock_client.set_fast_transition.assert_awaited_once_with(False, None)

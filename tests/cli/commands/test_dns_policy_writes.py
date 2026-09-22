@@ -24,6 +24,12 @@ def _client(**method_return_values) -> AsyncMock:
 
 
 class TestDnsPolicyAllow:
+    # No skip-unchanged test here: `allow_domain` is an additive write with
+    # no matching read to compare against (there is no "get the current
+    # allowlist" call this command reads before writing), so the
+    # read-then-compare skip-unchanged pattern used elsewhere in this suite
+    # (e.g. wpa3 per-band, fast-transition) does not apply to this command.
+
     @pytest.fixture
     def runner(self) -> CliRunner:
         return CliRunner()
@@ -99,6 +105,10 @@ class TestDnsPolicyAllow:
 
 
 class TestDnsPolicyBlock:
+    # No skip-unchanged test here either, for the same reason as
+    # TestDnsPolicyAllow above: `block_domain` is an additive write with no
+    # matching read to compare against.
+
     @pytest.fixture
     def runner(self) -> CliRunner:
         return CliRunner()
