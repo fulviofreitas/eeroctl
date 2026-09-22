@@ -565,6 +565,9 @@ class TestWriteSpecsRegistry:
         "network backup access-points rearrange",
         "network backup access-points discover --start",
         "network backup access-points check",
+        "network subnets set",
+        "network subnets delete",
+        "network subnets filters set",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -724,6 +727,9 @@ class TestWriteSpecsRegistry:
         "rearrange_backup_access_points": ["network backup access-points rearrange"],
         "start_backup_ssid_discovery": ["network backup access-points discover --start"],
         "backup_connectivity_check": ["network backup access-points check"],
+        "set_subnets_config": ["network subnets set"],
+        "delete_subnet": ["network subnets delete"],
+        "set_subnet_content_filters": ["network subnets filters set"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

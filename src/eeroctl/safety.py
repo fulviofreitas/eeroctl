@@ -1379,6 +1379,32 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network backup status",
         ),
+        # -- network subnets: `set_subnets_config`/`delete_subnet` are
+        # documented mesh-reboot writes; `set_subnet_content_filters` is
+        # not (migration plan §4 phase C row 46/#51). --
+        "network subnets set": WriteSpec(
+            command="network subnets set",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network subnets show",
+            phrase="REBOOT",
+        ),
+        "network subnets delete": WriteSpec(
+            command="network subnets delete",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network subnets show",
+            phrase="REBOOT",
+        ),
+        "network subnets filters set": WriteSpec(
+            command="network subnets filters set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network subnets filters show <subnet-id>",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.

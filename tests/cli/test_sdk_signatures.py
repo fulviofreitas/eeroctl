@@ -844,6 +844,25 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/backup.py access-points check (client.py:2984)",
     ),
+    # -- writes-engineer batch: network/subnets.py writes (#51) --------------
+    (
+        "set_subnets_config",
+        ({"subnet_type": "guest"}, "nid"),
+        {},
+        "network/subnets.py set (client.py:2998)",
+    ),
+    (
+        "delete_subnet",
+        ("guest", "nid"),
+        {},
+        "network/subnets.py delete (client.py:3007)",
+    ),
+    (
+        "set_subnet_content_filters",
+        ({"content_filters": {}}, "nid"),
+        {},
+        "network/subnets.py filters set (client.py:3016)",
+    ),
 ]
 
 
