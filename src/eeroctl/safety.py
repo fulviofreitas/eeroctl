@@ -1159,6 +1159,59 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network dns policy show",
         ),
+        # -- account: name/email/phone/consents/push -- all account-scoped,
+        # unverified writes (migration plan §4 phase C, `account name set`
+        # row). Two-step email/phone flows print the follow-up command
+        # themselves rather than via read_command. --
+        "account name set": WriteSpec(
+            command="account name set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero auth status",
+        ),
+        "account email set": WriteSpec(
+            command="account email set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero auth status",
+        ),
+        "account email verify": WriteSpec(
+            command="account email verify",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero auth status",
+        ),
+        "account phone set": WriteSpec(
+            command="account phone set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero auth status",
+        ),
+        "account phone verify": WriteSpec(
+            command="account phone verify",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero auth status",
+        ),
+        "account consents": WriteSpec(
+            command="account consents",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero auth status",
+        ),
+        "account push set": WriteSpec(
+            command="account push set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero account push set",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.

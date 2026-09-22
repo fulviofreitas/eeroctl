@@ -744,6 +744,57 @@ async def write_if_changed(
     return True
 
 
+def parse_bool_key_value_pairs(console: Console, pairs: "tuple[str, ...]") -> dict:
+    """Parse repeated ``KEY=VALUE`` strings into a ``{key: bool}`` mapping.
+
+    Shared by every ``... set --set KEY=VALUE`` write command that forwards
+    an arbitrary settings mapping to the SDK (``account push set``,
+    ``network notifications set``) rather than exposing one flag per known
+    key. Values are case-insensitively one of ``true``/``false``/``1``/``0``;
+    anything else, a missing ``=``, an empty key, or an empty *pairs* at all
+    exits :data:`~eeroctl.exit_codes.ExitCode.USAGE_ERROR` (2) **before**
+    any confirmation prompt or SDK call, mirroring ``--config-json``'s
+    client-side validation (``commands/network/forwards.py``).
+
+    Args:
+        console: Console to print the usage error to (the caller's
+            ``cli_ctx.err_console`` -- stdout must stay clean).
+        pairs: Raw ``KEY=VALUE`` strings, e.g. from a ``multiple=True``
+            Click option.
+
+    Returns:
+        The parsed ``{key: bool}`` mapping. Later occurrences of the same
+        key overwrite earlier ones, left to right.
+
+    Raises:
+        SystemExit: With :data:`~eeroctl.exit_codes.ExitCode.USAGE_ERROR`
+            on any parse failure or an empty *pairs*.
+    """
+    if not pairs:
+        console.print("[red]At least one --set KEY=VALUE is required[/red]")
+        sys.exit(ExitCode.USAGE_ERROR)
+
+    truthy = {"true", "1"}
+    falsy = {"false", "0"}
+    result: dict = {}
+    for pair in pairs:
+        key, sep, value = pair.partition("=")
+        if not sep or not key:
+            console.print(f"[red]Invalid --set value {pair!r}; expected KEY=VALUE[/red]")
+            sys.exit(ExitCode.USAGE_ERROR)
+        normalized = value.strip().lower()
+        if normalized in truthy:
+            result[key] = True
+        elif normalized in falsy:
+            result[key] = False
+        else:
+            console.print(
+                f"[red]Invalid value for {key!r}: {value!r}; expected true/false/1/0[/red]"
+            )
+            sys.exit(ExitCode.USAGE_ERROR)
+    return result
+
+
 def confirm_action(message: str) -> bool:
     """Ask user to confirm an action.
 

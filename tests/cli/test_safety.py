@@ -536,6 +536,13 @@ class TestWriteSpecsRegistry:
         "network dns policy allow",
         "network dns policy block",
         "network dns policy allow-cnames",
+        "account name set",
+        "account email set",
+        "account email verify",
+        "account phone set",
+        "account phone verify",
+        "account consents",
+        "account push set",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -667,6 +674,13 @@ class TestWriteSpecsRegistry:
         "allow_domain": ["network dns policy allow"],
         "block_domain": ["network dns policy block"],
         "allow_cnames": ["network dns policy allow-cnames"],
+        "set_account_name": ["account name set"],
+        "set_account_email": ["account email set"],
+        "verify_account_email": ["account email verify"],
+        "set_account_phone": ["account phone set"],
+        "verify_account_phone": ["account phone verify"],
+        "set_account_consents": ["account consents"],
+        "set_push_settings": ["account push set"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
@@ -689,7 +703,7 @@ class TestWriteSpecsRegistry:
             r"await client\."
             r"(set_|create_|delete_|update_|block_|unblock_|pause_|unpause_|reboot_|"
             r"enable_|disable_|clear_|allow_|add_|remove_|apply_|run_speed|rename_|"
-            r"configure_|mark_|regenerate_|node_action|port_action|led_cycle|"
+            r"configure_|mark_|regenerate_|verify_|node_action|port_action|led_cycle|"
             r"nightlight_override|request_)"
         )
         method_pattern = re.compile(r"await client\.(\w+)\(")

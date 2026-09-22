@@ -419,6 +419,50 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/dns.py:dns_policy_allow_cnames (client.py:2462)",
     ),
+    # -- commands/account.py: name/email/phone/consents/push writes
+    # (commit 45). None take a network_id -- account-scoped. --
+    (
+        "set_account_name",
+        ("Jane Doe",),
+        {},
+        "commands/account.py:account_name_set (client.py:2642)",
+    ),
+    (
+        "set_account_email",
+        ("jane@example.com",),
+        {},
+        "commands/account.py:account_email_set (client.py:2648)",
+    ),
+    (
+        "verify_account_email",
+        ("123456",),
+        {},
+        "commands/account.py:account_email_verify (client.py:2652)",
+    ),
+    (
+        "set_account_phone",
+        ("+15551234567",),
+        {},
+        "commands/account.py:account_phone_set (client.py:2658)",
+    ),
+    (
+        "verify_account_phone",
+        ("123456",),
+        {},
+        "commands/account.py:account_phone_verify (client.py:2662)",
+    ),
+    (
+        "set_account_consents",
+        (),
+        {"marketing_emails": True},
+        "commands/account.py:account_consents (client.py:2668)",
+    ),
+    (
+        "set_push_settings",
+        ({"device_offline": True},),
+        {},
+        "commands/account.py:account_push_set (client.py:2422)",
+    ),
     # -- network/members.py (phase A, commit 16) ----------------------------
     ("get_members", ("nid",), {}, "network/members.py:47 (client.py:2572, verified)"),
     ("get_invites", ("nid",), {}, "network/members.py:71 (client.py:2579, unverified)"),
