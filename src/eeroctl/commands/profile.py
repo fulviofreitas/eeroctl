@@ -1016,7 +1016,7 @@ def schedule_set(
       eero profile schedule set "Kids" --start 22:00 --end 06:00 --days mon,tue,wed,thu,fri
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     days_list = days.split(",") if days else None
 
@@ -1181,7 +1181,7 @@ def schedule_delete(
                             (see `eero profile schedule show`)
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     async def run_cmd() -> None:
         async def delete_one(client: EeroClient) -> None:
@@ -1232,7 +1232,7 @@ def schedule_delete(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -1296,7 +1296,7 @@ def devices_set(
       eero profile devices set "Kids" "iPad" AA:BB:CC:DD:EE:FF
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     async def run_cmd() -> None:
         async def set_devices(client: EeroClient) -> None:
@@ -1341,7 +1341,7 @@ def devices_set(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -1429,7 +1429,7 @@ def profile_dns_allow(
       DOMAIN               Domain to allow
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     async def run_cmd() -> None:
         async def allow(client: EeroClient) -> None:
@@ -1455,7 +1455,7 @@ def profile_dns_allow(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -1513,7 +1513,7 @@ def profile_dns_block(
       DOMAIN               Domain to block
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     async def run_cmd() -> None:
         async def block(client: EeroClient) -> None:
@@ -1539,7 +1539,7 @@ def profile_dns_block(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)

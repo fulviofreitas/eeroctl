@@ -107,7 +107,7 @@ def updates_apply(ctx: click.Context, force: Optional[bool], network_id: Optiona
     Reboots every node on the network.
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     spec = get_write_spec("eero updates apply")
     cli_ctx.active_write_spec = spec
@@ -120,7 +120,7 @@ def updates_apply(ctx: click.Context, force: Optional[bool], network_id: Optiona
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

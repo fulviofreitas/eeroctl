@@ -391,7 +391,7 @@ def device_type_set(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -413,7 +413,7 @@ def device_type_set(
                 device_type,
                 write,
                 force=cli_ctx.force,
-                console=console,
+                console=cli_ctx.err_console,
                 read_command=spec.read_command,
             )
 

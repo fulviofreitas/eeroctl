@@ -223,7 +223,7 @@ def reservation_create(
     exactly what the API expects via --config-json.
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     reservation_data = _parse_config_json(console, config_json)
 
     spec = get_write_spec("network dhcp reservation create")
@@ -237,7 +237,7 @@ def reservation_create(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -285,7 +285,7 @@ def reservation_update(
       RESERVATION_ID  The reservation's id
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     reservation_data = _parse_config_json(console, config_json)
 
     spec = get_write_spec("network dhcp reservation update")
@@ -299,7 +299,7 @@ def reservation_update(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -349,7 +349,7 @@ def reservation_delete(
       RESERVATION_ID  The reservation's id
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     spec = get_write_spec("network dhcp reservation delete")
     cli_ctx.active_write_spec = spec
@@ -362,7 +362,7 @@ def reservation_delete(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -420,7 +420,7 @@ def dhcp_set(
     is required.
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     custom_fields = {
         k: v
@@ -453,7 +453,7 @@ def dhcp_set(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -508,7 +508,7 @@ def connection_mode_set(
       MODE  One of: BRIDGE, NAT
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     spec = get_write_spec("network dhcp connection-mode set")
     cli_ctx.active_write_spec = spec
@@ -521,7 +521,7 @@ def connection_mode_set(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -559,7 +559,7 @@ def nat_randomization_group(ctx: click.Context) -> None:
 
 
 def _set_nat_randomization(cli_ctx, enable: bool, force: Optional[bool]) -> None:
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     action = "enable" if enable else "disable"
     spec = get_write_spec(f"network dhcp nat-randomization {action}")
     cli_ctx.active_write_spec = spec
@@ -572,7 +572,7 @@ def _set_nat_randomization(cli_ctx, enable: bool, force: Optional[bool]) -> None
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

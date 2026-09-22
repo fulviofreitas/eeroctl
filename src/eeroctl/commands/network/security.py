@@ -268,7 +268,7 @@ def _set_network_field_setting(
 ):
     """Set a security setting whose current state lives on `get_network`."""
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     action = "enable" if enable else "disable"
     effective_force = force or cli_ctx.force
     spec = get_write_spec(f"network security {setting_name} {action}")
@@ -342,7 +342,7 @@ def mlo_set(ctx: click.Context, mode: str, force: bool) -> None:
       MODE  One of: disabled, single, multi
     """
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     effective_force = force or cli_ctx.force
     spec = get_write_spec("network security mlo set")
     cli_ctx.active_write_spec = spec

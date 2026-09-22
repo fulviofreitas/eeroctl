@@ -337,7 +337,7 @@ def location_set(
       LOCATION_NAME    New location label
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     async def run_cmd() -> None:
         async def set_loc(client: EeroClient) -> None:
@@ -365,7 +365,7 @@ def location_set(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -421,7 +421,7 @@ def ports_cycle(
       EERO_IDENTIFIER  Node ID, serial number, or name/location
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     action = "POWER_CYCLE_ALL_PORTS_AND_REBOOT" if reboot else "POWER_CYCLE_ALL_PORTS"
     spec_key = "eero ports cycle --reboot" if reboot else "eero ports cycle"
 
@@ -451,7 +451,7 @@ def ports_cycle(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -500,7 +500,7 @@ def port_action_cmd(
     """
     )
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     async def run_cmd() -> None:
         async def apply_action(client: EeroClient) -> None:
@@ -528,7 +528,7 @@ def port_action_cmd(
                         non_interactive=cli_ctx.non_interactive,
                         dry_run=cli_ctx.dry_run,
                     ),
-                    console=cli_ctx.console,
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)

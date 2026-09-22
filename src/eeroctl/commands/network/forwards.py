@@ -181,7 +181,7 @@ def forwards_create(
     exactly what the API expects via --config-json.
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     forward_data = _parse_config_json(console, config_json)
 
     spec = get_write_spec("network forwards create")
@@ -195,7 +195,7 @@ def forwards_create(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -243,7 +243,7 @@ def forwards_update(
       FORWARD_ID  The forward's id
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     forward_data = _parse_config_json(console, config_json)
 
     spec = get_write_spec("network forwards update")
@@ -257,7 +257,7 @@ def forwards_update(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -296,7 +296,7 @@ def forwards_delete(
       FORWARD_ID  The forward's id
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     spec = get_write_spec("network forwards delete")
     cli_ctx.active_write_spec = spec
@@ -309,7 +309,7 @@ def forwards_delete(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

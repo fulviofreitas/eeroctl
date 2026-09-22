@@ -33,7 +33,7 @@ def ddns_group(ctx: click.Context) -> None:
 
 def _set_ddns(ctx: click.Context, enable: bool, force: Optional[bool]) -> None:
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     action = "enable" if enable else "disable"
     effective_force = force or cli_ctx.force
 
@@ -48,7 +48,7 @@ def _set_ddns(ctx: click.Context, enable: bool, force: Optional[bool]) -> None:
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

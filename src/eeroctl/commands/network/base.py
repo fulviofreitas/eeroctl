@@ -409,7 +409,7 @@ def password_set(
                         (input hidden, confirmed) instead.
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     # --non-interactive without --password can never be satisfied (no prompt
     # will run), so this guard stays first, before any confirmation.
@@ -428,7 +428,7 @@ def password_set(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -469,7 +469,7 @@ def password_clear(ctx: click.Context, force: Optional[bool], network_id: Option
     Disconnects every client while the change propagates.
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     spec = get_write_spec("network password clear")
     cli_ctx.active_write_spec = spec
@@ -482,7 +482,7 @@ def password_clear(ctx: click.Context, force: Optional[bool], network_id: Option
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -515,7 +515,7 @@ def network_reboot(ctx: click.Context, force: Optional[bool], network_id: Option
     Takes Wi-Fi and internet down network-wide while the mesh restarts.
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     spec = get_write_spec("network reboot")
     cli_ctx.active_write_spec = spec
@@ -528,7 +528,7 @@ def network_reboot(ctx: click.Context, force: Optional[bool], network_id: Option
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

@@ -282,7 +282,7 @@ def nightlight_schedule(
                               --disable do not cover
     """
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     on_off_given = on_time is not None or off_time is not None
     modes_given = sum([on_off_given, disable, schedule_json is not None])
@@ -380,7 +380,7 @@ def nightlight_override(ctx: click.Context, eero_identifier: str, brightness: in
     `nightlight_override` action rather than `set_nightlight`.
     """
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     spec = get_write_spec("eero nightlight override")
     cli_ctx.active_write_spec = spec
@@ -389,7 +389,7 @@ def nightlight_override(ctx: click.Context, eero_identifier: str, brightness: in
             spec,
             target=eero_identifier,
             ctx=SafetyContext(force=cli_ctx.force, non_interactive=cli_ctx.non_interactive),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

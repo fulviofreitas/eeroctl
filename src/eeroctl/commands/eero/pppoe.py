@@ -56,7 +56,7 @@ def pppoe_set(
                         hidden, confirmed) instead.
     """
     cli_ctx = get_cli_context(ctx)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     effective_force = force or cli_ctx.force
 
     # --non-interactive without --password can never be satisfied (no prompt
@@ -76,7 +76,7 @@ def pppoe_set(
                 non_interactive=cli_ctx.non_interactive,
                 dry_run=cli_ctx.dry_run,
             ),
-            console=cli_ctx.console,
+            console=cli_ctx.err_console,
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
