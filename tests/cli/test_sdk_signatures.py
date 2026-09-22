@@ -799,6 +799,51 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/power_saving.py schedules delete (client.py:2881)",
     ),
+    # -- writes-engineer batch: network/backup.py access-points writes (#50) --
+    (
+        "add_backup_access_point",
+        ("nid",),
+        {"ssid": "Guest", "password": "hunter2", "uuid": None},
+        "network/backup.py access-points add (client.py:2917)",
+    ),
+    (
+        "update_backup_access_point",
+        ("bid", "nid"),
+        {
+            "ssid": None,
+            "password": None,
+            "enabled": False,
+            "uuid": None,
+            "connectivity": None,
+            "created": None,
+            "last_updated_at": None,
+        },
+        "network/backup.py access-points update (client.py:2931)",
+    ),
+    (
+        "delete_backup_access_point",
+        ("bid", "nid"),
+        {},
+        "network/backup.py access-points delete (client.py:2958)",
+    ),
+    (
+        "rearrange_backup_access_points",
+        (["bid1", "bid2"], "nid"),
+        {},
+        "network/backup.py access-points rearrange (client.py:2967)",
+    ),
+    (
+        "start_backup_ssid_discovery",
+        ("nid",),
+        {},
+        "network/backup.py access-points discover --start (client.py:2977)",
+    ),
+    (
+        "backup_connectivity_check",
+        ("nid",),
+        {},
+        "network/backup.py access-points check (client.py:2984)",
+    ),
 ]
 
 

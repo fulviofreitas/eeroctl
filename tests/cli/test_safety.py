@@ -559,6 +559,12 @@ class TestWriteSpecsRegistry:
         "network power-saving schedules create",
         "network power-saving schedules update",
         "network power-saving schedules delete",
+        "network backup access-points add",
+        "network backup access-points update",
+        "network backup access-points delete",
+        "network backup access-points rearrange",
+        "network backup access-points discover --start",
+        "network backup access-points check",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -712,6 +718,12 @@ class TestWriteSpecsRegistry:
         "create_power_saving_schedule": ["network power-saving schedules create"],
         "update_power_saving_schedule": ["network power-saving schedules update"],
         "delete_power_saving_schedule": ["network power-saving schedules delete"],
+        "add_backup_access_point": ["network backup access-points add"],
+        "update_backup_access_point": ["network backup access-points update"],
+        "delete_backup_access_point": ["network backup access-points delete"],
+        "rearrange_backup_access_points": ["network backup access-points rearrange"],
+        "start_backup_ssid_discovery": ["network backup access-points discover --start"],
+        "backup_connectivity_check": ["network backup access-points check"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
@@ -735,7 +747,8 @@ class TestWriteSpecsRegistry:
             r"(set_|create_|delete_|update_|block_|unblock_|pause_|unpause_|reboot_|"
             r"enable_|disable_|clear_|allow_|add_|remove_|apply_|run_speed|rename_|"
             r"configure_|mark_|regenerate_|verify_|promote_|respond_to_|cancel_|"
-            r"node_action|port_action|led_cycle|nightlight_override|request_)"
+            r"node_action|port_action|led_cycle|nightlight_override|request_|"
+            r"start_|rearrange_|backup_)"
         )
         method_pattern = re.compile(r"await client\.(\w+)\(")
 

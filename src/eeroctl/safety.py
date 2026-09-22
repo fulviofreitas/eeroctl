@@ -1333,6 +1333,52 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network power-saving schedules list",
         ),
+        # -- network backup access-points: add/update/delete/rearrange and
+        # the discover-start/connectivity-check writes are all unverified
+        # (migration plan §4 phase C row 45/#50). `backup enable/disable`
+        # already registered above (rewired, verified untouched). --
+        "network backup access-points add": WriteSpec(
+            command="network backup access-points add",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network backup access-points list",
+        ),
+        "network backup access-points update": WriteSpec(
+            command="network backup access-points update",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network backup access-points list",
+        ),
+        "network backup access-points delete": WriteSpec(
+            command="network backup access-points delete",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network backup access-points list",
+        ),
+        "network backup access-points rearrange": WriteSpec(
+            command="network backup access-points rearrange",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network backup access-points list",
+        ),
+        "network backup access-points discover --start": WriteSpec(
+            command="network backup access-points discover --start",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network backup access-points discover",
+        ),
+        "network backup access-points check": WriteSpec(
+            command="network backup access-points check",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network backup status",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.
