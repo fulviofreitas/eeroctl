@@ -543,6 +543,8 @@ class TestWriteSpecsRegistry:
         "account phone verify",
         "account consents",
         "account push set",
+        "network notifications set",
+        "network notifications mark-read",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -681,6 +683,8 @@ class TestWriteSpecsRegistry:
         "verify_account_phone": ["account phone verify"],
         "set_account_consents": ["account consents"],
         "set_push_settings": ["account push set"],
+        "set_notification_settings": ["network notifications set"],
+        "mark_notifications_read": ["network notifications mark-read"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

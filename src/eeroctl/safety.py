@@ -1212,6 +1212,22 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero account push set",
         ),
+        # -- network notifications: set/mark-read -- both LOW + unverified
+        # (migration plan §4 phase C, `network notifications set` row). --
+        "network notifications set": WriteSpec(
+            command="network notifications set",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network notifications show",
+        ),
+        "network notifications mark-read": WriteSpec(
+            command="network notifications mark-read",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network notifications show",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.

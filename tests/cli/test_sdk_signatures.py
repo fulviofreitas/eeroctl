@@ -463,6 +463,19 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "commands/account.py:account_push_set (client.py:2422)",
     ),
+    # -- network/notifications.py: set/mark-read writes (commit 46) ---------
+    (
+        "set_notification_settings",
+        ({"weekly_digest": False}, "nid"),
+        {},
+        "network/notifications.py:notifications_set (client.py:2385)",
+    ),
+    (
+        "mark_notifications_read",
+        ("nid",),
+        {},
+        "network/notifications.py:notifications_mark_read (client.py:2406)",
+    ),
     # -- network/members.py (phase A, commit 16) ----------------------------
     ("get_members", ("nid",), {}, "network/members.py:47 (client.py:2572, verified)"),
     ("get_invites", ("nid",), {}, "network/members.py:71 (client.py:2579, unverified)"),
