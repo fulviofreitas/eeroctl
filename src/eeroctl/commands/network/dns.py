@@ -23,7 +23,7 @@ from rich.table import Table
 
 from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
-from ...options import apply_options, network_option, output_option
+from ...options import apply_options, force_option, network_option, output_option
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, safe_get
 from ...utils import console, run_with_client
@@ -807,11 +807,14 @@ def _set_dns_caching(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
 @dns_group.group(name="policy")
 @click.pass_context
 def dns_policy_group(ctx: click.Context) -> None:
-    """View DNS content-filtering policy (Eero Plus feature).
+    """Manage DNS content-filtering policy (Eero Plus feature).
 
     \b
     Commands:
-      show - Allowed/blocked domain lists
+      show          - Allowed/blocked domain lists
+      allow         - Allow a domain network-wide
+      block         - Block a domain network-wide
+      allow-cnames  - Allow one or more CNAME domains network-wide
     """
     pass
 
@@ -834,5 +837,209 @@ def dns_policy_show(ctx: click.Context, output: Optional[str], network_id: Optio
             print_dns_policy(cli_ctx, extract_dns_policy(raw))
 
         await run_with_client(get_policy)
+
+    asyncio.run(run_cmd())
+
+
+# ==================== DNS Content-Filtering Policy writes (phase C) ====================
+#
+# `allow_domain`/`block_domain`/`allow_cnames` (client.py:2435,2473,2462) are
+# network-wide, premium (Eero Plus) DNS content-filtering writes -- distinct
+# from `profile dns allow/block` (`allow_domain_for_profiles`/
+# `block_domain_for_profiles`), which scope the same policy to one or more
+# profiles. Unverified, no mesh reboot (migration plan §4 phase C row 41).
+# `EeroPremiumRequiredException` is left to propagate to `run_with_client`'s
+# normal `handle_cli_error` mapping (exit 11) rather than caught here.
+
+
+@dns_policy_group.command(name="allow")
+@click.argument("domain")
+@click.option("--delete", "is_delete", is_flag=True, help="Remove domain from the allow list")
+@click.option(
+    "--keep-profiles",
+    "keep_profiles",
+    multiple=True,
+    help="Profile id to leave unaffected by this change (repeatable).",
+)
+@force_option
+@network_option
+@click.pass_context
+def dns_policy_allow(
+    ctx: click.Context,
+    domain: str,
+    is_delete: bool,
+    keep_profiles: Tuple[str, ...],
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Allow a domain network-wide (Eero Plus feature).
+
+    \b
+    Arguments:
+      DOMAIN  Domain to allow
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console_ = cli_ctx.err_console
+
+    spec = get_write_spec("network dns policy allow")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target=domain,
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=console_,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def allow(client: EeroClient) -> None:
+            with cli_ctx.status(f"Allowing '{domain}'..."):
+                result = await client.allow_domain(
+                    domain,
+                    cli_ctx.network_id,
+                    is_delete=is_delete or None,
+                    keep_profiles=list(keep_profiles) or None,
+                )
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console_.print(f"[bold green]'{domain}' allowed[/bold green]")
+                console_.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
+            else:
+                console_.print(f"[red]Failed to allow '{domain}'[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(allow)
+
+    asyncio.run(run_cmd())
+
+
+@dns_policy_group.command(name="block")
+@click.argument("domain")
+@click.option("--delete", "is_delete", is_flag=True, help="Remove domain from the block list")
+@click.option(
+    "--keep-profiles",
+    "keep_profiles",
+    multiple=True,
+    help="Profile id to leave unaffected by this change (repeatable).",
+)
+@force_option
+@network_option
+@click.pass_context
+def dns_policy_block(
+    ctx: click.Context,
+    domain: str,
+    is_delete: bool,
+    keep_profiles: Tuple[str, ...],
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Block a domain network-wide (Eero Plus feature).
+
+    \b
+    Arguments:
+      DOMAIN  Domain to block
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console_ = cli_ctx.err_console
+
+    spec = get_write_spec("network dns policy block")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target=domain,
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=console_,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def block(client: EeroClient) -> None:
+            with cli_ctx.status(f"Blocking '{domain}'..."):
+                result = await client.block_domain(
+                    domain,
+                    cli_ctx.network_id,
+                    is_delete=is_delete or None,
+                    keep_profiles=list(keep_profiles) or None,
+                )
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console_.print(f"[bold green]'{domain}' blocked[/bold green]")
+                console_.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
+            else:
+                console_.print(f"[red]Failed to block '{domain}'[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(block)
+
+    asyncio.run(run_cmd())
+
+
+@dns_policy_group.command(name="allow-cnames")
+@click.argument("domains", nargs=-1, required=True)
+@force_option
+@network_option
+@click.pass_context
+def dns_policy_allow_cnames(
+    ctx: click.Context,
+    domains: Tuple[str, ...],
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Allow one or more CNAME domains network-wide (Eero Plus feature).
+
+    \b
+    Arguments:
+      DOMAINS  One or more CNAME domains to allow
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console_ = cli_ctx.err_console
+
+    spec = get_write_spec("network dns policy allow-cnames")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target=", ".join(domains),
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=console_,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def allow_cnames(client: EeroClient) -> None:
+            with cli_ctx.status("Allowing CNAME domains..."):
+                result = await client.allow_cnames(list(domains), cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console_.print("[bold green]CNAME domains allowed[/bold green]")
+                console_.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
+            else:
+                console_.print("[red]Failed to allow CNAME domains[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(allow_cnames)
 
     asyncio.run(run_cmd())

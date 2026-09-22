@@ -400,6 +400,25 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ),
     # -- network/dns.py: policy subgroup (commit 15) -------------------------
     ("get_advanced_content_filter", ("nid",), {}, "network/dns.py:851 (client.py:2428)"),
+    # -- network/dns.py: policy allow/block/allow-cnames writes (commit 44) --
+    (
+        "allow_domain",
+        ("example.com", "nid"),
+        {"is_delete": None, "keep_profiles": None},
+        "network/dns.py:dns_policy_allow (client.py:2435)",
+    ),
+    (
+        "block_domain",
+        ("example.com", "nid"),
+        {"is_delete": None, "keep_profiles": None},
+        "network/dns.py:dns_policy_block (client.py:2473)",
+    ),
+    (
+        "allow_cnames",
+        (["example.com"], "nid"),
+        {},
+        "network/dns.py:dns_policy_allow_cnames (client.py:2462)",
+    ),
     # -- network/members.py (phase A, commit 16) ----------------------------
     ("get_members", ("nid",), {}, "network/members.py:47 (client.py:2572, verified)"),
     ("get_invites", ("nid",), {}, "network/members.py:71 (client.py:2579, unverified)"),

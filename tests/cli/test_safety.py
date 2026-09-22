@@ -533,6 +533,9 @@ class TestWriteSpecsRegistry:
         "network wpa3 set",
         "network security fast-transition enable",
         "network security fast-transition disable",
+        "network dns policy allow",
+        "network dns policy block",
+        "network dns policy allow-cnames",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -661,6 +664,9 @@ class TestWriteSpecsRegistry:
             "network security fast-transition enable",
             "network security fast-transition disable",
         ],
+        "allow_domain": ["network dns policy allow"],
+        "block_domain": ["network dns policy block"],
+        "allow_cnames": ["network dns policy allow-cnames"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):

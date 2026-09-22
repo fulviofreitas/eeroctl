@@ -1136,6 +1136,29 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             read_command="eero network security fast-transition show",
             phrase="REBOOT",
         ),
+        # -- network dns policy: network-wide content-filtering allow/block
+        # (Eero Plus); no mesh reboot (migration plan §4 phase C row 41). --
+        "network dns policy allow": WriteSpec(
+            command="network dns policy allow",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network dns policy show",
+        ),
+        "network dns policy block": WriteSpec(
+            command="network dns policy block",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network dns policy show",
+        ),
+        "network dns policy allow-cnames": WriteSpec(
+            command="network dns policy allow-cnames",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network dns policy show",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.
