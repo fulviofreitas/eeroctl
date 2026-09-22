@@ -9,6 +9,8 @@ Commands:
 - eero device unblock: Unblock a device
 - eero device pause: Pause a device
 - eero device unpause: Unpause a device
+- eero device wan-access: Allow/deny a device's secondary WAN access
+  (set_device_secondary_wan_access, client.py:3061; HIGH mesh)
 """
 
 import asyncio
@@ -624,6 +626,101 @@ def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: 
             )
 
         await run_with_client(toggle_pause)
+
+    asyncio.run(run_cmd())
+
+
+# ==================== Secondary WAN Access ====================
+#
+# set_device_secondary_wan_access (client.py:3061) -- HIGH mesh (migration
+# plan §3.1's mesh-reboot list).
+
+
+@device_group.command(name="wan-access")
+@click.argument("device_identifier")
+@click.option("--deny", "deny", is_flag=True, help="Deny secondary WAN access.")
+@click.option("--allow", "allow", is_flag=True, help="Allow secondary WAN access.")
+@force_option
+@network_option
+@click.pass_context
+def device_wan_access(
+    ctx: click.Context,
+    device_identifier: str,
+    deny: bool,
+    allow: bool,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Allow or deny a device's secondary WAN access.
+
+    Applying this change reboots every eero on the network.
+
+    \b
+    Arguments:
+      DEVICE_IDENTIFIER  Device ID, MAC address, or name
+
+    Exactly one of --deny/--allow must be supplied.
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    if deny == allow:
+        console.print("[red]Exactly one of --deny or --allow is required[/red]")
+        sys.exit(ExitCode.USAGE_ERROR)
+
+    spec = get_write_spec("device wan-access")
+    cli_ctx.active_write_spec = spec
+
+    async def run_cmd() -> None:
+        async def set_wan_access(client: EeroClient) -> None:
+            with cli_ctx.status("Finding device..."):
+                raw_response = await client.get_devices(cli_ctx.network_id)
+
+            devices = extract_devices(raw_response)
+            target = _find_device(devices, device_identifier)
+
+            if not target or not target.get("mac"):
+                console.print(f"[red]Device '{device_identifier}' not found[/red]")
+                console.print("[dim]Try: eero device list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            device_name = (
+                target.get("display_name")
+                or target.get("nickname")
+                or target.get("hostname")
+                or device_identifier
+            )
+
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=device_name,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status(f"Setting secondary WAN access for {device_name}..."):
+                result = await client.set_device_secondary_wan_access(
+                    target["mac"], deny=deny, network_id=cli_ctx.network_id
+                )
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                action = "denied" if deny else "allowed"
+                console.print(f"[bold green]Secondary WAN access {action}.[/bold green]")
+                console.print(f"[dim]Verify with `{spec.read_command}`.[/dim]")
+            else:
+                console.print("[red]Failed to set secondary WAN access[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(set_wan_access)
 
     asyncio.run(run_cmd())
 

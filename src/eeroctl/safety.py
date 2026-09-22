@@ -1405,6 +1405,32 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network subnets filters show <subnet-id>",
         ),
+        # -- network wan / device wan-access: all four are documented
+        # mesh-reboot writes (migration plan §4 phase C row 47/#52). --
+        "network wan multistaticip set": WriteSpec(
+            command="network wan multistaticip set",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network wan multistaticip show",
+            phrase="REBOOT",
+        ),
+        "network wan secondary set": WriteSpec(
+            command="network wan secondary set",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network show",
+            phrase="REBOOT",
+        ),
+        "device wan-access": WriteSpec(
+            command="device wan-access",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero device show <id>",
+            phrase="REBOOT",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.

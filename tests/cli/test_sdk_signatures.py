@@ -863,6 +863,25 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/subnets.py filters set (client.py:3016)",
     ),
+    # -- writes-engineer batch: network/wan.py, device.py writes (#52) -------
+    (
+        "set_multistaticip",
+        ({"enabled": True}, "nid"),
+        {},
+        "network/wan.py multistaticip set (client.py:3043)",
+    ),
+    (
+        "set_secondary_wan_config",
+        ({"enabled": True}, "nid"),
+        {},
+        "network/wan.py secondary set (client.py:3052)",
+    ),
+    (
+        "set_device_secondary_wan_access",
+        ("mac",),
+        {"deny": True, "network_id": "nid"},
+        "device.py wan-access (client.py:3061)",
+    ),
 ]
 
 

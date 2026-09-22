@@ -568,6 +568,9 @@ class TestWriteSpecsRegistry:
         "network subnets set",
         "network subnets delete",
         "network subnets filters set",
+        "network wan multistaticip set",
+        "network wan secondary set",
+        "device wan-access",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -730,6 +733,9 @@ class TestWriteSpecsRegistry:
         "set_subnets_config": ["network subnets set"],
         "delete_subnet": ["network subnets delete"],
         "set_subnet_content_filters": ["network subnets filters set"],
+        "set_multistaticip": ["network wan multistaticip set"],
+        "set_secondary_wan_config": ["network wan secondary set"],
+        "set_device_secondary_wan_access": ["device wan-access"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
