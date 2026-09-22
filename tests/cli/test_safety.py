@@ -545,6 +545,13 @@ class TestWriteSpecsRegistry:
         "account push set",
         "network notifications set",
         "network notifications mark-read",
+        "network members invite create",
+        "network members invite update",
+        "network members invite delete",
+        "network members invite respond",
+        "network members promote",
+        "network members remove-admin",
+        "network members cancel-pending-admin",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -685,6 +692,13 @@ class TestWriteSpecsRegistry:
         "set_push_settings": ["account push set"],
         "set_notification_settings": ["network notifications set"],
         "mark_notifications_read": ["network notifications mark-read"],
+        "create_invite": ["network members invite create"],
+        "update_invite": ["network members invite update"],
+        "delete_invite": ["network members invite delete"],
+        "respond_to_invite": ["network members invite respond"],
+        "promote_member": ["network members promote"],
+        "remove_admin": ["network members remove-admin"],
+        "cancel_pending_admin": ["network members cancel-pending-admin"],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
@@ -707,8 +721,8 @@ class TestWriteSpecsRegistry:
             r"await client\."
             r"(set_|create_|delete_|update_|block_|unblock_|pause_|unpause_|reboot_|"
             r"enable_|disable_|clear_|allow_|add_|remove_|apply_|run_speed|rename_|"
-            r"configure_|mark_|regenerate_|verify_|node_action|port_action|led_cycle|"
-            r"nightlight_override|request_)"
+            r"configure_|mark_|regenerate_|verify_|promote_|respond_to_|cancel_|"
+            r"node_action|port_action|led_cycle|nightlight_override|request_)"
         )
         method_pattern = re.compile(r"await client\.(\w+)\(")
 

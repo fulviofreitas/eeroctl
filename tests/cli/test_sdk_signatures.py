@@ -476,6 +476,52 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/notifications.py:notifications_mark_read (client.py:2406)",
     ),
+    # -- network/members.py: invite/promote/remove-admin/cancel-pending-admin
+    # writes (commit 47). `create_invite` takes no email; `update_invite`
+    # takes `invite_nickname`, not `role`; `cancel_pending_admin` takes no id
+    # at all -- see the DIGEST-vs-brief deviation note in members.py. --
+    (
+        "create_invite",
+        (),
+        {"role": "admin", "network_id": "nid"},
+        "network/members.py:invite_create (client.py:2584)",
+    ),
+    (
+        "update_invite",
+        ("iid",),
+        {"invite_nickname": "New nickname", "network_id": "nid"},
+        "network/members.py:invite_update (client.py:2589)",
+    ),
+    (
+        "delete_invite",
+        ("iid",),
+        {"network_id": "nid"},
+        "network/members.py:invite_delete (client.py:2598)",
+    ),
+    (
+        "respond_to_invite",
+        (),
+        {"accept": True, "invite_id": "iid", "network_id": "nid"},
+        "network/members.py:invite_respond (client.py:2605)",
+    ),
+    (
+        "promote_member",
+        ("mid",),
+        {"network_id": "nid"},
+        "network/members.py:members_promote (client.py:2624)",
+    ),
+    (
+        "remove_admin",
+        ("uid",),
+        {"network_id": "nid"},
+        "network/members.py:members_remove_admin (client.py:2631)",
+    ),
+    (
+        "cancel_pending_admin",
+        ("nid",),
+        {},
+        "network/members.py:members_cancel_pending_admin (client.py:2619)",
+    ),
     # -- network/members.py (phase A, commit 16) ----------------------------
     ("get_members", ("nid",), {}, "network/members.py:47 (client.py:2572, verified)"),
     ("get_invites", ("nid",), {}, "network/members.py:71 (client.py:2579, unverified)"),

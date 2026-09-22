@@ -1228,6 +1228,59 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network notifications show",
         ),
+        # -- network members: invite create/update/delete/respond, promote,
+        # remove-admin (HIGH, phrase REMOVE), cancel-pending-admin
+        # (migration plan §4 phase C, `network members invite create` row).
+        "network members invite create": WriteSpec(
+            command="network members invite create",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network members invites",
+        ),
+        "network members invite update": WriteSpec(
+            command="network members invite update",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network members invites",
+        ),
+        "network members invite delete": WriteSpec(
+            command="network members invite delete",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network members invites",
+        ),
+        "network members invite respond": WriteSpec(
+            command="network members invite respond",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network members invites",
+        ),
+        "network members promote": WriteSpec(
+            command="network members promote",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network members list",
+        ),
+        "network members remove-admin": WriteSpec(
+            command="network members remove-admin",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network members list",
+            phrase="REMOVE",
+        ),
+        "network members cancel-pending-admin": WriteSpec(
+            command="network members cancel-pending-admin",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero network members invites",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.
