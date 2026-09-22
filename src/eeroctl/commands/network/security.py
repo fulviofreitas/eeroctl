@@ -417,11 +417,13 @@ security_group.add_command(thread_group)
 @security_group.group(name="fast-transition")
 @click.pass_context
 def fast_transition_group(ctx: click.Context) -> None:
-    """View 802.11r fast transition settings.
+    """Manage 802.11r fast transition settings.
 
     \b
     Commands:
-      show - Current fast-transition setting
+      show    - Current fast-transition setting
+      enable  - Enable fast transition (reboots the mesh)
+      disable - Disable fast transition (reboots the mesh)
     """
     pass
 
@@ -442,6 +444,75 @@ def fast_transition_show(ctx: click.Context, output, network_id) -> None:
         await run_with_client(get_fast_transition)
 
     asyncio.run(run_cmd())
+
+
+def _set_fast_transition(ctx: click.Context, enable: bool, force: bool) -> None:
+    """Enable or disable 802.11r fast transition. Reboots the mesh."""
+    cli_ctx = get_cli_context(ctx)
+    console = cli_ctx.err_console
+    action = "enable" if enable else "disable"
+    effective_force = force or cli_ctx.force
+
+    spec = get_write_spec(f"network security fast-transition {action}")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.err_console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def set_fast_transition(client: EeroClient) -> None:
+            async def read() -> bool:
+                # No dedicated field name is documented beyond the setter's
+                # `enabled: bool` kwarg; mirrors the `enabled` convention
+                # every other toggle read uses (sqm.py, dns.py).
+                with cli_ctx.status("Reading current fast-transition setting..."):
+                    raw = await client.get_fast_transition(cli_ctx.network_id)
+                data = extract_data(raw) if isinstance(raw, dict) else {}
+                return bool(data.get("enabled", not enable))
+
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing fast transition..."):
+                    return await client.set_fast_transition(enable, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                enable,
+                write,
+                force=effective_force,
+                console=console,
+                read_command=spec.read_command,
+            )
+
+        await run_with_client(set_fast_transition)
+
+    asyncio.run(run_cmd())
+
+
+@fast_transition_group.command(name="enable")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def fast_transition_enable(ctx: click.Context, force: bool) -> None:
+    """Enable 802.11r fast transition. Reboots the mesh."""
+    _set_fast_transition(ctx, True, force)
+
+
+@fast_transition_group.command(name="disable")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def fast_transition_disable(ctx: click.Context, force: bool) -> None:
+    """Disable 802.11r fast transition. Reboots the mesh."""
+    _set_fast_transition(ctx, False, force)
 
 
 security_group.add_command(passpoint_group)

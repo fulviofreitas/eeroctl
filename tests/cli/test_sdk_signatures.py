@@ -406,6 +406,20 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     # -- network/wpa3.py, network/security.py: fast-transition (commit 17) --
     ("get_wpa3_per_band", ("nid",), {}, "network/wpa3.py:47 (client.py:2736)"),
     ("get_fast_transition", ("nid",), {}, "network/security.py:221 (client.py:2770)"),
+    # -- network/wpa3.py: set, network/security.py: fast-transition writes
+    # (commit 43) --
+    (
+        "set_wpa3_per_band",
+        ("nid",),
+        {"band_2_4_ghz": "WPA3", "band_5_ghz": "WPA3"},
+        "network/wpa3.py:wpa3_per_band_set (client.py:2743)",
+    ),
+    (
+        "set_fast_transition",
+        (True, "nid"),
+        {},
+        "network/security.py:_set_fast_transition (client.py:2777)",
+    ),
     # -- network/power_saving.py (phase A, commit 18) -----------------------
     (
         "get_power_saving_schedules",

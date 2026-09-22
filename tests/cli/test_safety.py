@@ -530,6 +530,9 @@ class TestWriteSpecsRegistry:
         "network dhcp connection-mode set",
         "network dhcp nat-randomization enable",
         "network dhcp nat-randomization disable",
+        "network wpa3 set",
+        "network security fast-transition enable",
+        "network security fast-transition disable",
     ]
 
     def test_every_expected_command_is_registered(self):
@@ -653,6 +656,11 @@ class TestWriteSpecsRegistry:
         "regenerate_thread_credentials": ["network thread set"],
         "allow_domain_for_profiles": ["profile dns allow"],
         "block_domain_for_profiles": ["profile dns block"],
+        "set_wpa3_per_band": ["network wpa3 set"],
+        "set_fast_transition": [
+            "network security fast-transition enable",
+            "network security fast-transition disable",
+        ],
     }
 
     def test_every_write_call_site_has_a_registered_command(self):
@@ -740,6 +748,9 @@ class TestWriteSpecsRegistry:
             "network security upnp disable",
             "network security ipv6 enable",
             "network security ipv6 disable",
+            "network wpa3 set",
+            "network security fast-transition enable",
+            "network security fast-transition disable",
         ],
     )
     def test_mesh_reboot_specs_are_high_with_reboot_phrase(self, command):

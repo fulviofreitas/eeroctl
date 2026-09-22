@@ -1110,6 +1110,32 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             read_command="eero network show",
             phrase="REBOOT",
         ),
+        # -- network wpa3 set / network security fast-transition: both
+        # mesh-reboot writes (migration plan §4 phase C row 30). --
+        "network wpa3 set": WriteSpec(
+            command="network wpa3 set",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network wpa3 show",
+            phrase="REBOOT",
+        ),
+        "network security fast-transition enable": WriteSpec(
+            command="network security fast-transition enable",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network security fast-transition show",
+            phrase="REBOOT",
+        ),
+        "network security fast-transition disable": WriteSpec(
+            command="network security fast-transition disable",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="mesh",
+            read_command="eero network security fast-transition show",
+            phrase="REBOOT",
+        ),
     }
 )
 """The write-command registry, replacing the old ``OPERATION_RISKS`` mapping.
