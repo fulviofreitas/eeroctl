@@ -70,13 +70,11 @@ def nightlight_show(ctx: click.Context, eero_identifier: str) -> None:
             with cli_ctx.status("Getting nightlight settings..."):
                 try:
                     raw_nl = await client.get_nightlight(eero_id_str, cli_ctx.network_id)
-                except Exception as e:
-                    if isinstance(e, EeroFeatureUnavailableException):
-                        console.print(
-                            "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
-                        )
-                        sys.exit(ExitCode.FEATURE_UNAVAILABLE)
-                    raise
+                except EeroFeatureUnavailableException:
+                    console.print(
+                        "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
+                    )
+                    sys.exit(ExitCode.FEATURE_UNAVAILABLE)
 
             # `get_nightlight` now GETs the `data.nightlight.url` sub-resource and
             # returns the nightlight object itself, so the settings usually live at
@@ -167,13 +165,11 @@ def _set_nightlight(cli_ctx: EeroCliContext, eero_identifier: str, enabled: bool
                     result = await client.set_nightlight(
                         eero_id_str, enabled=enabled, network_id=cli_ctx.network_id
                     )
-                except Exception as e:
-                    if isinstance(e, EeroFeatureUnavailableException):
-                        console.print(
-                            "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
-                        )
-                        sys.exit(ExitCode.FEATURE_UNAVAILABLE)
-                    raise
+                except EeroFeatureUnavailableException:
+                    console.print(
+                        "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
+                    )
+                    sys.exit(ExitCode.FEATURE_UNAVAILABLE)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:
@@ -228,13 +224,11 @@ def nightlight_brightness(ctx: click.Context, eero_identifier: str, value: int) 
                     result = await client.set_nightlight_brightness(
                         eero_id_str, value, cli_ctx.network_id
                     )
-                except Exception as e:
-                    if isinstance(e, EeroFeatureUnavailableException):
-                        console.print(
-                            "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
-                        )
-                        sys.exit(ExitCode.FEATURE_UNAVAILABLE)
-                    raise
+                except EeroFeatureUnavailableException:
+                    console.print(
+                        "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
+                    )
+                    sys.exit(ExitCode.FEATURE_UNAVAILABLE)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:
@@ -347,13 +341,11 @@ def nightlight_schedule(
                     result = await client.set_nightlight_schedule(
                         eero_id_str, schedule, cli_ctx.network_id
                     )
-                except Exception as e:
-                    if isinstance(e, EeroFeatureUnavailableException):
-                        console.print(
-                            "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
-                        )
-                        sys.exit(ExitCode.FEATURE_UNAVAILABLE)
-                    raise
+                except EeroFeatureUnavailableException:
+                    console.print(
+                        "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
+                    )
+                    sys.exit(ExitCode.FEATURE_UNAVAILABLE)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:
@@ -415,13 +407,11 @@ def nightlight_override(ctx: click.Context, eero_identifier: str, brightness: in
                         brightness_percentage=brightness,
                         network_id=cli_ctx.network_id,
                     )
-                except Exception as e:
-                    if isinstance(e, EeroFeatureUnavailableException):
-                        console.print(
-                            "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
-                        )
-                        sys.exit(ExitCode.FEATURE_UNAVAILABLE)
-                    raise
+                except EeroFeatureUnavailableException:
+                    console.print(
+                        "[yellow]Nightlight is only available on Eero Beacon devices[/yellow]"
+                    )
+                    sys.exit(ExitCode.FEATURE_UNAVAILABLE)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200 or result:

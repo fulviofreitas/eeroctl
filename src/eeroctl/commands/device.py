@@ -275,7 +275,7 @@ def device_rename(
       --name TEXT  New nickname (required)
     """
     cli_ctx = apply_options(ctx, network_id=network_id)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     spec = get_write_spec("device rename")
     cli_ctx.active_write_spec = spec
 
@@ -357,7 +357,7 @@ def device_type_set(
       DEVICE_TYPE        The new device type
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     spec = get_write_spec("device type set")
     cli_ctx.active_write_spec = spec
 
@@ -460,7 +460,7 @@ def device_unblock(
 
 def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked: bool) -> None:
     """Block or unblock a device."""
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     action = "block" if blocked else "unblock"
     spec = get_write_spec(f"device {action}")
     cli_ctx.active_write_spec = spec
@@ -564,7 +564,7 @@ def device_unpause(
 
 def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: bool) -> None:
     """Pause or unpause a device."""
-    console = cli_ctx.console
+    console = cli_ctx.err_console
     action = "pause" if paused else "unpause"
     spec = get_write_spec(f"device {action}")
     cli_ctx.active_write_spec = spec

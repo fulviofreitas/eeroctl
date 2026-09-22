@@ -131,6 +131,32 @@ class TestDeviceRename:
         assert result.exit_code != 0
         assert "Missing option" in result.output or "--name" in result.output
 
+    def test_device_not_found_keeps_stdout_clean_under_json_output(self, runner):
+        """The not-found error prints to stderr, not stdout, under --output
+        json (security review: device.py:278 used to bind stdout for this
+        path, corrupting `--output json | jq` on a write command)."""
+        mock_client = AsyncMock()
+        mock_client.get_devices = AsyncMock(return_value={"meta": {"code": 200}, "data": []})
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli,
+                [
+                    "--output",
+                    "json",
+                    "device",
+                    "rename",
+                    "NoSuchDevice",
+                    "--name",
+                    "New Name",
+                ],
+            )
+
+        assert result.exit_code == ExitCode.NOT_FOUND
+        assert result.stdout == ""
+
 
 class TestDeviceBlock:
     """Tests for device block command."""

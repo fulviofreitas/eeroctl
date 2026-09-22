@@ -77,10 +77,6 @@ async def reboot_network(client: EeroClient, network_id: Optional[str]) -> Dict[
     Dict[str, Any]`` -- no ``parent`` keyword yet
     (``.venv/lib/python3.14/site-packages/eero/api/networks.py:134``).
 
-    Not wired to a command in this commit; ``network reboot`` (HIGH tier,
-    ``REBOOT`` phrase) lands in a later commit per the v8 migration plan,
-    §4 phase C.
-
     Args:
         client: An authenticated client.
         network_id: A bare network id, path or URL, or None to let the
