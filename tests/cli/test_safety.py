@@ -7,20 +7,29 @@ Tests cover:
 - require_confirmation function
 - confirm_or_fail convenience function
 - requires_confirmation decorator
+- WriteStatus enum and WriteSpec dataclass
+- WRITE_SPECS registry and get_write_spec
+- require_write_confirmation function
 """
 
 from unittest.mock import MagicMock, patch
 
+import click
 import pytest
 
 from eeroctl.exit_codes import ExitCode
 from eeroctl.safety import (
-    OPERATION_RISKS,
+    MESH_REBOOT_WARNING,
+    WRITE_SPECS,
     OperationRisk,
     SafetyContext,
     SafetyError,
+    WriteSpec,
+    WriteStatus,
     confirm_or_fail,
+    get_write_spec,
     require_confirmation,
+    require_write_confirmation,
     requires_confirmation,
 )
 
@@ -385,42 +394,681 @@ class TestRequiresConfirmationDecorator:
         assert documented_function.__doc__ == """This is documentation."""
 
 
-# ========================== OPERATION_RISKS Mapping Tests ==========================
+# ========================== WriteStatus / WriteSpec Tests ==========================
 
 
-class TestOperationRisks:
-    """Tests for OPERATION_RISKS constant mapping."""
+class TestWriteStatus:
+    """Tests for WriteStatus enum."""
 
-    def test_high_risk_operations(self):
-        """Test HIGH risk operations are correctly mapped."""
-        high_risk_ops = ["reboot_network", "change_wifi_password", "factory_reset"]
+    def test_verified_value(self):
+        assert WriteStatus.VERIFIED == "verified"
 
-        for op in high_risk_ops:
-            assert op in OPERATION_RISKS
-            assert OPERATION_RISKS[op] == OperationRisk.HIGH
+    def test_unverified_value(self):
+        assert WriteStatus.UNVERIFIED == "unverified"
 
-    def test_medium_risk_operations(self):
-        """Test MEDIUM risk operations are correctly mapped."""
-        medium_risk_ops = [
-            "reboot_eero",
-            "guest_enable",
-            "block_device",
-            "pause_profile",
-        ]
+    def test_no_op_value(self):
+        assert WriteStatus.NO_OP == "no_op"
 
-        for op in medium_risk_ops:
-            assert op in OPERATION_RISKS
-            assert OPERATION_RISKS[op] == OperationRisk.MEDIUM
 
-    def test_low_risk_operations(self):
-        """Test LOW risk operations are correctly mapped."""
-        low_risk_ops = ["rename_device", "view_any"]
+class TestWriteSpecDataclass:
+    """Tests for the WriteSpec dataclass shape."""
 
-        for op in low_risk_ops:
-            assert op in OPERATION_RISKS
-            assert OPERATION_RISKS[op] == OperationRisk.LOW
+    def test_minimal_construction(self):
+        spec = WriteSpec(
+            command="eero led on",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.VERIFIED,
+            reboots="none",
+            read_command="eero eero led show",
+        )
+        assert spec.phrase is None
 
-    def test_all_risks_are_valid(self):
-        """Test all mapped risks are valid OperationRisk values."""
-        for op, risk in OPERATION_RISKS.items():
-            assert isinstance(risk, OperationRisk), f"Invalid risk for {op}"
+    def test_is_frozen(self):
+        spec = WriteSpec(
+            command="eero led on",
+            risk=OperationRisk.LOW,
+            status=WriteStatus.VERIFIED,
+            reboots="none",
+            read_command="eero eero led show",
+        )
+        with pytest.raises(AttributeError):
+            spec.risk = OperationRisk.HIGH  # type: ignore[misc]
+
+
+# ========================== WRITE_SPECS Registry Tests ==========================
+
+
+class TestWriteSpecsRegistry:
+    """Tests for the WRITE_SPECS registry, replacing the old OPERATION_RISKS map."""
+
+    # Every command path that calls require_write_confirmation today (grepped
+    # from the command modules). Kept as an explicit list, rather than
+    # introspecting the Click command tree, because several of these are
+    # still dispatched through shared helper functions (`_set_sqm_enabled`,
+    # `_set_security_setting`, ...) rather than one function per command.
+    EXPECTED_COMMANDS = [
+        "network dns mode set",
+        "network dns clear",
+        "network dns caching enable",
+        "network dns caching disable",
+        "network sqm enable",
+        "network sqm disable",
+        "network security wpa3 enable",
+        "network security wpa3 disable",
+        "network security band-steering enable",
+        "network security band-steering disable",
+        "network security upnp enable",
+        "network security upnp disable",
+        "network security ipv6 enable",
+        "network security ipv6 disable",
+        "network security thread enable",
+        "network security thread disable",
+        "network security mlo set",
+        "network security passpoint enable",
+        "network security passpoint disable",
+        "network security proxied-nodes enable",
+        "network security proxied-nodes disable",
+        "network rename",
+        "network password set",
+        "network password clear",
+        "network reboot",
+        "network thread set",
+        "troubleshoot diagnostics run",
+        "network ddns enable",
+        "network ddns disable",
+        "network guest enable",
+        "network guest disable",
+        "network guest set",
+        "network guest password set",
+        "network guest password clear",
+        "network backup enable",
+        "network backup disable",
+        "device type set",
+        "device block",
+        "device unblock",
+        "device pause",
+        "device unpause",
+        "profile rename",
+        "profile delete",
+        "profile pause",
+        "profile unpause",
+        "profile schedule set",
+        "profile schedule clear",
+        "profile schedule delete",
+        "profile devices set",
+        "profile dns allow",
+        "profile dns block",
+        "eero reboot",
+        "eero led on",
+        "eero led off",
+        "eero led brightness",
+        "eero led cycle",
+        "eero location set",
+        "eero pppoe set",
+        "eero ports cycle",
+        "eero ports cycle --reboot",
+        "eero port",
+        "eero nightlight on",
+        "eero nightlight off",
+        "eero nightlight brightness",
+        "eero nightlight schedule",
+        "eero nightlight override",
+        "eero updates apply",
+        "network support bundle export",
+        "profile apps block",
+        "profile apps unblock",
+        "device rename",
+        "profile create",
+        "network speedtest run",
+        "network forwards create",
+        "network forwards update",
+        "network forwards delete",
+        "network dhcp reservation create",
+        "network dhcp reservation update",
+        "network dhcp reservation delete",
+        "network dhcp set",
+        "network dhcp connection-mode set",
+        "network dhcp nat-randomization enable",
+        "network dhcp nat-randomization disable",
+        "network wpa3 set",
+        "network security fast-transition enable",
+        "network security fast-transition disable",
+        "network dns policy allow",
+        "network dns policy block",
+        "network dns policy allow-cnames",
+        "account name set",
+        "account email set",
+        "account email verify",
+        "account phone set",
+        "account phone verify",
+        "account consents",
+        "account push set",
+        "network notifications set",
+        "network notifications mark-read",
+        "network members invite create",
+        "network members invite update",
+        "network members invite delete",
+        "network members invite respond",
+        "network members promote",
+        "network members remove-admin",
+        "network members cancel-pending-admin",
+        # -- writes-engineer batch (#48-#52) --
+        "network usage report set",
+        "network power-saving enable",
+        "network power-saving disable",
+        "network power-saving schedules create",
+        "network power-saving schedules update",
+        "network power-saving schedules delete",
+        "network backup access-points add",
+        "network backup access-points update",
+        "network backup access-points delete",
+        "network backup access-points rearrange",
+        "network backup access-points discover --start",
+        "network backup access-points check",
+        "network subnets set",
+        "network subnets delete",
+        "network subnets filters set",
+        "network wan multistaticip set",
+        "network wan secondary set",
+        "device wan-access",
+    ]
+
+    def test_every_expected_command_is_registered(self):
+        """Every write command path this commit wires up has a WriteSpec."""
+        for command in self.EXPECTED_COMMANDS:
+            assert command in WRITE_SPECS, f"{command!r} missing from WRITE_SPECS"
+
+    def test_no_unexpected_commands(self):
+        """The registry has exactly the commands this commit wires up.
+
+        A new entry here means a command call site started consuming the
+        registry without updating this list -- update EXPECTED_COMMANDS
+        alongside the new command.
+        """
+        assert set(WRITE_SPECS) == set(self.EXPECTED_COMMANDS)
+
+    def test_registry_key_matches_spec_command(self):
+        """Every registry key equals its own WriteSpec.command."""
+        for key, spec in WRITE_SPECS.items():
+            assert key == spec.command
+
+    def test_no_command_module_bypasses_the_registry(self):
+        """Every confirmation in src/eeroctl/commands goes through get_write_spec.
+
+        Enforces the invariant that
+        ``grep -rn "confirm_or_fail\\|require_confirmation(" src/eeroctl/commands``
+        returns nothing: no command module may call the old, unregistered
+        ``confirm_or_fail``/``require_confirmation`` helpers directly. Walking
+        the actual source tree (rather than trusting EXPECTED_COMMANDS) means
+        a future command that reverts to the old helpers fails this test
+        even if its command path is never added to EXPECTED_COMMANDS.
+        """
+        import re
+        from pathlib import Path
+
+        import eeroctl.commands as commands_pkg
+
+        commands_dir = Path(commands_pkg.__file__).parent
+        pattern = re.compile(r"confirm_or_fail\(|require_confirmation\(")
+        offenders = []
+
+        for path in commands_dir.rglob("*.py"):
+            text = path.read_text()
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if pattern.search(line):
+                    offenders.append(f"{path.relative_to(commands_dir)}:{lineno}: {line.strip()}")
+
+        message = "Found direct confirm_or_fail/require_confirmation calls:\n" + "\n".join(
+            offenders
+        )
+        assert not offenders, message
+
+    # Client methods every write-verb `await client.<name>(` call site in
+    # src/eeroctl/commands actually uses today, mapped to the WRITE_SPECS
+    # command path(s) that cover it. This is the ground truth
+    # `test_every_write_call_site_has_a_registered_command` below checks
+    # new/changed call sites against: a write call using a method name not
+    # in this table, or a command path this table names that is missing
+    # from WRITE_SPECS, fails loudly instead of shipping an unconfirmed,
+    # unregistered write (as `profile apps block`/`unblock` did before this
+    # security-review fold-in -- `set_profile_blocked_applications` REPLACES
+    # a profile's entire blocked-application list and had neither a prompt
+    # nor a WriteSpec).
+    _CLIENT_METHOD_TO_COMMANDS = {
+        "reboot_eero": ["eero reboot"],
+        "set_led": ["eero led on", "eero led off"],
+        "set_led_brightness": ["eero led brightness"],
+        "set_nightlight": ["eero nightlight on", "eero nightlight off"],
+        "set_nightlight_brightness": ["eero nightlight brightness"],
+        "set_nightlight_schedule": ["eero nightlight schedule"],
+        "run_speed_test": ["network speedtest run"],
+        "set_backup_internet": ["network backup enable", "network backup disable"],
+        "set_network_name": ["network rename"],
+        "clear_custom_dns": ["network dns mode set", "network dns clear"],
+        "set_dns_mode": ["network dns mode set"],
+        "set_custom_dns_ipv4": ["network dns mode set"],
+        "set_custom_dns_ipv6": ["network dns mode set"],
+        "set_custom_dns": ["network dns mode set"],
+        "set_dns_caching": ["network dns caching enable", "network dns caching disable"],
+        "set_guest_network": ["network guest enable", "network guest disable", "network guest set"],
+        "set_guest_password": ["network guest set", "network guest password set"],
+        "clear_guest_password": ["network guest password clear"],
+        "set_sqm": ["network sqm enable", "network sqm disable"],
+        "set_device_nickname": ["device rename"],
+        "set_device_type": ["device type set"],
+        "block_device": ["device block"],
+        "unblock_device": ["device unblock"],
+        "pause_device": ["device pause", "device unpause"],
+        "create_profile": ["profile create"],
+        "rename_profile": ["profile rename"],
+        "delete_profile": ["profile delete"],
+        "pause_profile": ["profile pause", "profile unpause"],
+        "set_profile_blocked_applications": ["profile apps block", "profile apps unblock"],
+        "enable_bedtime": ["profile schedule set"],
+        "clear_profile_schedule": ["profile schedule clear"],
+        "delete_schedule": ["profile schedule delete"],
+        "set_profile_devices": ["profile devices set"],
+        "create_forward": ["network forwards create"],
+        "update_forward": ["network forwards update"],
+        "delete_forward": ["network forwards delete"],
+        "create_reservation": ["network dhcp reservation create"],
+        "update_reservation": ["network dhcp reservation update"],
+        "delete_reservation": ["network dhcp reservation delete"],
+        "set_mlo_mode": ["network security mlo set"],
+        "set_dhcp": ["network dhcp set"],
+        "set_connection_mode": ["network dhcp connection-mode set"],
+        "set_nat_port_randomization": [
+            "network dhcp nat-randomization enable",
+            "network dhcp nat-randomization disable",
+        ],
+        "set_location": ["eero location set"],
+        "node_action": ["eero ports cycle", "eero ports cycle --reboot"],
+        "port_action": ["eero port"],
+        "led_cycle": ["eero led cycle"],
+        "nightlight_override": ["eero nightlight override"],
+        "set_pppoe": ["eero pppoe set"],
+        "apply_update": ["eero updates apply"],
+        "set_network_password": ["network password set"],
+        "clear_network_password": ["network password clear"],
+        "update_thread": ["network thread set"],
+        "regenerate_thread_credentials": ["network thread set"],
+        "allow_domain_for_profiles": ["profile dns allow"],
+        "block_domain_for_profiles": ["profile dns block"],
+        "set_wpa3_per_band": ["network wpa3 set"],
+        "set_fast_transition": [
+            "network security fast-transition enable",
+            "network security fast-transition disable",
+        ],
+        "allow_domain": ["network dns policy allow"],
+        "block_domain": ["network dns policy block"],
+        "allow_cnames": ["network dns policy allow-cnames"],
+        "set_account_name": ["account name set"],
+        "set_account_email": ["account email set"],
+        "verify_account_email": ["account email verify"],
+        "set_account_phone": ["account phone set"],
+        "verify_account_phone": ["account phone verify"],
+        "set_account_consents": ["account consents"],
+        "set_push_settings": ["account push set"],
+        "set_notification_settings": ["network notifications set"],
+        "mark_notifications_read": ["network notifications mark-read"],
+        "create_invite": ["network members invite create"],
+        "update_invite": ["network members invite update"],
+        "delete_invite": ["network members invite delete"],
+        "respond_to_invite": ["network members invite respond"],
+        "promote_member": ["network members promote"],
+        "remove_admin": ["network members remove-admin"],
+        "cancel_pending_admin": ["network members cancel-pending-admin"],
+        # -- writes-engineer batch (#48-#52) --
+        "set_data_usage_report_settings": ["network usage report set"],
+        "set_power_saving": ["network power-saving enable", "network power-saving disable"],
+        "create_power_saving_schedule": ["network power-saving schedules create"],
+        "update_power_saving_schedule": ["network power-saving schedules update"],
+        "delete_power_saving_schedule": ["network power-saving schedules delete"],
+        "add_backup_access_point": ["network backup access-points add"],
+        "update_backup_access_point": ["network backup access-points update"],
+        "delete_backup_access_point": ["network backup access-points delete"],
+        "rearrange_backup_access_points": ["network backup access-points rearrange"],
+        "start_backup_ssid_discovery": ["network backup access-points discover --start"],
+        "backup_connectivity_check": ["network backup access-points check"],
+        "set_subnets_config": ["network subnets set"],
+        "delete_subnet": ["network subnets delete"],
+        "set_subnet_content_filters": ["network subnets filters set"],
+        "set_multistaticip": ["network wan multistaticip set"],
+        "set_secondary_wan_config": ["network wan secondary set"],
+        "set_device_secondary_wan_access": ["device wan-access"],
+    }
+
+    def test_every_write_call_site_has_a_registered_command(self):
+        """Static-analysis regression test for the security-review fold-in.
+
+        Walks every command module for ``await client.<write-verb>(`` --
+        the same verb-prefix vocabulary the SDK's own
+        ``_WRITE_PREFIXES`` uses to spot writes it hasn't warned about
+        (DIGEST §5) -- and asserts the called method is a *known, tracked*
+        write with a registered command in :data:`WRITE_SPECS`. A future
+        write call using an untracked method name fails here instead of
+        shipping with no confirmation and no spec.
+        """
+        import re
+        from pathlib import Path
+
+        import eeroctl.commands as commands_pkg
+
+        write_verb_pattern = re.compile(
+            r"await client\."
+            r"(set_|create_|delete_|update_|block_|unblock_|pause_|unpause_|reboot_|"
+            r"enable_|disable_|clear_|allow_|add_|remove_|apply_|run_speed|rename_|"
+            r"configure_|mark_|regenerate_|verify_|promote_|respond_to_|cancel_|"
+            r"node_action|port_action|led_cycle|nightlight_override|request_|"
+            r"start_|rearrange_|backup_)"
+        )
+        method_pattern = re.compile(r"await client\.(\w+)\(")
+
+        commands_dir = Path(commands_pkg.__file__).parent
+        offenders = []
+        seen_methods = set()
+
+        for path in commands_dir.rglob("*.py"):
+            text = path.read_text()
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                if not write_verb_pattern.search(line):
+                    continue
+                match = method_pattern.search(line)
+                method = match.group(1) if match else None
+                if method is None or method not in self._CLIENT_METHOD_TO_COMMANDS:
+                    offenders.append(
+                        f"{path.relative_to(commands_dir)}:{lineno}: "
+                        f"untracked write method {method!r} -- add it to "
+                        "_CLIENT_METHOD_TO_COMMANDS and register a WriteSpec"
+                    )
+                else:
+                    seen_methods.add(method)
+
+        for method, commands in self._CLIENT_METHOD_TO_COMMANDS.items():
+            for command in commands:
+                if command not in WRITE_SPECS:
+                    offenders.append(
+                        f"_CLIENT_METHOD_TO_COMMANDS[{method!r}] names {command!r}, "
+                        "which is missing from WRITE_SPECS"
+                    )
+
+        message = "Write-call coverage gaps:\n" + "\n".join(offenders)
+        assert not offenders, message
+        # Sanity: the table isn't stale -- every entry was actually observed
+        # in the source this run (catches a method that was removed from
+        # every command but left in the table).
+        assert seen_methods == set(self._CLIENT_METHOD_TO_COMMANDS), (
+            "_CLIENT_METHOD_TO_COMMANDS has entries no longer used in "
+            f"src/eeroctl/commands: {set(self._CLIENT_METHOD_TO_COMMANDS) - seen_methods}"
+        )
+
+    def test_no_no_op_specs_registered(self):
+        """NO_OP writes (e.g. set_device_labels) must never be exposed."""
+        for spec in WRITE_SPECS.values():
+            assert spec.status != WriteStatus.NO_OP
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            "network dns mode set",
+            "network dns clear",
+            "network dns caching enable",
+            "network dns caching disable",
+            "network sqm enable",
+            "network sqm disable",
+            "network security wpa3 enable",
+            "network security wpa3 disable",
+            "network security band-steering enable",
+            "network security band-steering disable",
+            "network security upnp enable",
+            "network security upnp disable",
+            "network security ipv6 enable",
+            "network security ipv6 disable",
+            "network wpa3 set",
+            "network security fast-transition enable",
+            "network security fast-transition disable",
+        ],
+    )
+    def test_mesh_reboot_specs_are_high_with_reboot_phrase(self, command):
+        """Every mesh-reboot write is HIGH risk with the REBOOT phrase (Q3, decided)."""
+        spec = get_write_spec(command)
+        assert spec.reboots == "mesh"
+        assert spec.risk == OperationRisk.HIGH
+        assert spec.phrase == "REBOOT"
+
+    def test_thread_toggle_was_not_lifted_to_high(self):
+        """Only wpa3/band-steering/upnp/ipv6 were lifted; thread stays MEDIUM."""
+        for command in ("network security thread enable", "network security thread disable"):
+            spec = get_write_spec(command)
+            assert spec.risk == OperationRisk.MEDIUM
+            assert spec.reboots == "none"
+
+    def test_eero_reboot_is_eero_scoped_not_mesh(self):
+        """reboot_eero only reboots the targeted node, not the whole mesh."""
+        spec = get_write_spec("eero reboot")
+        assert spec.reboots == "eero"
+        assert spec.status == WriteStatus.VERIFIED
+
+    def test_verified_writes_match_sdk_allowlist(self):
+        """Only SDK-live-verified writes are marked VERIFIED (migration plan §3.1)."""
+        verified = {cmd for cmd, spec in WRITE_SPECS.items() if spec.status == WriteStatus.VERIFIED}
+        assert verified == {
+            "network guest enable",
+            "network guest disable",
+            "network guest set",
+            "network guest password set",
+            "network guest password clear",
+            "device type set",
+            "device unblock",
+            "device pause",
+            "device unpause",
+            "device rename",
+            "eero reboot",
+            "eero led on",
+            "eero led off",
+            "eero led brightness",
+            "network speedtest run",
+        }
+
+    def test_get_write_spec_unknown_command_raises(self):
+        """An unregistered command path raises KeyError, not a silent default."""
+        with pytest.raises(KeyError):
+            get_write_spec("network warp-drive enable")
+
+
+# ========================== require_write_confirmation Tests ==========================
+
+
+class TestRequireWriteConfirmation:
+    """Tests for require_write_confirmation."""
+
+    @pytest.fixture
+    def mock_console(self) -> MagicMock:
+        console = MagicMock()
+        console.print = MagicMock()
+        return console
+
+    def test_mesh_reboot_warning_printed_before_force_check(self, mock_console):
+        """The mesh-reboot warning prints even under --force (dns.py's contract, generalised)."""
+        ctx = SafetyContext(force=True)
+        spec = get_write_spec("network sqm enable")
+
+        result = require_write_confirmation(spec, "network", ctx=ctx, console=mock_console)
+
+        assert result is True
+        printed = " ".join(str(c.args[0]) for c in mock_console.print.call_args_list)
+        assert "reboots every eero" in printed
+
+    def test_mesh_reboot_warning_text_matches_constant(self, mock_console):
+        ctx = SafetyContext(force=True)
+        spec = get_write_spec("network sqm enable")
+
+        require_write_confirmation(spec, "network", ctx=ctx, console=mock_console)
+
+        printed = " ".join(str(c.args[0]) for c in mock_console.print.call_args_list)
+        assert MESH_REBOOT_WARNING in printed
+
+    def test_non_mesh_write_prints_no_reboot_warning(self, mock_console):
+        """A non-mesh write (device unblock) must not print the mesh warning."""
+        ctx = SafetyContext(force=True)
+        spec = get_write_spec("device unblock")
+
+        require_write_confirmation(spec, "MyPhone", ctx=ctx, console=mock_console)
+
+        for call in mock_console.print.call_args_list:
+            assert "reboots every eero" not in str(call.args[0])
+
+    def test_unverified_specs_print_the_note_line(self, mock_console):
+        """UNVERIFIED writes get the 'has not been verified' note, unconditionally."""
+        ctx = SafetyContext(force=True)
+        spec = get_write_spec("device block")
+        assert spec.status == WriteStatus.UNVERIFIED
+
+        require_write_confirmation(spec, "MyPhone", ctx=ctx, console=mock_console)
+
+        printed = " ".join(str(c.args[0]) for c in mock_console.print.call_args_list)
+        assert "has not been verified against a live network" in printed
+        assert spec.read_command in printed
+
+    def test_verified_specs_do_not_print_the_note_line(self, mock_console):
+        """VERIFIED writes never get the unverified note."""
+        ctx = SafetyContext(force=True)
+        spec = get_write_spec("device unblock")
+        assert spec.status == WriteStatus.VERIFIED
+
+        require_write_confirmation(spec, "MyPhone", ctx=ctx, console=mock_console)
+
+        printed = " ".join(str(c.args[0]) for c in mock_console.print.call_args_list)
+        assert "has not been verified" not in printed
+
+    def test_low_risk_returns_true_without_prompting(self, mock_console):
+        ctx = SafetyContext()
+        spec = get_write_spec("eero led on")
+
+        result = require_write_confirmation(spec, "Living Room", ctx=ctx, console=mock_console)
+
+        assert result is True
+
+    @patch("eeroctl.safety.Prompt.ask")
+    def test_high_risk_prompts_for_the_registered_phrase(self, mock_prompt, mock_console):
+        mock_prompt.return_value = "REBOOT"
+        ctx = SafetyContext()
+        spec = get_write_spec("network sqm enable")
+
+        result = require_write_confirmation(spec, "network", ctx=ctx, console=mock_console)
+
+        assert result is True
+        mock_prompt.assert_called_once()
+
+    @patch("eeroctl.safety.Confirm.ask")
+    def test_medium_risk_prompts_yes_no(self, mock_confirm, mock_console):
+        mock_confirm.return_value = True
+        ctx = SafetyContext()
+        spec = get_write_spec("eero reboot")
+
+        result = require_write_confirmation(spec, "Living Room", ctx=ctx, console=mock_console)
+
+        assert result is True
+        mock_confirm.assert_called_once()
+
+    def test_non_interactive_without_force_raises_safety_error(self, mock_console):
+        ctx = SafetyContext(non_interactive=True, force=False)
+        spec = get_write_spec("network rename")
+
+        with pytest.raises(SafetyError) as exc_info:
+            require_write_confirmation(spec, "network", ctx=ctx, console=mock_console)
+
+        assert exc_info.value.exit_code == ExitCode.SAFETY_RAIL
+
+    def test_default_ctx_and_console_are_created_when_omitted(self):
+        spec = get_write_spec("eero led on")
+
+        result = require_write_confirmation(spec, "Living Room")
+
+        assert result is True
+
+
+# ========================== Security-toggle getattr-dispatch coverage ==========================
+
+
+class TestSecurityToggleDispatchCoverage:
+    """Regression coverage for the `getattr(client, api_method)` dynamic
+    dispatch in `network/security.py` (security-review follow-up).
+
+    The source-walking completeness test above (and the SDK's own mypy
+    checks) only see literal `await client.<verb>(` call sites. The five
+    security toggles (wpa3, band-steering, upnp, ipv6, thread) call through
+    `method = getattr(client, api_method); await method(...)`, where
+    `api_method` is a function parameter, not a literal at the call site --
+    invisible to any regex over `await client\\.`. This is exactly the shape
+    that let the string-dispatch mypy blind spot ship in eero-api 7→8
+    (migration plan §2.4). These tests instead ground themselves in the
+    *other* place the toggle inventory is a literal: the
+    `_make_security_toggle(name, method, display)` registration calls at
+    the bottom of `network/security.py`.
+
+    What fails if a toggle is unwired: a new call like
+    `_make_security_toggle("newsetting", "set_new", "New")` reaches
+    `_set_security_setting`, which calls
+    `get_write_spec(f"network security {setting_name} {action}")` before
+    doing anything else (including before the confirmation prompt) --
+    `get_write_spec` raises `KeyError` for any command path not in
+    `WRITE_SPECS`, so an unregistered toggle fails loudly and immediately,
+    never silently reaching `getattr`/the write. `test_unwired_toggle_fails_loudly_via_get_write_spec`
+    proves this by registering exactly such a throwaway toggle and
+    confirming it raises instead of silently writing.
+    """
+
+    @staticmethod
+    def _registered_toggles():
+        """Extract (setting_name, sdk_method) pairs from the literal
+        `_make_security_toggle(...)` calls in network/security.py -- the
+        actual, ground-truth toggle inventory, not a hand-maintained list
+        that could drift from it.
+        """
+        import inspect
+        import re
+
+        from eeroctl.commands.network import security as security_module
+
+        source = inspect.getsource(security_module)
+        pattern = re.compile(r'_make_security_toggle\(\s*"([^"]+)"\s*,\s*"(set_\w+)"')
+        return pattern.findall(source)
+
+    def test_every_registered_toggle_has_both_enable_and_disable_specs(self):
+        toggles = self._registered_toggles()
+        assert toggles, "No _make_security_toggle(...) calls found -- extraction regex is stale"
+
+        for setting_name, _method in toggles:
+            for action in ("enable", "disable"):
+                command = f"network security {setting_name} {action}"
+                assert command in WRITE_SPECS, (
+                    f"{command!r} (from _make_security_toggle({setting_name!r}, ...)) "
+                    "has no WriteSpec"
+                )
+
+    def test_registered_toggle_count_matches_expected(self):
+        """Pins the toggle inventory so a newly added toggle is caught here
+        (and its coverage checked above) rather than silently expanding the
+        getattr-dispatch blind spot."""
+        toggles = self._registered_toggles()
+        assert {name for name, _ in toggles} == {
+            "wpa3",
+            "band-steering",
+            "upnp",
+            "ipv6",
+            "thread",
+        }
+
+    def test_unwired_toggle_fails_loudly_via_get_write_spec(self):
+        """Proof: an unregistered toggle raises KeyError from get_write_spec
+        before any confirmation prompt or SDK call -- it cannot silently
+        dispatch an unconfirmed, unregistered write."""
+        from eeroctl.commands.network.security import _set_security_setting
+        from eeroctl.context import EeroCliContext
+
+        ctx = click.Context(click.Command("bogus"))
+        ctx.obj = EeroCliContext()
+
+        with pytest.raises(KeyError):
+            _set_security_setting(ctx, "bogus-unregistered", "set_bogus", "Bogus", True, True)

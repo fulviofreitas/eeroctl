@@ -46,6 +46,10 @@ class OutputMeta:
     )
     network_id: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
+    # Extra command-specific meta fields (e.g. `next_cursor` for paginated reads
+    # like `network events`/`network notifications history`), merged into the
+    # envelope's top-level `meta` object alongside timestamp/network_id/warnings.
+    extra: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -57,6 +61,14 @@ class OutputContext:
     quiet: bool = False
     no_color: bool = False
     network_id: Optional[str] = None
+
+    # SDK unverified-write warning notes captured this invocation (migration
+    # plan §3.3). Deliberately the *same* list object as
+    # ``EeroCliContext.sdk_warnings`` when constructed via
+    # ``EeroCliContext.renderer`` -- appends made after this ``OutputContext``
+    # is built (e.g. during a write that happens after a read was rendered)
+    # are still visible to ``render_json``/``render_yaml``'s default meta.
+    warnings: List[str] = field(default_factory=list)
 
     # Console instance (created lazily)
     _console: Optional[Console] = field(default=None, repr=False)
@@ -176,7 +188,7 @@ class OutputRenderer:
             meta: Optional metadata
         """
         if meta is None:
-            meta = OutputMeta(network_id=self.ctx.network_id)
+            meta = OutputMeta(network_id=self.ctx.network_id, warnings=list(self.ctx.warnings))
 
         envelope = {
             "schema": schema,
@@ -185,6 +197,7 @@ class OutputRenderer:
                 "timestamp": meta.timestamp,
                 "network_id": meta.network_id,
                 "warnings": meta.warnings,
+                **meta.extra,
             },
         }
 
@@ -206,7 +219,7 @@ class OutputRenderer:
             meta: Optional metadata
         """
         if meta is None:
-            meta = OutputMeta(network_id=self.ctx.network_id)
+            meta = OutputMeta(network_id=self.ctx.network_id, warnings=list(self.ctx.warnings))
 
         envelope = {
             "schema": schema,
@@ -215,6 +228,7 @@ class OutputRenderer:
                 "timestamp": meta.timestamp,
                 "network_id": meta.network_id,
                 "warnings": meta.warnings,
+                **meta.extra,
             },
         }
 
@@ -388,6 +402,19 @@ class OutputRenderer:
             message: Warning message
         """
         self.ctx.err_console.print(f"[yellow]Warning:[/yellow] {message}")
+
+    def render_sdk_warning_note(self, note: str) -> None:
+        r"""Render one concise stderr line for an SDK uncharacterised-write warning.
+
+        Migration plan §3.3: printed once per distinct write operation per
+        command (deduplication happens in
+        :meth:`~eeroctl.context.EeroCliContext.record_sdk_warning`, which
+        returns ``None`` -- meaning "don't print" -- for a repeat). *note* is
+        already fully formatted (``"note: unverified write (<op>); verify
+        with \`<read command>\`"``); this method only owns where it goes
+        (stderr, dim, never stdout, so ``--output json | jq`` stays clean).
+        """
+        self.ctx.err_console.print(f"[dim]{note}[/dim]", highlight=False)
 
     def render_success(self, message: str) -> None:
         """Render a success message.
@@ -588,12 +615,16 @@ class OutputManager:
             if isinstance(value, list):
                 return f"[dim]{len(value)} items[/dim]"
             return "[dim]...[/dim]"
-        # Handle enum values
-        value_str = str(value)
-        if "." in value_str and value_str.count(".") == 1:
-            # Likely an enum like "EeroNetworkStatus.ONLINE"
-            value_str = value_str.split(".")[-1].lower()
-        return value_str
+        # Handle enum values (e.g. EeroNetworkStatus.ONLINE -> "online"). Only
+        # real Enum instances are flattened this way -- plain strings that
+        # happen to contain a single dot (an email, a "/2.2/networks/123" API
+        # path, a "6.2" version string) must never be truncated. See
+        # eeroctl-context security-review.md and the batch-1/2 review that
+        # found `victim@example.com` -> `com` and `/2.2/networks/123` ->
+        # `2/networks/123` from the previous substring-based heuristic.
+        if isinstance(value, Enum):
+            return str(value.name).lower()
+        return str(value)
 
     def _render_table(self, data: Union[Dict, List], schema: str = "") -> None:
         """Render as Rich table with smart column selection."""

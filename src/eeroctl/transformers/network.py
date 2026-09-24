@@ -30,6 +30,52 @@ def extract_network(raw: Dict[str, Any]) -> Dict[str, Any]:
     return extract_data(raw)
 
 
+def extract_network_dhcp_view(network_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract the DHCP/lease/connection/ip_settings/wan_type read view.
+
+    No dedicated GET exists for this (migration plan §4, `network dhcp show`
+    row); the fields are read straight from the `get_network` envelope. Each
+    sub-object's shape beyond the key name itself is undocumented.
+
+    Args:
+        network_data: Already-unwrapped `data` from `get_network` (see
+            `extract_network`).
+
+    Returns:
+        A dict with `dhcp`, `lease`, `connection`, `ip_settings`, `wan_type`
+        keys, each the raw value from the envelope (or `None` if absent).
+    """
+    return {
+        "dhcp": network_data.get("dhcp"),
+        "lease": network_data.get("lease"),
+        "connection": network_data.get("connection"),
+        "ip_settings": network_data.get("ip_settings"),
+        "wan_type": network_data.get("wan_type"),
+    }
+
+
+def extract_network_security_extras(network_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract the extended `network security show` fields.
+
+    No dedicated GETs exist for these (migration plan §4, `network security
+    show` (extend) row); the fields are read straight from the `get_network`
+    envelope.
+
+    Args:
+        network_data: Already-unwrapped `data` from `get_network` (see
+            `extract_network`).
+
+    Returns:
+        A dict with `mlo_mode`, `passpoint`, `proxied_nodes`, `ddns` keys.
+    """
+    return {
+        "mlo_mode": network_data.get("mlo_mode"),
+        "passpoint": network_data.get("passpoint"),
+        "proxied_nodes": network_data.get("proxied_nodes"),
+        "ddns": network_data.get("ddns"),
+    }
+
+
 def normalize_network_status(status: Optional[str]) -> str:
     """Normalize network status for display.
 

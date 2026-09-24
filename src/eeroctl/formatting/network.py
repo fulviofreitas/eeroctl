@@ -4,11 +4,12 @@ This module provides formatting functions for displaying network data.
 Updated to work with raw dict data from transformers.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 from rich.panel import Panel
 from rich.table import Table
 
+from ..context import EeroCliContext
 from ..transformers.network import normalize_network
 from .base import (
     DetailLevel,
@@ -21,6 +22,7 @@ from .base import (
     format_datetime,
     format_network_status,
 )
+from .generic import render_generic
 
 # ==================== Network Table ====================
 
@@ -355,8 +357,17 @@ def get_network_show_fields(network: Union[Dict[str, Any], Any]) -> List[tuple]:
     """
     net = _normalize_network_data(network)
 
-    fields = [
-        # Basic info - matches _network_basic_panel
+    fields = _show_basic_fields(net)
+    fields.extend(_show_dhcp_fields(net.get("dhcp", {})))
+    fields.extend(_show_dns_fields(net.get("dns", {})))
+    fields.extend(_show_location_fields(net.get("geo_ip", {})))
+    fields.extend(_show_speed_fields(net.get("speed_test", {})))
+    return fields
+
+
+def _show_basic_fields(net: Dict[str, Any]) -> List[Tuple[str, Any]]:
+    """Basic and connection rows (matches _network_basic_panel/_network_connection_panel)."""
+    fields: List[Tuple[str, Any]] = [
         ("Name", net.get("name")),
         ("Status", net.get("status")),
         ("Public IP", net.get("public_ip")),
@@ -366,92 +377,98 @@ def get_network_show_fields(network: Union[Dict[str, Any], Any]) -> List[tuple]:
         ("Owner", net.get("owner")),
         ("Type", net.get("network_customer_type")),
         ("Guest Network", _format_enabled(net.get("guest_network_enabled"))),
+        ("Gateway Type", net.get("gateway")),
+        ("WAN Type", net.get("wan_type")),
+        ("Gateway IP", net.get("gateway_ip")),
+    ]
+    if net.get("backup_internet_enabled", False):
+        fields.append(("Backup Internet", "Enabled"))
+    return fields
+
+
+def _show_dhcp_fields(dhcp: Any) -> List[Tuple[str, Any]]:
+    """DHCP rows (matches _network_dhcp_panel)."""
+    if not dhcp:
+        return []
+    lease_hours = dhcp.get("lease_time_seconds", 86400) // 3600
+    return [
+        ("Subnet Mask", dhcp.get("subnet_mask")),
+        ("Starting Address", dhcp.get("starting_address") or "Automatic"),
+        ("Ending Address", dhcp.get("ending_address") or "Automatic"),
+        ("Lease Time", f"{lease_hours} hours"),
+        ("DNS Server", dhcp.get("dns_server") or "Default"),
     ]
 
-    # Connection - matches _network_connection_panel
-    fields.extend(
-        [
-            ("Gateway Type", net.get("gateway")),
-            ("WAN Type", net.get("wan_type")),
-            ("Gateway IP", net.get("gateway_ip")),
-        ]
-    )
 
-    backup_enabled = net.get("backup_internet_enabled", False)
-    if backup_enabled:
-        fields.append(("Backup Internet", "Enabled"))
+def _show_dns_fields(dns: Any) -> List[Tuple[str, Any]]:
+    """DNS rows (matches _network_dns_brief_panel)."""
+    if not dns:
+        return []
+    fields: List[Tuple[str, Any]] = [
+        ("DNS Mode", dns.get("mode")),
+        ("DNS Caching", _format_enabled(dns.get("caching", False))),
+    ]
+    parent = dns.get("parent", {})
+    parent_ips = parent.get("ips", []) if isinstance(parent, dict) else []
+    if parent_ips:
+        fields.append(("Upstream DNS", ", ".join(parent_ips)))
+    custom = dns.get("custom", {})
+    custom_ips = custom.get("ips", []) if isinstance(custom, dict) else []
+    if custom_ips:
+        fields.append(("Custom DNS", ", ".join(custom_ips)))
+    return fields
 
-    # DHCP - matches _network_dhcp_panel
-    dhcp = net.get("dhcp", {})
-    if dhcp:
-        fields.append(("Subnet Mask", dhcp.get("subnet_mask")))
-        starting = dhcp.get("starting_address")
-        ending = dhcp.get("ending_address")
-        fields.append(("Starting Address", starting or "Automatic"))
-        fields.append(("Ending Address", ending or "Automatic"))
-        lease_hours = dhcp.get("lease_time_seconds", 86400) // 3600
-        fields.append(("Lease Time", f"{lease_hours} hours"))
-        fields.append(("DNS Server", dhcp.get("dns_server") or "Default"))
 
-    # DNS - matches _network_dns_brief_panel
-    dns = net.get("dns", {})
-    if dns:
-        fields.append(("DNS Mode", dns.get("mode")))
-        caching = dns.get("caching", False)
-        fields.append(("DNS Caching", _format_enabled(caching)))
+def _show_location_fields(geo_ip: Any) -> List[Tuple[str, Any]]:
+    """Location rows (matches _network_location_panel)."""
+    if not geo_ip or not isinstance(geo_ip, dict):
+        return []
+    fields: List[Tuple[str, Any]] = []
+    city = geo_ip.get("city")
+    region = geo_ip.get("region") or geo_ip.get("regionName")
+    country = geo_ip.get("countryName") or geo_ip.get("countryCode")
+    location_parts = [p for p in [city, region, country] if p]
+    if location_parts:
+        fields.append(("Location", ", ".join(location_parts)))
+    if geo_ip.get("timezone"):
+        fields.append(("Timezone", geo_ip.get("timezone")))
+    if geo_ip.get("org"):
+        fields.append(("Organization", geo_ip.get("org")))
+    if geo_ip.get("asn"):
+        fields.append(("ASN", f"AS{geo_ip.get('asn')}"))
+    return fields
 
-        parent = dns.get("parent", {})
-        parent_ips = parent.get("ips", []) if isinstance(parent, dict) else []
-        if parent_ips:
-            fields.append(("Upstream DNS", ", ".join(parent_ips)))
 
-        custom = dns.get("custom", {})
-        custom_ips = custom.get("ips", []) if isinstance(custom, dict) else []
-        if custom_ips:
-            fields.append(("Custom DNS", ", ".join(custom_ips)))
+def _speed_value(info: Any) -> Any:
+    """Extract the numeric value of a speed test sub-result, defaulting to 0."""
+    return info.get("value", 0) if isinstance(info, dict) else 0
 
-    # Location - matches _network_location_panel
-    geo_ip = net.get("geo_ip", {})
-    if geo_ip and isinstance(geo_ip, dict):
-        city = geo_ip.get("city")
-        region = geo_ip.get("region") or geo_ip.get("regionName")
-        country = geo_ip.get("countryName") or geo_ip.get("countryCode")
-        location_parts = [p for p in [city, region, country] if p]
-        if location_parts:
-            fields.append(("Location", ", ".join(location_parts)))
-        if geo_ip.get("timezone"):
-            fields.append(("Timezone", geo_ip.get("timezone")))
-        if geo_ip.get("org"):
-            fields.append(("Organization", geo_ip.get("org")))
-        if geo_ip.get("asn"):
-            fields.append(("ASN", f"AS{geo_ip.get('asn')}"))
 
-    # Speed test - matches _network_speed_panel
-    speed = net.get("speed_test", {})
-    if speed:
-        down_info = speed.get("down", {})
-        up_info = speed.get("up", {})
-        latency_info = speed.get("latency", {})
+def _format_mbps(value: Any) -> str:
+    """Format a throughput value as Mbps, one decimal for floats."""
+    value_str = f"{value:.1f}" if isinstance(value, float) else str(value)
+    return f"{value_str} Mbps"
 
-        down_value = down_info.get("value", 0) if isinstance(down_info, dict) else 0
-        up_value = up_info.get("value", 0) if isinstance(up_info, dict) else 0
-        latency_value = latency_info.get("value", 0) if isinstance(latency_info, dict) else 0
 
-        if down_value:
-            down_str = f"{down_value:.1f}" if isinstance(down_value, float) else str(down_value)
-            fields.append(("Download", f"{down_str} Mbps"))
-        if up_value:
-            up_str = f"{up_value:.1f}" if isinstance(up_value, float) else str(up_value)
-            fields.append(("Upload", f"{up_str} Mbps"))
-        if latency_value:
-            fields.append(("Latency", f"{latency_value} ms"))
-
-        test_date = speed.get("date")
-        if test_date and test_date != "Unknown":
-            if "T" in str(test_date):
-                test_date = str(test_date)[:19].replace("T", " ")
-            fields.append(("Tested", test_date))
-
+def _show_speed_fields(speed: Any) -> List[Tuple[str, Any]]:
+    """Speed test rows (matches _network_speed_panel)."""
+    if not speed:
+        return []
+    fields: List[Tuple[str, Any]] = []
+    down_value = _speed_value(speed.get("down", {}))
+    up_value = _speed_value(speed.get("up", {}))
+    latency_value = _speed_value(speed.get("latency", {}))
+    if down_value:
+        fields.append(("Download", _format_mbps(down_value)))
+    if up_value:
+        fields.append(("Upload", _format_mbps(up_value)))
+    if latency_value:
+        fields.append(("Latency", f"{latency_value} ms"))
+    test_date = speed.get("date")
+    if test_date and test_date != "Unknown":
+        if "T" in str(test_date):
+            test_date = str(test_date)[:19].replace("T", " ")
+        fields.append(("Tested", test_date))
     return fields
 
 
@@ -547,3 +564,13 @@ def print_network_details(
         health_panel = _network_health_panel(net)
         if health_panel:
             console.print(health_panel)
+
+
+def print_network_dhcp_view(cli_ctx: EeroCliContext, data: Dict[str, Any]) -> None:
+    """Render `network dhcp show` (dhcp/lease/connection/ip_settings/wan_type).
+
+    Read straight from the `get_network` envelope (migration plan §4,
+    `network dhcp show` row); each sub-object's shape beyond the key name is
+    undocumented, so this goes through the generic key/value renderer.
+    """
+    render_generic(cli_ctx, data, "eero.network.dhcp.show/v1")

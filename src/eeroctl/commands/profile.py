@@ -14,21 +14,35 @@ Commands:
 
 import asyncio
 import sys
-from typing import Any, Dict, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional, Set, Union
 
 import click
 from eero import EeroClient
+from eero.exceptions import EeroException, EeroNotFoundException, EeroPremiumRequiredException
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
 from ..context import EeroCliContext, ensure_cli_context
-from ..errors import is_premium_error
 from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
-from ..safety import OperationRisk, SafetyError, confirm_or_fail
-from ..transformers import extract_data, extract_profiles, normalize_profile
-from ..utils import run_with_client
+from ..safety import (
+    SafetyContext,
+    SafetyError,
+    WriteSpec,
+    get_write_spec,
+    require_write_confirmation,
+)
+from ..transformers import (
+    extract_data,
+    extract_devices,
+    extract_id_from_url,
+    extract_profiles,
+    normalize_profile,
+)
+from ..utils import looks_like_sdk_reference, run_with_client, write_if_changed
+from .device import _find_device
 
 
 def _find_profile(profiles: list, identifier: str) -> Optional[Dict[str, Any]]:
@@ -50,6 +64,118 @@ def _find_profile(profiles: list, identifier: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+# eero.api.schedule.ALL_DAYS (schedule.py:34-42) -- default days scope
+# `enable_bedtime` uses server-side when `days` is omitted. Mirrored here so
+# `schedule set`'s read-first comparison can tell "no --days given" from "an
+# existing Bedtime schedule that already covers every day" apart.
+_SCHEDULE_ALL_DAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
+
+
+_UNRECOGNISED_APPLICATIONS_SHAPE = (
+    "Unrecognised application list shape from the API; refusing to rewrite the blocked list"
+)
+
+
+def _extract_dns_policy_applications(raw: Any) -> List[Union[str, Dict[str, Any]]]:
+    """Extract the ``applications`` list from a `get_dns_policy_applications` envelope.
+
+    Shape (`eero-api` 8.0.1, `DnsPoliciesAPI.get_profile_applications`):
+    ``{"meta": {...}, "data": {"applications": [...], "categories_list": [...]}}``.
+
+    Fails closed: `set_profile_blocked_applications` REPLACES the full blocked
+    list, so guessing wrong here can silently unblock (or re-block) every
+    other application. Raises `EeroException` -- rather than defaulting to an
+    empty list -- when `data.applications` is missing or not a list, so a
+    caller never proceeds to a write with a guessed-empty starting point.
+    """
+    data = extract_data(raw) if isinstance(raw, dict) else raw
+    if not isinstance(data, dict) or "applications" not in data:
+        raise EeroException(_UNRECOGNISED_APPLICATIONS_SHAPE)
+    applications = data["applications"]
+    if not isinstance(applications, list):
+        raise EeroException(_UNRECOGNISED_APPLICATIONS_SHAPE)
+    return applications
+
+
+def _blocked_app_ids(applications: List[Union[str, Dict[str, Any]]]) -> Set[str]:
+    """Return the set of currently-blocked application identifiers.
+
+    Each entry is either a bare app id/name (string, treated as already
+    blocked -- mirrors the v7 `blocked_apps` list shape) or a dict carrying
+    an `"id"`/`"name"` and a boolean `"blocked"` flag.
+
+    Fails closed: raises `EeroException` if any entry matches neither shape,
+    or if the list contains dict entries but none of them carry a `"blocked"`
+    key at all -- an all-dict, no-`blocked`-key list would otherwise silently
+    look like "nothing is blocked" and a block/unblock write would replace
+    the real list with a wrong guess.
+    """
+    blocked: Set[str] = set()
+    dict_entries = 0
+    entries_with_blocked_key = 0
+    for entry in applications:
+        if isinstance(entry, str):
+            blocked.add(entry)
+        elif isinstance(entry, dict) and (
+            entry.get("id") is not None or entry.get("name") is not None
+        ):
+            dict_entries += 1
+            if isinstance(entry.get("blocked"), bool):
+                entries_with_blocked_key += 1
+                if entry["blocked"]:
+                    app_id = entry.get("id") or entry.get("name")
+                    blocked.add(str(app_id))
+        else:
+            raise EeroException(_UNRECOGNISED_APPLICATIONS_SHAPE)
+
+    if dict_entries and not entries_with_blocked_key:
+        raise EeroException(_UNRECOGNISED_APPLICATIONS_SHAPE)
+
+    return blocked
+
+
+def _resolve_device_urls(
+    all_devices: List[Dict[str, Any]], identifiers: tuple
+) -> tuple[list[str], list[str]]:
+    """Map device identifiers to URLs; return (resolved_urls, missing_identifiers)."""
+    resolved_urls: list[str] = []
+    missing: list[str] = []
+    for identifier in identifiers:
+        found = _find_device(all_devices, identifier)
+        if not found or not found.get("url"):
+            missing.append(identifier)
+        else:
+            resolved_urls.append(found["url"])
+    return resolved_urls, missing
+
+
+def _current_profile_device_urls(raw: Any) -> frozenset[str]:
+    """Project a raw get_profile_devices response to the set of device URLs."""
+    data = extract_data(raw) if isinstance(raw, dict) else raw
+    if isinstance(data, dict):
+        current_list = data.get("devices", [])
+    elif isinstance(data, list):
+        current_list = data
+    else:
+        current_list = []
+
+    current_urls: set[str] = set()
+    for entry in current_list or []:
+        if isinstance(entry, dict) and entry.get("url"):
+            current_urls.add(entry["url"])
+        elif isinstance(entry, str):
+            current_urls.add(entry)
+    return frozenset(current_urls)
+
+
 @click.group(name="profile")
 @click.pass_context
 def profile_group(ctx: click.Context) -> None:
@@ -66,6 +192,8 @@ def profile_group(ctx: click.Context) -> None:
       unpause  - Resume internet access
       apps     - Blocked apps management
       schedule - Schedule management
+      devices  - Device assignment management
+      dns      - Per-profile DNS domain policy (Eero Plus)
 
     \b
     Examples:
@@ -172,21 +300,48 @@ def profile_show(
 
     async def run_cmd() -> None:
         async def get_profile(client: EeroClient) -> None:
-            with cli_ctx.status("Finding profile..."):
-                raw_response = await client.get_profiles(cli_ctx.network_id)
+            # A path/URL/hostile-shaped identifier goes straight to the
+            # id-validated SDK method, verbatim -- never pre-validated here
+            # (migration plan §2.5 decision 2). `EeroValidationException` is
+            # deliberately not caught: it propagates to `run_with_client` and
+            # maps to exit 2. Only a well-shaped-but-absent id/path/URL
+            # (`EeroNotFoundException`, or an empty envelope) falls through
+            # to "not found"; plain names skip straight to the existing
+            # list-and-match resolution below.
+            profile: Optional[Dict[str, Any]] = None
+            if looks_like_sdk_reference(profile_identifier):
+                with cli_ctx.status("Getting profile details..."):
+                    try:
+                        raw_detail = await client.get_profile(
+                            profile_identifier, cli_ctx.network_id
+                        )
+                    except EeroNotFoundException:
+                        raw_detail = None
 
-            profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_identifier)
+                data = extract_data(raw_detail) if isinstance(raw_detail, dict) else None
+                if isinstance(data, dict) and data:
+                    profile = normalize_profile(data)
 
-            if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
-                console.print("[dim]Try: eero profile list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
+                if profile is None:
+                    console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                    console.print("[dim]Try: eero profile list[/dim]")
+                    sys.exit(ExitCode.NOT_FOUND)
+            else:
+                with cli_ctx.status("Finding profile..."):
+                    raw_response = await client.get_profiles(cli_ctx.network_id)
 
-            with cli_ctx.status("Getting profile details..."):
-                raw_detail = await client.get_profile(target["id"], cli_ctx.network_id)
+                profiles = extract_profiles(raw_response)
+                target = _find_profile(profiles, profile_identifier)
 
-            profile = normalize_profile(extract_data(raw_detail))
+                if not target or not target.get("id"):
+                    console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                    console.print("[dim]Try: eero profile list[/dim]")
+                    sys.exit(ExitCode.NOT_FOUND)
+
+                with cli_ctx.status("Getting profile details..."):
+                    raw_detail = await client.get_profile(target["id"], cli_ctx.network_id)
+
+                profile = normalize_profile(extract_data(raw_detail))
 
             if cli_ctx.is_structured_output():
                 cli_ctx.render_structured(profile, "eero.profile.show/v1")
@@ -226,11 +381,28 @@ def profile_create(
     """
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
+    spec = get_write_spec("profile create")
+    cli_ctx.active_write_spec = spec
+
+    try:
+        require_write_confirmation(
+            spec,
+            target=name,
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.err_console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
 
     async def run_cmd() -> None:
         async def create_profile(client: EeroClient) -> None:
             with cli_ctx.status("Creating profile..."):
-                result = await client.create_profile(name, cli_ctx.network_id)
+                result = await client.create_profile(name, network_id=cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") == 200:
@@ -294,15 +466,18 @@ def profile_rename(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
+            spec = get_write_spec("profile rename")
+            cli_ctx.active_write_spec = spec
             try:
-                confirm_or_fail(
-                    action="rename",
+                require_write_confirmation(
+                    spec,
                     target=f"{target.get('name') or profile_identifier} → {new_name}",
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
-                    console=cli_ctx.console,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -356,16 +531,18 @@ def profile_delete(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
+            spec = get_write_spec("profile delete")
+            cli_ctx.active_write_spec = spec
             try:
-                confirm_or_fail(
-                    action="delete",
+                require_write_confirmation(
+                    spec,
                     target=target.get("name") or profile_identifier,
-                    risk=OperationRisk.HIGH,
-                    confirmation_phrase="DELETE",
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
-                    console=cli_ctx.console,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
@@ -435,6 +612,8 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_identifier: str, paused
     """Pause or unpause a profile."""
     console = cli_ctx.console
     action = "pause" if paused else "unpause"
+    spec = get_write_spec(f"profile {action}")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def toggle_pause(client: EeroClient) -> None:
@@ -451,28 +630,37 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_identifier: str, paused
                 sys.exit(ExitCode.NOT_FOUND)
 
             try:
-                confirm_or_fail(
-                    action=action,
+                require_write_confirmation(
+                    spec,
                     target=target.get("name") or profile_identifier,
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
-                    console=cli_ctx.console,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with cli_ctx.status(f"{action.capitalize()}ing profile..."):
-                result = await client.pause_profile(target["id"], paused, cli_ctx.network_id)
+            # Already fetched above (target["paused"]), so no extra read
+            # round-trip is needed for the skip-unchanged check.
+            async def read() -> bool:
+                return bool(target.get("paused", not paused))
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print(f"[bold green]Profile {action}d[/bold green]")
-            else:
-                console.print(f"[red]Failed to {action} profile[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def write() -> Any:
+                with cli_ctx.status(f"{action.capitalize()}ing profile..."):
+                    return await client.pause_profile(target["id"], paused, cli_ctx.network_id)
+
+            await write_if_changed(
+                read,
+                paused,
+                write,
+                force=cli_ctx.force,
+                console=cli_ctx.err_console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(toggle_pause)
 
@@ -525,18 +713,17 @@ def apps_list(
 
             with cli_ctx.status("Getting blocked apps..."):
                 try:
-                    raw_apps = await client.get_blocked_applications(
+                    raw_apps = await client.get_dns_policy_applications(
                         target["id"], cli_ctx.network_id
                     )
-                except Exception as e:
-                    if is_premium_error(e):
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
                         console.print("[yellow]This feature requires Eero Plus[/yellow]")
                         sys.exit(ExitCode.PREMIUM_REQUIRED)
                     raise
 
-            apps = extract_data(raw_apps) if isinstance(raw_apps, dict) else raw_apps
-            if isinstance(apps, dict):
-                apps = apps.get("applications", [])
+            applications = _extract_dns_policy_applications(raw_apps)
+            apps = sorted(_blocked_app_ids(applications))
 
             apps_data = {"profile": target.get("name"), "blocked_apps": apps}
 
@@ -557,13 +744,108 @@ def apps_list(
     asyncio.run(run_cmd())
 
 
+async def _require_profile(
+    client: EeroClient, cli_ctx: EeroCliContext, profile_identifier: str, console: Console
+) -> Dict[str, Any]:
+    """Resolve PROFILE_IDENTIFIER to a profile with an id, or exit NOT_FOUND."""
+    with cli_ctx.status("Finding profile..."):
+        raw_profiles = await client.get_profiles(cli_ctx.network_id)
+
+    target = _find_profile(extract_profiles(raw_profiles), profile_identifier)
+    if not target or not target.get("id"):
+        console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+        console.print("[dim]Try: eero profile list[/dim]")
+        sys.exit(ExitCode.NOT_FOUND)
+    return target
+
+
+async def _update_blocked_apps(
+    client: EeroClient,
+    cli_ctx: EeroCliContext,
+    spec: WriteSpec,
+    profile_identifier: str,
+    apps: tuple,
+    action: Literal["block", "unblock"],
+) -> None:
+    """Read-modify-write a profile's blocked application list."""
+    console = cli_ctx.console
+    target = await _require_profile(client, cli_ctx, profile_identifier, console)
+
+    try:
+        require_write_confirmation(
+            spec,
+            target=f"{target.get('name') or profile_identifier}: {', '.join(apps)}",
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.err_console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    with cli_ctx.status("Getting current blocked apps..."):
+        try:
+            raw_apps = await client.get_dns_policy_applications(target["id"], cli_ctx.network_id)
+        except EeroException as e:
+            if isinstance(e, EeroPremiumRequiredException):
+                console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                sys.exit(ExitCode.PREMIUM_REQUIRED)
+            raise
+
+    current = _blocked_app_ids(_extract_dns_policy_applications(raw_apps))
+    new_blocked = current | set(apps) if action == "block" else current - set(apps)
+
+    # `set_profile_blocked_applications` REPLACES the full list -- show
+    # the user exactly what will be sent before issuing the write.
+    cli_ctx.err_console.print(f"Blocked applications after this change: {sorted(new_blocked)}")
+
+    result = await _write_blocked_apps(client, cli_ctx, target["id"], sorted(new_blocked), action)
+
+    meta = result.get("meta", {}) if isinstance(result, dict) else {}
+    if meta.get("code") == 200 or result:
+        for app in apps:
+            console.print(f"[green]✓[/green] {app} {action}ed")
+    else:
+        console.print(f"[red]✗[/red] Failed to {action} apps")
+        sys.exit(ExitCode.GENERIC_ERROR)
+
+
+async def _write_blocked_apps(
+    client: EeroClient,
+    cli_ctx: EeroCliContext,
+    profile_id: str,
+    blocked: List[str],
+    action: Literal["block", "unblock"],
+) -> Any:
+    """Send the replacement blocked-application list; exit on API failure."""
+    with cli_ctx.status(f"{action.capitalize()}ing apps..."):
+        try:
+            return await client.set_profile_blocked_applications(
+                profile_id, blocked, cli_ctx.network_id
+            )
+        except EeroException as e:
+            if isinstance(e, EeroPremiumRequiredException):
+                cli_ctx.console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                sys.exit(ExitCode.PREMIUM_REQUIRED)
+            cli_ctx.console.print(f"[red]✗[/red] Error {action}ing apps: {e}")
+            sys.exit(ExitCode.GENERIC_ERROR)
+
+
 @apps_group.command(name="block")
 @click.argument("profile_identifier")
 @click.argument("apps", nargs=-1, required=True)
+@force_option
 @network_option
 @click.pass_context
 def apps_block(
-    ctx: click.Context, profile_identifier: str, apps: tuple, network_id: Optional[str]
+    ctx: click.Context,
+    profile_identifier: str,
+    apps: tuple,
+    force: Optional[bool],
+    network_id: Optional[str],
 ) -> None:
     """Block application(s) for a profile.
 
@@ -576,40 +858,13 @@ def apps_block(
     Examples:
       eero profile apps block "Kids" tiktok facebook
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
-    console = cli_ctx.console
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    spec = get_write_spec("profile apps block")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def block_apps(client: EeroClient) -> None:
-            # Find profile first
-            with cli_ctx.status("Finding profile..."):
-                raw_response = await client.get_profiles(cli_ctx.network_id)
-
-            profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_identifier)
-
-            if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
-                console.print("[dim]Try: eero profile list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
-
-            for app in apps:
-                with cli_ctx.status(f"Blocking {app}..."):
-                    try:
-                        # TODO: add_blocked_application method not yet implemented in eero-api
-                        result = await client.add_blocked_application(  # type: ignore[attr-defined]
-                            target["id"], app, cli_ctx.network_id
-                        )
-                        meta = result.get("meta", {}) if isinstance(result, dict) else {}
-                        if meta.get("code") == 200 or result:
-                            console.print(f"[green]✓[/green] {app} blocked")
-                        else:
-                            console.print(f"[red]✗[/red] Failed to block {app}")
-                    except Exception as e:
-                        if is_premium_error(e):
-                            console.print("[yellow]This feature requires Eero Plus[/yellow]")
-                            sys.exit(ExitCode.PREMIUM_REQUIRED)
-                        console.print(f"[red]✗[/red] Error blocking {app}: {e}")
+            await _update_blocked_apps(client, cli_ctx, spec, profile_identifier, apps, "block")
 
         await run_with_client(block_apps)
 
@@ -619,10 +874,15 @@ def apps_block(
 @apps_group.command(name="unblock")
 @click.argument("profile_identifier")
 @click.argument("apps", nargs=-1, required=True)
+@force_option
 @network_option
 @click.pass_context
 def apps_unblock(
-    ctx: click.Context, profile_identifier: str, apps: tuple, network_id: Optional[str]
+    ctx: click.Context,
+    profile_identifier: str,
+    apps: tuple,
+    force: Optional[bool],
+    network_id: Optional[str],
 ) -> None:
     """Unblock application(s) for a profile.
 
@@ -631,40 +891,13 @@ def apps_unblock(
       PROFILE_IDENTIFIER  Profile ID or name
       APPS                App identifier(s) to unblock
     """
-    cli_ctx = apply_options(ctx, network_id=network_id)
-    console = cli_ctx.console
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    spec = get_write_spec("profile apps unblock")
+    cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def unblock_apps(client: EeroClient) -> None:
-            # Find profile first
-            with cli_ctx.status("Finding profile..."):
-                raw_response = await client.get_profiles(cli_ctx.network_id)
-
-            profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_identifier)
-
-            if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
-                console.print("[dim]Try: eero profile list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
-
-            for app in apps:
-                with cli_ctx.status(f"Unblocking {app}..."):
-                    try:
-                        # TODO: remove_blocked_application method not yet implemented in eero-api
-                        result = await client.remove_blocked_application(  # type: ignore[attr-defined]
-                            target["id"], app, cli_ctx.network_id
-                        )
-                        meta = result.get("meta", {}) if isinstance(result, dict) else {}
-                        if meta.get("code") == 200 or result:
-                            console.print(f"[green]✓[/green] {app} unblocked")
-                        else:
-                            console.print(f"[red]✗[/red] Failed to unblock {app}")
-                    except Exception as e:
-                        if is_premium_error(e):
-                            console.print("[yellow]This feature requires Eero Plus[/yellow]")
-                            sys.exit(ExitCode.PREMIUM_REQUIRED)
-                        console.print(f"[red]✗[/red] Error unblocking {app}: {e}")
+            await _update_blocked_apps(client, cli_ctx, spec, profile_identifier, apps, "unblock")
 
         await run_with_client(unblock_apps)
 
@@ -681,9 +914,10 @@ def schedule_group(ctx: click.Context) -> None:
 
     \b
     Commands:
-      show - Show schedule
-      set  - Set bedtime schedule
-      clear - Clear all schedules
+      show   - Show schedule
+      set    - Set bedtime schedule
+      clear  - Clear all schedules
+      delete - Delete one schedule entry
     """
     pass
 
@@ -716,28 +950,32 @@ def schedule_show(
                 sys.exit(ExitCode.NOT_FOUND)
 
             with cli_ctx.status("Getting schedule..."):
-                raw_schedule = await client.get_profile_schedule(target["id"], cli_ctx.network_id)
+                raw_schedule = await client.get_schedules(target["id"], cli_ctx.network_id)
 
-            schedule_data = extract_data(raw_schedule) if isinstance(raw_schedule, dict) else {}
+            # `get_schedules` returns `data` as a *list* of pause sub-resources
+            # (eero-api 8.0.1), not the old `{"enabled": ..., "time_blocks": [...]}`
+            # object.
+            data = extract_data(raw_schedule) if isinstance(raw_schedule, dict) else raw_schedule
+            schedules = data if isinstance(data, list) else []
 
             if cli_ctx.is_json_output():
-                renderer.render_json(schedule_data, "eero.profile.schedule.show/v1")
+                renderer.render_json({"schedules": schedules}, "eero.profile.schedule.show/v1")
             elif cli_ctx.is_list_output():
-                renderer.render_text(schedule_data, "eero.profile.schedule.show/v1")
+                renderer.render_text({"schedules": schedules}, "eero.profile.schedule.show/v1")
             else:
-                enabled = schedule_data.get("enabled", False)
-                time_blocks = schedule_data.get("time_blocks", [])
-
-                content = (
-                    f"[bold]Enabled:[/bold] {'[green]Yes[/green]' if enabled else '[dim]No[/dim]'}"
-                )
-                if time_blocks:
-                    content += f"\n[bold]Time Blocks:[/bold] {len(time_blocks)}"
-                    for i, block in enumerate(time_blocks, 1):
-                        days = ", ".join(block.get("days", []))
-                        start = block.get("start", "?")
-                        end = block.get("end", "?")
-                        content += f"\n  {i}. {days}: {start} - {end}"
+                if not schedules:
+                    content = "[dim]No schedules set[/dim]"
+                else:
+                    lines = []
+                    for i, pause in enumerate(schedules, 1):
+                        name = pause.get("name", "?")
+                        days = ", ".join(pause.get("days", []))
+                        start = pause.get("start", "?")
+                        end = pause.get("end", "?")
+                        enabled = pause.get("enabled", False)
+                        status = "[green]enabled[/green]" if enabled else "[dim]disabled[/dim]"
+                        lines.append(f"{i}. {name} ({status}) {days}: {start} - {end}")
+                    content = "\n".join(lines)
 
                 console.print(Panel(content, title="Schedule", border_style="blue"))
 
@@ -777,7 +1015,7 @@ def schedule_set(
       eero profile schedule set "Kids" --start 22:00 --end 06:00 --days mon,tue,wed,thu,fri
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
+    console = cli_ctx.err_console
 
     days_list = days.split(",") if days else None
 
@@ -795,31 +1033,57 @@ def schedule_set(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
+            spec = get_write_spec("profile schedule set")
+            cli_ctx.active_write_spec = spec
             try:
-                confirm_or_fail(
-                    action="set bedtime schedule",
+                require_write_confirmation(
+                    spec,
                     target=f"{target.get('name') or profile_identifier} ({start} - {end})",
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
-                    console=cli_ctx.console,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
-            with cli_ctx.status("Setting schedule..."):
-                result = await client.enable_bedtime(
-                    target["id"], start, end, days_list, cli_ctx.network_id
-                )
+            desired_days = tuple(sorted(d.lower() for d in (days_list or _SCHEDULE_ALL_DAYS)))
+            desired = (start, end, desired_days)
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print(f"[bold green]Schedule set: {start} - {end}[/bold green]")
-            else:
-                console.print("[red]Failed to set schedule[/red]")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            async def read() -> Any:
+                with cli_ctx.status("Reading current schedule..."):
+                    raw_schedule = await client.get_schedules(target["id"], cli_ctx.network_id)
+                data = (
+                    extract_data(raw_schedule) if isinstance(raw_schedule, dict) else raw_schedule
+                )
+                schedules = data if isinstance(data, list) else []
+                for entry in schedules:
+                    if isinstance(entry, dict) and entry.get("name") == "Bedtime":
+                        return (
+                            entry.get("start"),
+                            entry.get("end"),
+                            tuple(sorted(entry.get("days") or [])),
+                        )
+                # Sentinel: no existing "Bedtime" schedule to compare against.
+                return ("", "", ())
+
+            async def write() -> Any:
+                with cli_ctx.status("Setting schedule..."):
+                    return await client.enable_bedtime(
+                        target["id"], start, end, days_list, cli_ctx.network_id
+                    )
+
+            await write_if_changed(
+                read,
+                desired,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
 
         await run_with_client(set_schedule)
 
@@ -852,30 +1116,424 @@ def schedule_clear(
                 console.print("[dim]Try: eero profile list[/dim]")
                 sys.exit(ExitCode.NOT_FOUND)
 
+            spec = get_write_spec("profile schedule clear")
+            cli_ctx.active_write_spec = spec
             try:
-                confirm_or_fail(
-                    action="clear schedule",
+                require_write_confirmation(
+                    spec,
                     target=target.get("name") or profile_identifier,
-                    risk=OperationRisk.MEDIUM,
-                    force=cli_ctx.force,
-                    non_interactive=cli_ctx.non_interactive,
-                    dry_run=cli_ctx.dry_run,
-                    console=cli_ctx.console,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
                 )
             except SafetyError as e:
                 cli_ctx.renderer.render_error(e.message)
                 sys.exit(e.exit_code)
 
             with cli_ctx.status("Clearing schedule..."):
-                result = await client.clear_profile_schedule(target["id"], cli_ctx.network_id)
+                results = await client.clear_profile_schedule(target["id"], cli_ctx.network_id)
 
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                console.print("[bold green]Schedule cleared[/bold green]")
+            # `clear_profile_schedule` returns a list of raw responses, one per
+            # deleted pause (eero-api 8.0.1); success = every element's
+            # `meta.code` is 2xx (an empty list means there was nothing to clear).
+            results_list = results if isinstance(results, list) else []
+            all_succeeded = all(
+                200 <= r.get("meta", {}).get("code", 0) < 300
+                for r in results_list
+                if isinstance(r, dict)
+            )
+            if all_succeeded:
+                console.print(
+                    f"[bold green]Schedule cleared ({len(results_list)} entry(ies))[/bold green]"
+                )
             else:
                 console.print("[red]Failed to clear schedule[/red]")
                 sys.exit(ExitCode.GENERIC_ERROR)
 
         await run_with_client(clear_schedule)
+
+    asyncio.run(run_cmd())
+
+
+@schedule_group.command(name="delete")
+@click.argument("profile_identifier")
+@click.argument("schedule_id")
+@force_option
+@network_option
+@click.pass_context
+def schedule_delete(
+    ctx: click.Context,
+    profile_identifier: str,
+    schedule_id: str,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Delete one schedule entry for a profile.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      SCHEDULE_ID          Schedule id, or the tail of its `url`
+                            (see `eero profile schedule show`)
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    async def run_cmd() -> None:
+        async def delete_one(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_response = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            with cli_ctx.status("Finding schedule..."):
+                raw_schedule = await client.get_schedules(target["id"], cli_ctx.network_id)
+
+            data = extract_data(raw_schedule) if isinstance(raw_schedule, dict) else raw_schedule
+            schedules = data if isinstance(data, list) else []
+
+            # `update_schedule`/`delete_schedule` reject a bare id (migration
+            # plan §2.5 decision 4); the caller must pass the envelope. Match
+            # on the schedule's own `id` field when present, else the tail of
+            # its `url`, and hand the whole entry to `delete_schedule`.
+            match = None
+            for entry in schedules:
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("id") == schedule_id or (
+                    extract_id_from_url(entry.get("url")) == schedule_id
+                ):
+                    match = entry
+                    break
+
+            if match is None:
+                console.print(f"[red]Schedule '{schedule_id}' not found[/red]")
+                console.print(f"[dim]Try: eero profile schedule show {profile_identifier}[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            spec = get_write_spec("profile schedule delete")
+            cli_ctx.active_write_spec = spec
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=match.get("name") or schedule_id,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status("Deleting schedule..."):
+                result = await client.delete_schedule(match)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print("[bold green]Schedule deleted[/bold green]")
+            else:
+                console.print("[red]Failed to delete schedule[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(delete_one)
+
+    asyncio.run(run_cmd())
+
+
+# ==================== Devices Subcommand Group ====================
+
+
+@profile_group.group(name="devices")
+@click.pass_context
+def devices_group(ctx: click.Context) -> None:
+    """Manage a profile's assigned devices.
+
+    \b
+    Commands:
+      set - Set the devices assigned to a profile
+    """
+    pass
+
+
+@devices_group.command(name="set")
+@click.argument("profile_identifier")
+@click.argument("devices", nargs=-1, required=True)
+@force_option
+@network_option
+@click.pass_context
+def devices_set(
+    ctx: click.Context,
+    profile_identifier: str,
+    devices: tuple,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Set the devices assigned to a profile.
+
+    REPLACES the full device assignment for the profile with exactly the
+    device(s) given here.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      DEVICES              Device id, MAC, or name(s) to assign
+
+    \b
+    Examples:
+      eero profile devices set "Kids" "iPad" AA:BB:CC:DD:EE:FF
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    async def run_cmd() -> None:
+        async def set_devices(client: EeroClient) -> None:
+            target = await _require_profile(client, cli_ctx, profile_identifier, console)
+
+            with cli_ctx.status("Finding devices..."):
+                raw_devices = await client.get_devices(cli_ctx.network_id)
+
+            all_devices = extract_devices(raw_devices)
+            resolved_urls, missing = _resolve_device_urls(all_devices, devices)
+            if missing:
+                console.print(f"[red]Device(s) not found: {', '.join(missing)}[/red]")
+                console.print("[dim]Try: eero device list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            spec = get_write_spec("profile devices set")
+            cli_ctx.active_write_spec = spec
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=target.get("name") or profile_identifier,
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            desired = frozenset(resolved_urls)
+
+            async def read() -> frozenset:
+                with cli_ctx.status("Reading current profile devices..."):
+                    raw_current = await client.get_profile_devices(target["id"], cli_ctx.network_id)
+                return _current_profile_device_urls(raw_current)
+
+            async def write() -> Any:
+                with cli_ctx.status("Setting profile devices..."):
+                    return await client.set_profile_devices(
+                        target["id"], resolved_urls, cli_ctx.network_id
+                    )
+
+            await write_if_changed(
+                read,
+                desired,
+                write,
+                force=cli_ctx.force,
+                console=console,
+                read_command=spec.read_command,
+            )
+
+        await run_with_client(set_devices)
+
+    asyncio.run(run_cmd())
+
+
+# ==================== DNS Subcommand Group ====================
+
+
+@profile_group.group(name="dns")
+@click.pass_context
+def profile_dns_group(ctx: click.Context) -> None:
+    """Per-profile DNS domain policy (Eero Plus).
+
+    \b
+    Commands:
+      allow - Allow a domain for a profile
+      block - Block a domain for a profile
+    """
+    pass
+
+
+@profile_dns_group.command(name="allow")
+@click.argument("profile_identifier")
+@click.argument("domain")
+@click.option("--override", is_flag=True, help="Override an existing block for this domain")
+@click.option("--delete", "is_delete", is_flag=True, help="Remove domain from the allow list")
+@force_option
+@network_option
+@click.pass_context
+def profile_dns_allow(
+    ctx: click.Context,
+    profile_identifier: str,
+    domain: str,
+    override: bool,
+    is_delete: bool,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Allow a domain for a profile.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      DOMAIN               Domain to allow
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    async def run_cmd() -> None:
+        async def allow(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_response = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            spec = get_write_spec("profile dns allow")
+            cli_ctx.active_write_spec = spec
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=f"{domain} for {target.get('name') or profile_identifier}",
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status(f"Allowing '{domain}'..."):
+                try:
+                    result = await client.allow_domain_for_profiles(
+                        domain,
+                        cli_ctx.network_id,
+                        profiles=[target["id"]],
+                        override=override or None,
+                        is_delete=is_delete or None,
+                    )
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
+                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                        sys.exit(ExitCode.PREMIUM_REQUIRED)
+                    raise
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print(f"[bold green]'{domain}' allowed[/bold green]")
+            else:
+                console.print(f"[red]Failed to allow '{domain}'[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(allow)
+
+    asyncio.run(run_cmd())
+
+
+@profile_dns_group.command(name="block")
+@click.argument("profile_identifier")
+@click.argument("domain")
+@click.option("--override", is_flag=True, help="Override an existing allow for this domain")
+@click.option("--delete", "is_delete", is_flag=True, help="Remove domain from the block list")
+@force_option
+@network_option
+@click.pass_context
+def profile_dns_block(
+    ctx: click.Context,
+    profile_identifier: str,
+    domain: str,
+    override: bool,
+    is_delete: bool,
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Block a domain for a profile.
+
+    \b
+    Arguments:
+      PROFILE_IDENTIFIER  Profile ID or name
+      DOMAIN               Domain to block
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    async def run_cmd() -> None:
+        async def block(client: EeroClient) -> None:
+            with cli_ctx.status("Finding profile..."):
+                raw_response = await client.get_profiles(cli_ctx.network_id)
+
+            profiles = extract_profiles(raw_response)
+            target = _find_profile(profiles, profile_identifier)
+
+            if not target or not target.get("id"):
+                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+                console.print("[dim]Try: eero profile list[/dim]")
+                sys.exit(ExitCode.NOT_FOUND)
+
+            spec = get_write_spec("profile dns block")
+            cli_ctx.active_write_spec = spec
+            try:
+                require_write_confirmation(
+                    spec,
+                    target=f"{domain} for {target.get('name') or profile_identifier}",
+                    ctx=SafetyContext(
+                        force=cli_ctx.force,
+                        non_interactive=cli_ctx.non_interactive,
+                        dry_run=cli_ctx.dry_run,
+                    ),
+                    console=cli_ctx.err_console,
+                )
+            except SafetyError as e:
+                cli_ctx.renderer.render_error(e.message)
+                sys.exit(e.exit_code)
+
+            with cli_ctx.status(f"Blocking '{domain}'..."):
+                try:
+                    result = await client.block_domain_for_profiles(
+                        domain,
+                        cli_ctx.network_id,
+                        profiles=[target["id"]],
+                        override=override or None,
+                        is_delete=is_delete or None,
+                    )
+                except EeroException as e:
+                    if isinstance(e, EeroPremiumRequiredException):
+                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                        sys.exit(ExitCode.PREMIUM_REQUIRED)
+                    raise
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print(f"[bold green]'{domain}' blocked[/bold green]")
+            else:
+                console.print(f"[red]Failed to block '{domain}'[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(block)
 
     asyncio.run(run_cmd())

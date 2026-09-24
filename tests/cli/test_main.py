@@ -8,13 +8,14 @@ Tests cover:
 - Version display
 """
 
+import logging
 from unittest.mock import patch
 
 import pytest
 from click.testing import CliRunner
 
 from eeroctl.context import EeroCliContext
-from eeroctl.main import cli, main
+from eeroctl.main import _SdkWarningFilter, cli, main
 
 
 class TestMainCLI:
@@ -343,6 +344,47 @@ class TestPreferredNetworkLoading:
             cli.commands.pop("test-override", None)
 
 
+class TestSdkWarningFilterInstallation:
+    """`cli()` installs `_SdkWarningFilter` on the root logger's handlers
+    (migration plan §3.3) -- not on a bare `eero.api` Logger object, which
+    Python's propagation would silently never consult (see
+    `_SdkWarningFilter`'s docstring)."""
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        return CliRunner()
+
+    def test_filter_attached_to_root_handlers_after_invocation(self, runner):
+        result = runner.invoke(cli, ["--help"])
+
+        assert result.exit_code == 0
+        root_handlers = logging.getLogger().handlers
+        assert root_handlers, "basicConfig should have installed at least one handler"
+        assert any(isinstance(f, _SdkWarningFilter) for hdlr in root_handlers for f in hdlr.filters)
+
+    def test_each_invocation_gets_its_own_filter_instance(self, runner):
+        """force=True on basicConfig means no filter accumulation across
+        invocations in the same process (relevant under CliRunner)."""
+        runner.invoke(cli, ["--help"])
+        first_count = sum(
+            1
+            for hdlr in logging.getLogger().handlers
+            for f in hdlr.filters
+            if isinstance(f, _SdkWarningFilter)
+        )
+
+        runner.invoke(cli, ["--help"])
+        second_count = sum(
+            1
+            for hdlr in logging.getLogger().handlers
+            for f in hdlr.filters
+            if isinstance(f, _SdkWarningFilter)
+        )
+
+        assert first_count == 1
+        assert second_count == 1
+
+
 class TestMainFunction:
     """Tests for main entry point function."""
 
@@ -364,3 +406,269 @@ class TestMainFunction:
         assert callable(main_module.main)
         # main() calls cli() - we verify the cli is a Click group
         assert hasattr(main_module.cli, "commands")
+
+    def test_main_invokes_cli_with_auto_envvar_prefix(self):
+        """main() explicitly passes auto_envvar_prefix="EEROCTL" to cli.main()."""
+        with patch("eeroctl.main.cli") as mock_cli:
+            main()
+
+        mock_cli.main.assert_called_once_with(auto_envvar_prefix="EEROCTL")
+
+
+class TestGlobalEnvVars:
+    """One parametrised case per EEROCTL_<NAME> global env var.
+
+    v8 migration plan §3.4, Q6: every global option gets a free
+    EEROCTL_<NAME> env var via ``auto_envvar_prefix``; two more
+    (EEROCTL_CONFIG_DIR, EEROCTL_SESSION_TOKEN) need explicit code and are
+    covered in test_utils.py / test_auth.py respectively.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    @pytest.mark.parametrize(
+        ("env_var", "env_value", "attr", "expected"),
+        [
+            ("EEROCTL_OUTPUT", "json", "output_format", "json"),
+            ("EEROCTL_NETWORK_ID", "net_env", "network_id", "net_env"),
+            ("EEROCTL_FORCE", "1", "force", True),
+            ("EEROCTL_NON_INTERACTIVE", "1", "non_interactive", True),
+            ("EEROCTL_DEBUG", "1", "debug", True),
+            ("EEROCTL_QUIET", "1", "quiet", True),
+            ("EEROCTL_NO_COLOR", "1", "no_color", True),
+            ("EEROCTL_ACCEPT_LANGUAGE", "fr-FR", "accept_language", "fr-FR"),
+            ("EEROCTL_GET_RETRIES", "3", "get_retries", 3),
+            ("EEROCTL_NO_LEGACY_COOKIE", "1", "send_legacy_cookie", False),
+        ],
+    )
+    def test_env_var_reaches_context(self, runner, monkeypatch, env_var, env_value, attr, expected):
+        """Each EEROCTL_<NAME> env var flows through to the EeroCliContext."""
+        monkeypatch.setenv(env_var, env_value)
+        captured_ctx = []
+
+        from click import pass_context
+
+        from eeroctl.context import get_cli_context
+
+        @cli.command(name="test-env-var-probe")
+        @pass_context
+        def test_cmd(ctx):
+            captured_ctx.append(get_cli_context(ctx))
+
+        try:
+            result = runner.invoke(cli, ["test-env-var-probe"])
+
+            assert result.exit_code == 0, result.output
+            assert len(captured_ctx) == 1
+            assert getattr(captured_ctx[0], attr) == expected
+        finally:
+            cli.commands.pop("test-env-var-probe", None)
+
+    def test_accept_language_get_retries_send_legacy_cookie_reach_eero_client(
+        self, runner, monkeypatch
+    ):
+        """The three new constructor options reach EeroClient(...) end-to-end."""
+        monkeypatch.setenv("EEROCTL_ACCEPT_LANGUAGE", "es-ES")
+        monkeypatch.setenv("EEROCTL_GET_RETRIES", "2")
+        monkeypatch.setenv("EEROCTL_NO_LEGACY_COOKIE", "1")
+
+        from unittest.mock import AsyncMock
+
+        mock_client = AsyncMock()
+        mock_client.is_authenticated = False
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock()
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client) as mock_client_class:
+            result = runner.invoke(cli, ["auth", "status", "--offline"])
+
+        assert result.exit_code == 0, result.output
+        mock_client_class.assert_called_once()
+        kwargs = mock_client_class.call_args.kwargs
+        assert kwargs["accept_language"] == "es-ES"
+        assert kwargs["get_retries"] == 2
+        assert kwargs["send_legacy_cookie"] is False
+
+
+class TestDebugLogging:
+    """Tests for --debug scoping to the `eero`/`eeroctl` loggers only.
+
+    v8 migration plan §8.1 R11, §3.3 (DEBUG-scoping half; the warning
+    filter is a separate, later commit): elevating the root logger lets
+    aiohttp log the raw X-User-Token header.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    def test_debug_raises_eero_and_eeroctl_loggers_to_debug(self, runner):
+        result = runner.invoke(cli, ["--debug", "auth", "--help"])
+
+        assert result.exit_code == 0
+        assert logging.getLogger("eero").level == logging.DEBUG
+        assert logging.getLogger("eeroctl").level == logging.DEBUG
+
+    def test_debug_does_not_raise_the_root_logger(self, runner):
+        result = runner.invoke(cli, ["--debug", "auth", "--help"])
+
+        assert result.exit_code == 0
+        assert logging.getLogger().level != logging.DEBUG
+
+    def test_without_debug_eero_and_eeroctl_loggers_are_not_debug(self, runner):
+        result = runner.invoke(cli, ["auth", "--help"])
+
+        assert result.exit_code == 0
+        assert logging.getLogger("eero").level != logging.DEBUG
+        assert logging.getLogger("eeroctl").level != logging.DEBUG
+
+    def test_debug_disables_propagation_to_avoid_double_printing(self, runner):
+        """propagate=False on eero/eeroctl after --debug (else lines print twice)."""
+        result = runner.invoke(cli, ["--debug", "auth", "--help"])
+
+        assert result.exit_code == 0
+        assert logging.getLogger("eero").propagate is False
+        assert logging.getLogger("eeroctl").propagate is False
+
+    def test_debug_record_is_emitted_exactly_once(self, runner):
+        """A log record on the `eero` logger is handled by exactly one handler.
+
+        Without ``propagate = False``, the record would also bubble up to
+        the root logger's own handler (installed by ``basicConfig``),
+        printing the line twice.
+        """
+        result = runner.invoke(cli, ["--debug", "auth", "--help"])
+        assert result.exit_code == 0
+
+        eero_logger = logging.getLogger("eero")
+        emit_calls = 0
+        original_emits = [(h, h.emit) for h in eero_logger.handlers]
+
+        def make_counting_emit(original_emit):
+            def counting_emit(record):
+                nonlocal emit_calls
+                emit_calls += 1
+                original_emit(record)
+
+            return counting_emit
+
+        for h, original_emit in original_emits:
+            h.emit = make_counting_emit(original_emit)
+
+        try:
+            eero_logger.debug("a test debug message")
+        finally:
+            for h, original_emit in original_emits:
+                h.emit = original_emit
+
+        assert emit_calls == 1
+
+
+class TestForceSourceTracing:
+    """Tests for tracing EEROCTL_FORCE vs. --force (Q6 stands; §3.2 item 3).
+
+    EEROCTL_FORCE keeps disabling confirmation prompts at every safety
+    tier, but silently doing so from an environment variable is easy to
+    miss, so eeroctl notes it and records the source on the context.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    def test_env_sourced_force_prints_the_note(self, runner, monkeypatch):
+        monkeypatch.setenv("EEROCTL_FORCE", "1")
+
+        result = runner.invoke(cli, ["auth", "--help"])
+
+        assert result.exit_code == 0
+        assert "note: confirmation prompts disabled by EEROCTL_FORCE" in result.stderr
+
+    def test_flag_sourced_force_does_not_print_the_note(self, runner):
+        result = runner.invoke(cli, ["--force", "auth", "--help"])
+
+        assert result.exit_code == 0
+        assert "note: confirmation prompts disabled by EEROCTL_FORCE" not in result.stderr
+
+    def test_no_force_does_not_print_the_note(self, runner):
+        result = runner.invoke(cli, ["auth", "--help"])
+
+        assert result.exit_code == 0
+        assert "note: confirmation prompts disabled by EEROCTL_FORCE" not in result.stderr
+
+    def test_env_sourced_force_respects_quiet(self, runner, monkeypatch):
+        monkeypatch.setenv("EEROCTL_FORCE", "1")
+
+        result = runner.invoke(cli, ["--quiet", "auth", "--help"])
+
+        assert result.exit_code == 0
+        assert "note: confirmation prompts disabled by EEROCTL_FORCE" not in result.stderr
+
+    def test_context_records_env_force_source(self, runner, monkeypatch):
+        monkeypatch.setenv("EEROCTL_FORCE", "1")
+        captured_ctx = []
+
+        from click import pass_context
+
+        from eeroctl.context import get_cli_context
+
+        @cli.command(name="test-force-source-env")
+        @pass_context
+        def test_cmd(ctx):
+            captured_ctx.append(get_cli_context(ctx))
+
+        try:
+            result = runner.invoke(cli, ["test-force-source-env"])
+
+            assert result.exit_code == 0
+            assert len(captured_ctx) == 1
+            assert captured_ctx[0].force_source == "env"
+        finally:
+            cli.commands.pop("test-force-source-env", None)
+
+    def test_context_records_flag_force_source(self, runner):
+        captured_ctx = []
+
+        from click import pass_context
+
+        from eeroctl.context import get_cli_context
+
+        @cli.command(name="test-force-source-flag")
+        @pass_context
+        def test_cmd(ctx):
+            captured_ctx.append(get_cli_context(ctx))
+
+        try:
+            result = runner.invoke(cli, ["--force", "test-force-source-flag"])
+
+            assert result.exit_code == 0
+            assert len(captured_ctx) == 1
+            assert captured_ctx[0].force_source == "flag"
+        finally:
+            cli.commands.pop("test-force-source-flag", None)
+
+    def test_context_records_no_force_source_by_default(self, runner):
+        captured_ctx = []
+
+        from click import pass_context
+
+        from eeroctl.context import get_cli_context
+
+        @cli.command(name="test-force-source-none")
+        @pass_context
+        def test_cmd(ctx):
+            captured_ctx.append(get_cli_context(ctx))
+
+        try:
+            result = runner.invoke(cli, ["test-force-source-none"])
+
+            assert result.exit_code == 0
+            assert len(captured_ctx) == 1
+            assert captured_ctx[0].force_source is None
+        finally:
+            cli.commands.pop("test-force-source-none", None)

@@ -23,10 +23,12 @@ _Intuitive commands, multiple output formats, and shell completion._
 ## ⚡ Features
 
 - 🧭 **Intuitive commands** — noun-first structure (`eero network list`)
-- 📊 **Multiple formats** — table, JSON, YAML, text
-- 🛡️ **Safety rails** — confirmation for destructive actions
-- 🔧 **Script-friendly** — non-interactive mode + machine-readable output
+- 📊 **Multiple formats** — table, list, JSON, YAML, text
+- 🛡️ **Safety rails** — Y/N prompts for disruptive writes, a typed `REBOOT` phrase for anything that restarts the mesh, and an explicit note on writes the SDK has not verified
+- 🔧 **Script-friendly** — non-interactive mode, fixed exit codes, `EEROCTL_*` environment variables, `EEROCTL_SESSION_TOKEN` for CI
 - 🐚 **Shell completion** — bash, zsh, fish
+
+> **Upgrading from 2.x?** 3.0.0 changes exit codes, `auth status` output, environment-variable names and credential storage. See the [Migration guide](https://github.com/fulviofreitas/eeroctl/wiki/Migration).
 
 ## 📦 Install
 
@@ -67,7 +69,7 @@ eero auth login           # Authenticate
 eero network list         # List networks
 eero device list          # Connected devices
 eero eero list            # Mesh nodes
-eero troubleshoot speedtest --force
+eero network speedtest run && sleep 60 && eero network speedtest show
 ```
 
 > **Tip:** Both `eero` and `eeroctl` commands are available and work identically.
@@ -82,10 +84,11 @@ Full documentation lives in the **[Wiki](https://github.com/fulviofreitas/eeroct
 | [Usage Examples](https://github.com/fulviofreitas/eeroctl/wiki/Usage-Examples) | Practical examples |
 | [Configuration](https://github.com/fulviofreitas/eeroctl/wiki/Configuration) | Auth storage & env vars |
 | [Troubleshooting](https://github.com/fulviofreitas/eeroctl/wiki/Troubleshooting) | Common issues |
+| [Migration](https://github.com/fulviofreitas/eeroctl/wiki/Migration) | Upgrading to 3.0.0 |
 
 ## 🔗 Dependencies
 
-Built on [eero-api](https://github.com/fulviofreitas/eero-api) for API communication.
+Requires [eero-api](https://github.com/fulviofreitas/eero-api) **8.0.3** (pinned exactly) and Python 3.12+.
 
 ## 📄 License
 

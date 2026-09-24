@@ -9,13 +9,15 @@ Commands:
 import asyncio
 import json
 import sys
+from typing import Optional
 
 import click
 from eero import EeroClient
 from rich.panel import Panel
 
 from ...context import get_cli_context
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...exit_codes import ExitCode
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...utils import run_with_client
 
 # ==================== Routing Subcommand ====================
@@ -62,6 +64,11 @@ def thread_cmd_group(ctx: click.Context) -> None:
 
     Thread is used for smart home devices. Enable/disable
     is under security settings.
+
+    \b
+    Commands:
+      show - Show Thread protocol information
+      set  - Update credential syncing / regenerate credentials
     """
     pass
 
@@ -93,6 +100,85 @@ def thread_show(ctx: click.Context) -> None:
                 )
 
         await run_with_client(get_thread)
+
+    asyncio.run(run_cmd())
+
+
+@thread_cmd_group.command(name="set")
+@click.option(
+    "--credential-syncing/--no-credential-syncing",
+    "credential_syncing",
+    default=None,
+    help="Enable/disable Thread credential syncing",
+)
+@click.option("--regenerate", is_flag=True, help="Regenerate the network's Thread credentials")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+@click.pass_context
+def thread_set(
+    ctx: click.Context,
+    credential_syncing: Optional[bool],
+    regenerate: bool,
+    force: bool,
+) -> None:
+    """Update Thread protocol settings.
+
+    At least one of --credential-syncing/--no-credential-syncing or
+    --regenerate is required.
+    """
+    cli_ctx = get_cli_context(ctx)
+    console = cli_ctx.err_console
+    effective_force = force or cli_ctx.force
+
+    if credential_syncing is None and not regenerate:
+        console.print(
+            "[red]At least one of --credential-syncing/--no-credential-syncing "
+            "or --regenerate is required[/red]"
+        )
+        sys.exit(ExitCode.USAGE_ERROR)
+
+    spec = get_write_spec("network thread set")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=effective_force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.err_console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def set_thread(client: EeroClient) -> None:
+            ok = True
+
+            if credential_syncing is not None:
+                with cli_ctx.status("Updating Thread credential syncing..."):
+                    result = await client.update_thread(
+                        enable_credential_syncing=credential_syncing,
+                        network_id=cli_ctx.network_id,
+                    )
+                meta = result.get("meta", {}) if isinstance(result, dict) else {}
+                ok = ok and (meta.get("code") == 200 or bool(result))
+
+            if regenerate:
+                with cli_ctx.status("Regenerating Thread credentials..."):
+                    result = await client.regenerate_thread_credentials(cli_ctx.network_id)
+                meta = result.get("meta", {}) if isinstance(result, dict) else {}
+                ok = ok and (meta.get("code") == 200 or bool(result))
+
+            if ok:
+                console.print("[bold green]Thread settings updated.[/bold green]")
+            else:
+                console.print("[red]Failed to update Thread settings[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(set_thread)
 
     asyncio.run(run_cmd())
 
@@ -163,14 +249,17 @@ def bundle_export(ctx: click.Context, out: str, force: bool) -> None:
     cli_ctx = get_cli_context(ctx)
     console = cli_ctx.console
 
+    spec = get_write_spec("network support bundle export")
+    cli_ctx.active_write_spec = spec
     try:
-        confirm_or_fail(
-            action="export support bundle",
+        require_write_confirmation(
+            spec,
             target=f"to {out}",
-            risk=OperationRisk.MEDIUM,
-            force=force or cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=force or cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)

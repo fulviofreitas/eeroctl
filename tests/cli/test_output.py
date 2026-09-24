@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import pytest
 from rich.console import Console
 
+from eeroctl.const import EeroNetworkStatus
 from eeroctl.output import (
     CLIENT_TABLE_COLUMNS,
     EERO_TABLE_COLUMNS,
@@ -113,6 +114,7 @@ class TestOutputContext:
         assert ctx.quiet is False
         assert ctx.no_color is False
         assert ctx.network_id is None
+        assert ctx.warnings == []
 
     def test_custom_values(self):
         """Test custom values."""
@@ -210,6 +212,40 @@ class TestOutputRenderer:
         assert result["meta"]["timestamp"] == "2025-01-07T00:00:00Z"
         assert result["meta"]["network_id"] == "net_test"
         assert result["meta"]["warnings"] == ["Test warning"]
+
+    def test_render_json_defaults_warnings_from_context(self):
+        """When meta is omitted, render_json pulls warnings from
+        ctx.warnings (migration plan §3.3: EeroCliContext.renderer wires
+        this to EeroCliContext.sdk_warnings by reference)."""
+        ctx = OutputContext(format=OutputFormat.JSON, warnings=["note: unverified write (dns)"])
+        renderer = OutputRenderer(ctx)
+        output = StringIO()
+        renderer.ctx._console = Console(file=output, force_terminal=False)
+
+        renderer.render_json(data={}, schema="eero.test/v1")
+
+        result = json.loads(output.getvalue())
+        assert result["meta"]["warnings"] == ["note: unverified write (dns)"]
+
+    def test_render_yaml_defaults_warnings_from_context(self):
+        ctx = OutputContext(format=OutputFormat.YAML, warnings=["note: unverified write (dns)"])
+        renderer = OutputRenderer(ctx)
+        output = StringIO()
+        renderer.ctx._console = Console(file=output, force_terminal=False)
+
+        renderer.render_yaml(data={}, schema="eero.test/v1")
+
+        assert "note: unverified write (dns)" in output.getvalue()
+
+    def test_render_sdk_warning_note_goes_to_stderr(self):
+        ctx = OutputContext(format=OutputFormat.TABLE)
+        renderer = OutputRenderer(ctx)
+        output = StringIO()
+        renderer.ctx._err_console = Console(file=output, force_terminal=False)
+
+        renderer.render_sdk_warning_note("note: unverified write (dns); verify with `x`")
+
+        assert "note: unverified write (dns)" in output.getvalue()
 
     def test_render_mutation_result_json(self, json_renderer):
         """Test render_mutation_result in JSON mode."""
@@ -458,15 +494,40 @@ class TestOutputManager:
         result = manager._format_value({"key": "value"})
         assert "..." in result
 
-    def test_format_value_enum_like(self, manager):
-        """Test _format_value handles enum-like strings."""
-        result = manager._format_value("EeroNetworkStatus.ONLINE")
+    def test_format_value_real_enum_is_flattened(self, manager):
+        """Test _format_value flattens a real Enum instance to its lowercase name."""
+        result = manager._format_value(EeroNetworkStatus.ONLINE)
         assert result == "online"
 
     def test_format_value_plain_string(self, manager):
         """Test _format_value passes through plain strings."""
         result = manager._format_value("hello world")
         assert result == "hello world"
+
+    def test_format_value_does_not_truncate_email(self, manager):
+        """A plain string that merely contains a dot (an email) must pass through
+        unchanged -- it is not an Enum instance. Regression test for the
+        security-review finding: 'victim@example.com' -> 'com'.
+        """
+        result = manager._format_value("victim@example.com")
+        assert result == "victim@example.com"
+
+    def test_format_value_does_not_truncate_api_url_path(self, manager):
+        """Regression test: '/2.2/networks/123' must not become '2/networks/123'."""
+        result = manager._format_value("/2.2/networks/123")
+        assert result == "/2.2/networks/123"
+
+    def test_format_value_does_not_truncate_version_string(self, manager):
+        """Regression test: '6.2' must not become '2'."""
+        result = manager._format_value("6.2")
+        assert result == "6.2"
+
+    def test_format_value_enum_like_string_is_not_an_enum(self, manager):
+        """A bare string that merely looks like a stringified enum (not an
+        actual Enum instance) must pass through unchanged.
+        """
+        result = manager._format_value("EeroNetworkStatus.ONLINE")
+        assert result == "EeroNetworkStatus.ONLINE"
 
     def test_get_columns_for_schema_network(self, manager):
         """Test column selection for network schema."""

@@ -8,9 +8,12 @@ Tests cover:
 - profile schedule subcommands
 """
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 from click.testing import CliRunner
 
+from eeroctl.exit_codes import ExitCode
 from eeroctl.main import cli
 
 
@@ -177,6 +180,154 @@ class TestProfileApps:
 
         assert result.exit_code == 0
         assert "Unblock application" in result.output
+
+
+def _mock_client_for_apps(dns_policy_response, block_response=None):
+    """Build an AsyncMock client wired for `profile apps` command tests."""
+    mock_profiles_response = {
+        "meta": {"code": 200},
+        "data": [{"url": "/2.2/networks/net1/profiles/p1", "name": "Kids"}],
+    }
+    mock_client = AsyncMock()
+    mock_client.get_profiles = AsyncMock(return_value=mock_profiles_response)
+    mock_client.get_dns_policy_applications = AsyncMock(return_value=dns_policy_response)
+    mock_client.set_profile_blocked_applications = AsyncMock(
+        return_value=block_response or {"meta": {"code": 200}, "data": {}}
+    )
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    return mock_client
+
+
+class TestProfileAppsBlockedShapeValidation:
+    """Tests for the fail-closed `_blocked_app_ids`/`_extract_dns_policy_applications`
+    validation in `profile apps block`/`unblock` (security review finding, High).
+
+    `set_profile_blocked_applications` REPLACES the full blocked-application
+    list, so a wrong guess about the API's response shape would silently
+    unblock (or block) every other application. These tests pin that the
+    write is never attempted when the shape can't be trusted.
+    """
+
+    @pytest.fixture
+    def runner(self) -> CliRunner:
+        """Create a CLI runner."""
+        return CliRunner()
+
+    def test_bare_string_list_blocks_successfully(self, runner):
+        """A bare-string `applications` list is a recognised shape."""
+        dns_policy_response = {
+            "meta": {"code": 200},
+            "data": {"applications": ["facebook"], "categories_list": []},
+        }
+        mock_client = _mock_client_for_apps(dns_policy_response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.set_profile_blocked_applications.assert_awaited_once()
+        call_args = mock_client.set_profile_blocked_applications.call_args
+        assert sorted(call_args[0][1]) == ["facebook", "tiktok"]
+
+    def test_dict_list_with_blocked_key_blocks_successfully(self, runner):
+        """A dict `applications` list where entries carry `blocked` is recognised."""
+        dns_policy_response = {
+            "meta": {"code": 200},
+            "data": {
+                "applications": [
+                    {"id": "facebook", "name": "Facebook", "blocked": True},
+                    {"id": "tiktok", "name": "TikTok", "blocked": False},
+                ],
+                "categories_list": [],
+            },
+        }
+        mock_client = _mock_client_for_apps(dns_policy_response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.set_profile_blocked_applications.assert_awaited_once()
+        call_args = mock_client.set_profile_blocked_applications.call_args
+        assert sorted(call_args[0][1]) == ["facebook", "tiktok"]
+
+    def test_dict_list_without_any_blocked_key_fails_closed(self, runner):
+        """Dict entries with no `blocked` key anywhere is an unrecognised shape:
+
+        defaulting to "nothing is blocked" would silently unblock every real
+        blocked app on the next write. Must exit 1 and never write.
+        """
+        dns_policy_response = {
+            "meta": {"code": 200},
+            "data": {
+                "applications": [
+                    {"id": "facebook", "name": "Facebook"},
+                    {"id": "tiktok", "name": "TikTok"},
+                ],
+                "categories_list": [],
+            },
+        }
+        mock_client = _mock_client_for_apps(dns_policy_response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok", "--force"])
+
+        assert result.exit_code == 1
+        mock_client.set_profile_blocked_applications.assert_not_awaited()
+
+    def test_missing_applications_key_fails_closed(self, runner):
+        """A `data` envelope with no `applications` key at all must exit 1
+        and never reach the write.
+        """
+        dns_policy_response = {
+            "meta": {"code": 200},
+            "data": {"categories_list": []},
+        }
+        mock_client = _mock_client_for_apps(dns_policy_response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["profile", "apps", "block", "Kids", "tiktok", "--force"])
+
+        assert result.exit_code == 1
+        mock_client.set_profile_blocked_applications.assert_not_awaited()
+
+    def test_unblock_dict_list_without_blocked_key_fails_closed(self, runner):
+        """Same fail-closed rule applies to `apps unblock`."""
+        dns_policy_response = {
+            "meta": {"code": 200},
+            "data": {
+                "applications": [{"id": "facebook", "name": "Facebook"}],
+                "categories_list": [],
+            },
+        }
+        mock_client = _mock_client_for_apps(dns_policy_response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["profile", "apps", "unblock", "Kids", "facebook", "--force"]
+            )
+
+        assert result.exit_code == 1
+        mock_client.set_profile_blocked_applications.assert_not_awaited()
+
+    def test_apps_block_without_force_prompts_for_confirmation(self, runner):
+        """`apps block` is now a registered, confirmed write (security
+        review fold-in): without --force and with no input, it must fail
+        via the confirmation path, not silently proceed."""
+        dns_policy_response = {
+            "meta": {"code": 200},
+            "data": {"applications": ["facebook"], "categories_list": []},
+        }
+        mock_client = _mock_client_for_apps(dns_policy_response)
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(
+                cli, ["--non-interactive", "profile", "apps", "block", "Kids", "tiktok"]
+            )
+
+        assert result.exit_code == ExitCode.SAFETY_RAIL
+        mock_client.set_profile_blocked_applications.assert_not_awaited()
 
 
 class TestProfileSchedule:

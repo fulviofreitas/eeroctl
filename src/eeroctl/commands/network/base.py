@@ -6,6 +6,9 @@ Commands:
 - eero network show: Show network details
 - eero network rename: Rename network
 - eero network premium: Check Eero Plus status
+- eero network password set: Set the network password
+- eero network password clear: Clear the network password
+- eero network reboot: Reboot every eero on the network
 """
 
 import asyncio
@@ -21,7 +24,8 @@ from ...context import ensure_cli_context, get_cli_context
 from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
-from ...safety import OperationRisk, SafetyError, confirm_or_fail
+from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
+from ...sdk_private import reboot_network
 from ...transformers import extract_id_from_url, extract_networks
 from ...transformers.network import extract_network, normalize_network
 from ...utils import run_with_client, set_preferred_network
@@ -39,6 +43,8 @@ def network_group(ctx: click.Context) -> None:
       show      - Show network details
       rename    - Rename network (SSID)
       premium   - Check Eero Plus status
+      password  - Manage the network password
+      reboot    - Reboot every eero on the network
       dns       - DNS settings
       security  - Security settings
       sqm       - SQM/QoS settings
@@ -50,6 +56,21 @@ def network_group(ctx: click.Context) -> None:
       routing   - Routing information
       thread    - Thread protocol
       support   - Support bundle
+      entitlements - Premium entitlements and device capabilities
+      events    - Recent app events
+      scan      - Channel/neighbour scan
+      channels  - Wi-Fi channel utilization
+      permissions - Caller's role and per-capability permissions
+      notifications - Notification settings and history
+      members   - Network members and pending invites
+      wpa3      - Per-band WPA3 mode (read-only in phase A)
+      power-saving - Power-saving schedules (read-only in phase A)
+      subnets   - Subnet configuration and content filters
+      wan       - WAN configuration (multi-static-IP)
+      ouicheck  - OUI check for a specific Eero node
+      transfer  - Transfer statistics (network or one device)
+      usage     - Data usage (closes #46)
+      ddns      - Dynamic DNS
 
     \b
     Examples:
@@ -259,15 +280,18 @@ def network_rename(
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
     console = cli_ctx.console
+    spec = get_write_spec("network rename")
+    cli_ctx.active_write_spec = spec
 
     try:
-        confirm_or_fail(
-            action="rename network",
+        require_write_confirmation(
+            spec,
             target=f"to '{name}'",
-            risk=OperationRisk.MEDIUM,
-            force=cli_ctx.force,
-            non_interactive=cli_ctx.non_interactive,
-            dry_run=cli_ctx.dry_run,
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
         )
     except SafetyError as e:
         cli_ctx.renderer.render_error(e.message)
@@ -351,16 +375,208 @@ def network_premium(ctx: click.Context, output: Optional[str], network_id: Optio
     asyncio.run(run_cmd())
 
 
+@network_group.group(name="password")
+@click.pass_context
+def password_group(ctx: click.Context) -> None:
+    """Manage the network's password.
+
+    \b
+    Commands:
+      set   - Set the network password
+      clear - Clear the network password
+    """
+    pass
+
+
+@password_group.command(name="set")
+@click.option("--password", help="New network password. Omitted, you are prompted (input hidden).")
+@force_option
+@network_option
+@click.pass_context
+def password_set(
+    ctx: click.Context,
+    password: Optional[str],
+    force: Optional[bool],
+    network_id: Optional[str],
+) -> None:
+    """Set the network's password.
+
+    Disconnects every client while the change propagates.
+
+    \b
+    Options:
+      --password TEXT  New network password. Omitted, prompts for it
+                        (input hidden, confirmed) instead.
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    # --non-interactive without --password can never be satisfied (no prompt
+    # will run), so this guard stays first, before any confirmation.
+    if password is None and cli_ctx.non_interactive:
+        console.print("[red]--password is required when --non-interactive is set[/red]")
+        sys.exit(ExitCode.USAGE_ERROR)
+
+    spec = get_write_spec("network password set")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.err_console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    # Only ask for the password once the write is actually going to happen.
+    if password is None:
+        password = click.prompt(
+            "Network password",
+            hide_input=True,
+            confirmation_prompt=True,
+            err=True,
+        )
+
+    async def run_cmd() -> None:
+        async def set_password(client: EeroClient) -> None:
+            with cli_ctx.status("Setting network password..."):
+                result = await client.set_network_password(password, cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print("[bold green]Network password set.[/bold green]")
+            else:
+                console.print("[red]Failed to set network password[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(set_password)
+
+    asyncio.run(run_cmd())
+
+
+@password_group.command(name="clear")
+@force_option
+@network_option
+@click.pass_context
+def password_clear(ctx: click.Context, force: Optional[bool], network_id: Optional[str]) -> None:
+    """Clear the network's password.
+
+    Disconnects every client while the change propagates.
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    spec = get_write_spec("network password clear")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.err_console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def clear_password(client: EeroClient) -> None:
+            with cli_ctx.status("Clearing network password..."):
+                result = await client.clear_network_password(cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") == 200 or result:
+                console.print("[bold green]Network password cleared.[/bold green]")
+            else:
+                console.print("[red]Failed to clear network password[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(clear_password)
+
+    asyncio.run(run_cmd())
+
+
+@network_group.command(name="reboot")
+@force_option
+@network_option
+@click.pass_context
+def network_reboot(ctx: click.Context, force: Optional[bool], network_id: Optional[str]) -> None:
+    """Reboot every eero on the network.
+
+    Takes Wi-Fi and internet down network-wide while the mesh restarts.
+    """
+    cli_ctx = apply_options(ctx, network_id=network_id, force=force)
+    console = cli_ctx.err_console
+
+    spec = get_write_spec("network reboot")
+    cli_ctx.active_write_spec = spec
+    try:
+        require_write_confirmation(
+            spec,
+            target="network",
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.err_console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    async def run_cmd() -> None:
+        async def do_reboot(client: EeroClient) -> None:
+            # No read-first: a reboot has no idempotent state to compare
+            # against (migration plan §4 phase C row 39).
+            with cli_ctx.status("Rebooting network..."):
+                result = await reboot_network(client, cli_ctx.network_id)
+
+            meta = result.get("meta", {}) if isinstance(result, dict) else {}
+            if meta.get("code") in (200, 201) or result:
+                console.print("[bold green]Network reboot initiated.[/bold green]")
+            else:
+                console.print("[red]Failed to reboot network[/red]")
+                sys.exit(ExitCode.GENERIC_ERROR)
+
+        await run_with_client(do_reboot)
+
+    asyncio.run(run_cmd())
+
+
 # Import and register subcommand groups after network_group is defined
 from .advanced import routing_show, support_group, thread_cmd_group  # noqa: E402
 from .backup import backup_group  # noqa: E402
+from .ddns import ddns_group  # noqa: E402
 from .dhcp import dhcp_group  # noqa: E402
 from .dns import dns_group  # noqa: E402
+from .entitlements import entitlements_group  # noqa: E402
+from .events import network_channels, network_events, network_scan  # noqa: E402
 from .forwards import forwards_group  # noqa: E402
 from .guest import guest_group  # noqa: E402
+from .members import members_group  # noqa: E402
+from .notifications import notifications_group  # noqa: E402
+from .ouicheck import network_ouicheck  # noqa: E402
+from .permissions import network_permissions  # noqa: E402
+from .power_saving import power_saving_group  # noqa: E402
 from .security import security_group  # noqa: E402
 from .speedtest import speedtest_group  # noqa: E402
 from .sqm import sqm_group  # noqa: E402
+from .subnets import subnets_group  # noqa: E402
+from .transfer import network_transfer  # noqa: E402
+from .usage import usage_group  # noqa: E402
+from .wan import wan_group  # noqa: E402
+from .wpa3 import wpa3_per_band_group  # noqa: E402
 
 # Register all subcommand groups
 network_group.add_command(dns_group)
@@ -371,6 +587,21 @@ network_group.add_command(backup_group)
 network_group.add_command(speedtest_group)
 network_group.add_command(forwards_group)
 network_group.add_command(dhcp_group)
+network_group.add_command(ddns_group)
 network_group.add_command(routing_show)
 network_group.add_command(thread_cmd_group)
 network_group.add_command(support_group)
+network_group.add_command(entitlements_group)
+network_group.add_command(network_events)
+network_group.add_command(network_scan)
+network_group.add_command(network_channels)
+network_group.add_command(network_permissions)
+network_group.add_command(notifications_group)
+network_group.add_command(members_group)
+network_group.add_command(wpa3_per_band_group)
+network_group.add_command(power_saving_group)
+network_group.add_command(subnets_group)
+network_group.add_command(wan_group)
+network_group.add_command(network_ouicheck)
+network_group.add_command(network_transfer)
+network_group.add_command(usage_group)
