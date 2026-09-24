@@ -5,6 +5,418 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0](https://github.com/fulviofreitas/eeroctl/compare/v2.21.8...v3.0.0) (2026-09-24)
+
+### ⚠ BREAKING CHANGES
+
+* `dns show` structured output (json, yaml, text, list) now emits
+only the DNS configuration rather than the entire network object, and the schema
+identifier moves to eero.network.dns.show/v2. The previous payload included the
+Wi-Fi and guest network passwords in plaintext along with the WAN IP,
+geo-location, node serials and LAN topology. Scripts reading non-DNS fields from
+`dns show` must use `network show` instead.
+* DNS writes now reboot every eero on the network. Commands that
+previously changed nothing and exited 0 now cause a brief network-wide outage
+beginning a few minutes after the command returns. DNS writes require typing
+REBOOT to confirm; --force bypasses the prompt and additionally forces a rewrite
+when the configuration already matches. Repeat invocations without --force are
+skipped instead of rewriting. The mode argument is no longer a fixed choice: it
+accepts auto, custom, or any provider name the network's DNS catalogue serves
+(run 'eero network dns providers'), resolved by eeroctl rather than the SDK.
+* eero auth status no longer reports session_expiry; the structured schema is eero.auth.status/v2
+
+* fix(cli): back up a pre-v8 credential file before the SDK migrates it
+
+* feat(deps)!: update eero-api to 8.0.1
+* network sqm set is removed (the API has no bandwidth fields); network guest set --password now calls the dedicated guest-password endpoint; profile apps block/unblock replace the
+whole blocked-application list; profile schedule show returns a list of schedules; speedtest run no longer prints results (use speedtest show).
+
+* fix(cli): map the v8 exception hierarchy to exit codes
+* unauthenticated commands exit 3 everywhere (previously 1 via run_with_client); new exit codes 13 (client blocked) and 14 (network error)
+
+* feat(safety): classify writes by verification status and reboot scope
+* network security wpa3/band-steering/upnp/ipv6 and network sqm enable/disable now require the REBOOT confirmation phrase
+
+* feat(cli): surface the SDK's unverified-write warning through the renderer
+
+* fix(cli): keep write-confirmation prompts off stdout and name the read command in skip messages
+
+Several require_write_confirmation call sites passed console=cli_ctx.console
+(stdout) instead of the stderr console, so the mesh-reboot warning and the
+unverified-write note leaked into --output json stdout on device, eero and
+network speedtest commands. write_if_changed's "already configured" message
+also gets the read_command hint now, matching the "verify with" message on
+the write-issued path.
+
+* test(cli): cover the skip-unchanged path and stderr warnings for registry-backed writes
+
+* test(cli): reject malicious ids and foreign-network links before any request
+
+* fix(cli): pass id, path and URL inputs to the SDK unchanged
+
+* test(cli): cover the v8 call shapes for backup, guest, speedtest, led and nightlight
+
+* feat(cli): expose send_legacy_cookie, accept_language and get_retries
+
+Adds the three remaining EeroClient constructor options from the v8
+migration plan (§3.4) as global flags/config keys, plumbed through
+build_client(cli_ctx). main.py now sets cli(auto_envvar_prefix="EEROCTL")
+(both via context_settings, for CliRunner, and explicitly in main(), for
+the real entry point) so every global option gets a free EEROCTL_<NAME>
+env var with no per-option code.
+
+Two env vars need explicit handling: EEROCTL_CONFIG_DIR overrides
+utils.get_config_dir() (expanduser + mkdir, same as today), and
+EEROCTL_SESSION_TOKEN puts eeroctl in an ephemeral mode -- build_client
+forces cookie_file=None/use_keyring=False (SDK MemoryStorage, never
+touching disk or keyring), and the new prepare_client() helper calls the
+async EeroClient.set_session_token() right after __aenter__ (both
+with_client and run_with_client call it). auth login/logout/clear refuse
+with exit 2 under this mode; auth status reports auth_method: "env" and
+skips the keyring probe. The token is never printed, logged, or included
+in any output.
+
+--debug now only raises the `eero` and `eeroctl` loggers to DEBUG (each
+with their own stderr handler); the root logger stays at WARNING so
+aiohttp never logs the raw X-User-Token header (R11).
+
+* fix(cli): remove the pre-v8 credential backup on auth clear
+
+`auth clear` promised to remove "all stored credentials" but never
+deleted the plaintext pre-v8 backup written by backup_legacy_cookie_file,
+leaving a readable copy of the token behind indefinitely (and, in keyring
+mode, re-creating the exact plaintext copy the SDK's own migration
+deletes). auth clear and auth logout now unlink
+<cookie_file>.pre-v8.bak if present, reporting "removed pre-v8 credential
+backup" on stderr; auth status surfaces its presence via
+storage.cookie_file.legacy_backup_present (table row "Legacy Backup") so
+it is visible even when the CLI doesn't remove it.
+
+Also: backup_legacy_cookie_file now unlinks a partially written backup
+file on a write failure, so a truncated file never masquerades as a good
+backup.
+
+* fix(cli): reject --offline together with --check in auth status
+
+--offline skips the live account probe entirely, so a session_valid of
+None (unverified) previously satisfied --check's "ok" condition
+unconditionally -- `auth status --offline --check` exited 0 for any
+locally-stored token, including one that had been revoked server-side.
+The two flags are now mutually exclusive (click.UsageError, exit 2,
+before any client is built), and both --help strings say so.
+
+* fix(cli): escape API-supplied text in rendered error messages
+
+* test(cli): add shared mock_client and mock_client_raising fixtures
+
+* fix(cli): send write_if_changed messages to stderr
+
+write_if_changed(console=console) at seven call sites (network/sqm.py,
+network/security.py, network/guest.py, network/backup.py, device.py x2,
+eero/led.py) -- plus profile.py's pause/unpause, found during the same
+sweep -- passed cli_ctx.console (stdout) instead of stderr, so "Write
+accepted. Verify with ..." and "Already configured ..." landed on stdout
+and broke --output json | jq. All eight now pass cli_ctx.err_console.
+
+Also narrows network/backup.py's two except Exception blocks in the
+read()/write() closures to except EeroException with the existing
+isinstance(e, EeroPremiumRequiredException) check, restoring this file's
+parity with commit 6's exception-handling style.
+
+* test(cli): make the write-registry guard see getattr dispatch
+
+The source-walking completeness test only matches literal
+`await client.<verb>(`, so the five security toggles (wpa3, band-steering,
+upnp, ipv6, thread) dispatched via `method = getattr(client, api_method);
+await method(...)` in network/security.py were invisible to it -- the same
+shape of blind spot that let a mypy string-dispatch issue ship in the
+eero-api 7->8 migration.
+
+Adds TestSecurityToggleDispatchCoverage: extracts the (setting_name,
+sdk_method) pairs from the literal _make_security_toggle(...) registration
+calls (the one place the toggle inventory is textual, grounding the test in
+source rather than a hand-maintained list), asserts every extracted toggle
+has both enable/disable WriteSpecs, pins the toggle count, and proves the
+enforcement mechanism itself: an unregistered toggle raises KeyError from
+get_write_spec before any confirmation prompt or SDK call, so it can never
+silently reach an unconfirmed, unregistered write.
+
+* fix(cli): keep names with ? and # resolvable while forwarding paths and URLs
+
+* feat(options): shared time-window option group
+
+Add time_window_options(), a decorator factory adding --start/--end
+(ISO-8601 UTC, Z-suffixed, format-validated by a click.ParamType so a
+bad value is a Click usage error -- exit 2 -- before any request),
+--cadence (click.Choice, required/optional/choices all configurable),
+and an optional --timezone (IANA name, validated via zoneinfo.ZoneInfo)
+to any command.
+
+Also add resolve_time_window(start, end, cadence), a helper that fills
+in sensible defaults when --start/--end are omitted (end = now UTC;
+start = end - 24h for hourly, end - 7d otherwise) and raises
+click.UsageError (exit 2) on an inverted window, so phase-A command
+bodies that wire this up can resolve the window in one line.
+
+This lands the shared group described in the eero-api 8.0.1 migration
+plan (S4, phase A) ahead of the per-family read commits that will call
+it (network channels, activity *, network usage *); no commands are
+rewired here.
+
+* feat(network): add entitlements and premium read commands
+
+Commands:
+- network entitlements show          -- get_entitlement_features (client.py:2292)
+- network entitlements upsell        -- get_upsell_features (client.py:2300)
+- network entitlements capabilities  -- get_model_capabilities (client.py:2305)
+- account premium                    -- get_premium_customer (client.py:2310, no network_id)
+
+Adds a new top-level `account` group (commands/account.py, registered in
+main.py) for the one eero-api 8.0.1 facade method that takes no network_id at
+all. Rewires troubleshoot doctor's premium check onto get_entitlement_features,
+replacing the dead is_premium reference the plan calls out. Response shapes are
+undocumented, so all four commands render through a new shared generic
+key/value renderer (formatting/generic.py) with a raw data passthrough for
+json/yaml, per the phase-A conventions; dedicated tables land later once a
+live sample is captured.
+
+* feat(network): add events, scan and channel-utilization reads
+
+Commands:
+- network events    -- get_app_events (client.py:2316), --page-size/--cursor,
+  next-page cursor surfaced in meta.next_cursor for json/yaml
+- network scan      -- get_network_scan (client.py:2332)
+- network channels  -- get_channel_utilization (client.py:2339), --start/--end
+  (required), --band (choices from eero.api.events.CHANNEL_UTILIZATION_BANDS),
+  --eero, --granularity, --busy-threshold
+
+network channels uses bare --start/--end rather than time_window_options:
+get_channel_utilization has no cadence parameter, unlike the insights/
+data-usage families that decorator targets. Extends OutputMeta with an
+`extra` dict so the generic renderer can surface a pagination cursor in the
+json/yaml envelope's meta object without a bespoke table.
+
+* feat(network): add permissions read
+
+Command:
+- network permissions -- get_permissions (client.py:2369)
+
+Plain, live-verified GET; also usable as a pre-flight hint for 403s from
+other commands. Unlike most phase-A families, the SDK documents this shape
+(eero/api/permissions.py:38-41: "Returns permissions (a per-capability
+mapping) and role"), so table output gets a small dedicated role +
+capability-map view; json/yaml/text/list still pass data through unchanged
+via the generic renderer.
+
+* feat(network): add notification reads
+
+Commands:
+- network notifications show    -- get_notification_settings (client.py:2378)
+- network notifications unread  -- has_unread_notifications (client.py:2399)
+- network notifications history -- get_notification_history (client.py:2413), --cursor
+
+show and unread have SDK-documented shapes (eero/api/notifications.py:41-43,
+114-115: one boolean per event key; data.has_unread), so table output gets a
+small dedicated view for each. history's shape is undocumented and reuses the
+same best-effort pagination-cursor heuristic as network events, surfaced in
+meta.next_cursor for json/yaml via render_generic_with_cursor.
+
+* feat(network): add dns policy read
+
+Command:
+- network dns policy show -- get_advanced_content_filter (client.py:2428),
+  premium, data.allowed_list/blocked_list
+
+Adds a new `policy` subgroup under the existing `network dns` group,
+appended at the end of dns.py to avoid touching the DNS write commands
+(confirmation flow there is being rewired concurrently). Only the top-level
+key names are documented, so this goes through the generic key/value
+renderer for every output format.
+
+* feat(network): add members read commands
+
+Commands:
+- network members list    -- get_members (client.py:2572, verified,
+  data.members)
+- network members invites -- get_invites (client.py:2579, unverified read;
+  403 seen live)
+
+`invites` maps EeroAccessDeniedException -- and the pre-commit-6 403
+EeroAPIException fallback -- to a friendly "not permitted for this account"
+message and exit 4, instead of the generic "Permission denied" text, since
+some accounts see a 403 here even though they can list members.
+
+Adds SDK_CALL_SITES rows for get_members/get_invites per the new standing
+rule (test-audit); the eleven batch-1 methods plus commit 15's
+get_advanced_content_filter are deferred to the catch-up commit after
+commit 18. Reuses test_events.py's _mock_client/_mock_client_raising
+helpers instead of redefining them.
+
+* feat(network): add dhcp, wpa3, fast-transition and extended security reads
+
+Commands:
+- network dhcp show -- data.dhcp/lease/connection/ip_settings/wan_type read
+  straight from get_network (client.py:487); dhcp reservations/leases unchanged
+- network wpa3 show -- get_wpa3_per_band (client.py:2736), a new top-level
+  group distinct from the existing network security wpa3 enable/disable toggle
+- network security fast-transition show -- get_fast_transition (client.py:2770),
+  new subgroup of network security
+- network security show (extend) -- adds mlo_mode/passpoint/proxied_nodes/ddns,
+  read from the get_network envelope alongside the existing get_security_settings
+  fields (no dedicated GETs exist for these)
+
+security.py hunks are limited to the show view and the new fast-transition
+subgroup; the enable/disable toggle factory is untouched (commit 7 is
+rewriting its confirmation calls concurrently). dns.py is untouched by this
+commit. Adds SDK_CALL_SITES rows for get_wpa3_per_band/get_fast_transition and
+extends the existing get_network row's citations for the two new call sites.
+
+* feat(network): add power-saving schedule reads
+
+Command:
+- network power-saving schedules list -- get_power_saving_schedules
+  (client.py:2830, verified)
+
+Creates the power-saving group (schedules subgroup); phase C adds
+create/update/delete and the set_power_saving toggle. Response shape is
+undocumented beyond the envelope, so this goes through the generic key/value
+renderer for every format. Adds an SDK_CALL_SITES row for
+get_power_saving_schedules.
+
+* test(cli): bind the phase-A batch 1 read call sites
+
+Adds the twelve SDK_CALL_SITES rows batch 1 (commits 11-14) and commit 15
+skipped: get_entitlement_features, get_upsell_features,
+get_model_capabilities, get_premium_customer, get_app_events,
+get_network_scan, get_channel_utilization, get_permissions,
+get_notification_settings, has_unread_notifications,
+get_notification_history, get_advanced_content_filter. Catch-up per the
+test-audit standing rule; no production code changes, no rewriting of the
+batch-1/commit-15 commits themselves.
+
+* fix(output): stop truncating dotted string values in table and text output
+
+OutputManager._format_value() treated any string containing exactly one dot
+as a stringified enum ("EeroNetworkStatus.ONLINE" -> "online") and truncated
+it to the text after the last dot. That heuristic fired on any plain string
+with a single dot: an email (victim@example.com -> com), an API path
+(/2.2/networks/123 -> 2/networks/123), a version string (6.2 -> 2).
+
+Restrict the flattening to real Enum instances (isinstance(value, Enum) ->
+value.name.lower()), which also covers every eeroctl.const enum
+(EeroDeviceType/EeroNetworkStatus/EeroDeviceStatus, all `str, Enum`
+subclasses). Plain strings, including ones that merely look like a
+stringified enum, now always pass through unchanged.
+
+Security-review finding (batch 1/2 review); Medium severity.
+
+* fix(output): redact credential and contact keys in generic table and text rendering
+
+formatting/generic.py's render_generic() prints every key of an undocumented
+API payload verbatim in table/list/text output -- there is no dedicated view
+filtering the fields first (that's the whole point of the generic renderer).
+A security review found account premium/network events echoing a user token
+and an email address that way.
+
+table/list/text now recursively redact any value whose key (case-insensitive,
+any nesting level) matches the new const.GENERIC_RENDER_SENSITIVE_KEY_PATTERNS
+(token/password/secret/cookie/authorization/api_key/apikey/email/phone/sms) to
+"<redacted>", mirroring a subset of the SDK's own eero.logging.
+_ZERO_VISIBILITY_PATTERNS (/tmp/eero-api-v8.0.1/src/eero/logging.py:55-75)
+plus the contact-info keys eeroctl's generic renderer specifically needs.
+serial/mac/url stay visible -- they are the CLI's normal admin identifiers,
+already shown by dedicated (non-generic) views. json/yaml keep the raw data
+passthrough unchanged: that format is the user's explicit opt-in to the full
+payload.
+
+Security-review finding (batch 1/2 review); Medium severity.
+
+* feat(network): add backup access-point reads
+
+Commands:
+- network backup access-points list     -- list_backup_access_points
+  (client.py:2910)
+- network backup access-points discover -- discover_backup_ssids
+  (client.py:2974, GET, verified)
+
+New access-points subgroup appended to the existing backup group; backup
+show/status (already rewired in commit 5 onto get_backup_internet/
+get_cellular_backup_*) are untouched. add/update/delete/rearrange and the
+start-discovery/connectivity-check writes are phase C. Response shapes are
+undocumented beyond the envelope (no live sample captured yet, §5.3), so
+both commands render via the generic renderer.
+
+* fix(output): close the remaining generic-redaction gaps
+
+Three related gaps found in the batch-2 security review (b5446ef BLOCK):
+
+1. const.GENERIC_RENDER_SENSITIVE_KEY_PATTERNS was a hand-maintained literal
+   tuple that missed session (-> session_id, the SDK's own bearer-token
+   field), credential, passwd, bearer, private, auth. Derive it from the
+   SDK's own eero.logging._ZERO_VISIBILITY_PATTERNS
+   (/tmp/eero-api-v8.0.1/src/eero/logging.py:55-75) instead, minus the
+   documented serial/mac/url exclusions, plus the email/phone/sms contact-info
+   keys added on top. A literal fallback (mirroring the same 8.0.1 patterns)
+   covers a future SDK rename of the private constant; a parity test
+   (tests/cli/test_const.py) asserts every SDK pattern except the three
+   exclusions is present.
+
+2. formatting/members.py's print_members() gated on
+   EeroCliContext.is_structured_output(), which is True for json/yaml/text
+   alike, so `--output text` rendered the raw, unredacted data.members
+   payload (email, phone, an unredacted invite_token/session_id). Only
+   json/yaml may see the raw payload now; table/list/text go through the
+   redacting path. Also gives `members list` a dedicated table view
+   (name/email/role/status) -- email shown deliberately, since the command's
+   whole purpose is showing who has access.
+
+3. security.py's `security show` extras (mlo_mode/passpoint/proxied_nodes/
+   ddns) were rendered with str(...) outside render_generic in both the
+   table and list paths, so a planted ddns credential wasn't redacted.
+   Both paths now pass extras through formatting.generic.redact_sensitive
+   first; json is left as the deliberate raw-payload opt-in.
+
+SDK_CALL_SITES untouched.
+
+* feat(network): add subnet reads
+
+Commands:
+- network subnets show                    -- get_subnets_config (client.py:2991)
+- network subnets filters show <subnet-id> -- get_subnet_content_filters
+  (client.py:3023)
+
+The subnet id for `filters show` names a nested sub-resource and is passed
+to the SDK verbatim (no client-side link parsing needed; the SDK validates
+it). Response shapes are undocumented beyond the envelope (no live sample
+captured yet, §5.3), so both commands render via the generic renderer.
+set_subnets_config/delete_subnet/set_subnet_content_filters are phase C.
+
+* feat(network): add wan multistaticip read
+
+Command:
+- network wan multistaticip show -- get_multistaticip (client.py:3032)
+
+Q7 (decided 2026-09-21): absent-feature reads exit 0 with a "not configured"
+line and data: null in structured output; exit 5 stays reserved for a wrong
+id. The SDK documents (eero/api/wan.py:49-51) that a network without the
+multi-static-IP feature returns HTTP 404 with error code
+error.network.multistaticip_not_found; that specific EeroNotFoundException
+.error_code is treated as "not configured", any other EeroNotFoundException
+(a wrong network id) propagates to the standard exit-5 mapping. Response
+shape is otherwise undocumented, so the configured case renders via the
+generic renderer.
+
+* feat(eero): add connections, support, labels and ouicheck reads
+
+Commands:
+- eero connections <id>   -- get_connections (client.py:661)
+- eero support <id>       -- get_eero_support (client.py:3114, takes a bare
+  serial; 404 on some nodes -> "unavailable", exit 0 per Q7)
+
+### ✨ Features
+
+* revamp eeroctl for eero-api 8.0.3 ([#121](https://github.com/fulviofreitas/eeroctl/issues/121)) ([0a05304](https://github.com/fulviofreitas/eeroctl/commit/0a05304a98fd58e671ba1c6f070ef3b3f2e1d152)), closes [#119](https://github.com/fulviofreitas/eeroctl/issues/119) [#119](https://github.com/fulviofreitas/eeroctl/issues/119)
+
 ## [2.21.8](https://github.com/fulviofreitas/eeroctl/compare/v2.21.7...v2.21.8) (2026-08-05)
 
 ### 🐛 Bug Fixes
