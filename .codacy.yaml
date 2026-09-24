@@ -1,6 +1,12 @@
 ---
 # Codacy static-analysis configuration for eeroctl.
-# See CODACY.md for the rationale behind these exclusions.
+
+engines:
+  # pyright can't resolve the eero SDK here (dependencies are never
+  # installed); bandit and mccabe are covered by the standalone Bandit
+  # engine and by ruff's C901 gate in CI.
+  prospector:
+    enabled: false
 
 exclude_paths:
   - "tests/**"
