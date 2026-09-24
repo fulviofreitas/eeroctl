@@ -1,6 +1,6 @@
 # 🚚 Migrating to eeroctl 3.0.0
 
-eeroctl 3.0.0 moves from eero-api 6.0.0 to **eero-api 8.0.1**. The SDK changed how it
+eeroctl 3.0.0 moves from eero-api 6.0.0 to **eero-api 8.0.3**. The SDK changed how it
 authenticates, how it stores credentials, which methods exist, and how errors are
 classified. Most of that is invisible day to day; this page lists everything that is
 not.
@@ -429,7 +429,7 @@ If you already deleted the backup, `eero auth login` is the only path.
 
 ## Unverified commands
 
-Every write below is marked *unverified* by eero-api 8.0.1: the SDK sends the request
+Every write below is marked *unverified* by eero-api 8.0.3: the SDK sends the request
 the API documents, but nobody has confirmed the side effect against a live network.
 eeroctl prints the unverified line before the prompt, prints the `note:` when the
 request goes out, and names the read command to check the result with. Tiers:

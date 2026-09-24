@@ -1,6 +1,6 @@
 # 📋 CLI Reference
 
-Complete command reference for the Eero CLI (3.0.0, eero-api 8.0.1).
+Complete command reference for the Eero CLI (3.0.0, eero-api 8.0.3).
 
 ---
 

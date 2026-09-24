@@ -88,7 +88,7 @@ Full documentation lives in the **[Wiki](https://github.com/fulviofreitas/eeroct
 
 ## 🔗 Dependencies
 
-Requires [eero-api](https://github.com/fulviofreitas/eero-api) **8.0.1** (pinned exactly) and Python 3.12+.
+Requires [eero-api](https://github.com/fulviofreitas/eero-api) **8.0.3** (pinned exactly) and Python 3.12+.
 
 ## 📄 License
 

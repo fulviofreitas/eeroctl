@@ -77,6 +77,14 @@ is running. Either start one, or switch to file storage:
 eero auth login --no-keyring
 ```
 
+As of eero-api 8.0.3, a plain `eero auth login` on a machine with no keyring backend
+at all falls back to file storage automatically: the SDK verifies the keyring write
+with a read-back and only skips the file fallback when that verification succeeds.
+Earlier SDK versions could report `Login successful!` while a non-functional keyring
+backend silently discarded the session, leaving every following command
+unauthenticated with no error at login time. `--no-keyring` remains the more explicit
+choice on a system you already know has no keyring support.
+
 ---
 
 ## Permission and Feature Errors

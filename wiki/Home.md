@@ -13,7 +13,7 @@ Welcome to the Eero CLI documentation! This wiki provides comprehensive guides f
 | **[Migration](Migration)** | Upgrading to 3.0.0: removed/renamed commands, exit codes, credentials, rollback |
 | **[Testing Checklist](Testing-Checklist)** | Manual verification scenarios |
 
-> **Upgrading from 2.x?** 3.0.0 requires eero-api 8.0.1 and changes exit codes,
+> **Upgrading from 2.x?** 3.0.0 requires eero-api 8.0.3 and changes exit codes,
 > `auth status` output, environment-variable names and where the session token is
 > stored. Read [Migration](Migration) first.
 
@@ -75,7 +75,7 @@ eero network list
 
 ## 📦 Dependencies
 
-This CLI **requires [eero-api](https://github.com/fulviofreitas/eero-api) 8.0.1** (pinned exactly) for API communication with Eero networks. Python 3.12 or newer.
+This CLI **requires [eero-api](https://github.com/fulviofreitas/eero-api) 8.0.3** (pinned exactly) for API communication with Eero networks. Python 3.12 or newer.
 
 ---
 
