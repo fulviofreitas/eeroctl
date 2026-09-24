@@ -408,11 +408,11 @@ class TestMainFunction:
         assert hasattr(main_module.cli, "commands")
 
     def test_main_invokes_cli_with_auto_envvar_prefix(self):
-        """main() explicitly passes auto_envvar_prefix="EEROCTL" to cli()."""
+        """main() explicitly passes auto_envvar_prefix="EEROCTL" to cli.main()."""
         with patch("eeroctl.main.cli") as mock_cli:
             main()
 
-        mock_cli.assert_called_once_with(auto_envvar_prefix="EEROCTL")
+        mock_cli.main.assert_called_once_with(auto_envvar_prefix="EEROCTL")
 
 
 class TestGlobalEnvVars:

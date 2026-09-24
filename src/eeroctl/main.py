@@ -356,7 +356,7 @@ def main():
     passing it here as well keeps the real entry point correct even if that
     ever drifts.
     """
-    cli(auto_envvar_prefix="EEROCTL")
+    cli.main(auto_envvar_prefix="EEROCTL")
 
 
 if __name__ == "__main__":

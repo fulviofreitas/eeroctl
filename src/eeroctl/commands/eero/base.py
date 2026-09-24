@@ -7,6 +7,7 @@ Commands:
 """
 
 import asyncio
+import importlib
 import sys
 from typing import Any, Dict, Literal, Optional, Tuple
 
@@ -553,8 +554,9 @@ def port_action_cmd(
     asyncio.run(run_cmd())
 
 
-# Import and register subcommand groups after eero_group is defined
-from . import connections  # noqa: E402,F401  (registers connections/support via decorators)
+# Import and register subcommand groups after eero_group is defined.
+# connections/support register themselves on eero_group via decorators.
+importlib.import_module(".connections", __package__)
 from .led import led_group  # noqa: E402
 from .nightlight import nightlight_group  # noqa: E402
 from .pppoe import pppoe_group  # noqa: E402
