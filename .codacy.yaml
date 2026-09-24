@@ -1,12 +1,6 @@
 ---
 # Codacy static-analysis configuration for eeroctl.
-
-engines:
-  # pyright can't resolve the eero SDK here (dependencies are never
-  # installed); bandit and mccabe are covered by the standalone Bandit
-  # engine and by ruff's C901 gate in CI.
-  prospector:
-    enabled: false
+# Prospector's own scope is set in .prospector.yaml.
 
 exclude_paths:
   - "tests/**"

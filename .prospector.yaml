@@ -1,0 +1,34 @@
+---
+# Prospector profile for Codacy's Prospector engine (enforced by the
+# organization coding standard, so it cannot be turned off per repo).
+# pyright cannot resolve the eero SDK here; bandit duplicates the
+# standalone Bandit engine; the remaining tools duplicate ruff in CI.
+
+strictness: none
+
+ignore-paths:
+  - tests
+
+pyright:
+  run: false
+mypy:
+  run: false
+bandit:
+  run: false
+pylint:
+  run: false
+pyflakes:
+  run: false
+pycodestyle:
+  run: false
+pydocstyle:
+  run: false
+dodgy:
+  run: false
+profile-validator:
+  run: false
+
+mccabe:
+  run: true
+  options:
+    max-complexity: 15
