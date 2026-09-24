@@ -18,8 +18,8 @@ from rich.console import Console
 from .context import EeroCliContext
 from .exit_codes import ExitCode
 
-# Create console for rich output
-console = Console()
+# Only ever prints error text, which belongs on stderr (3.0.0 output contract).
+err_console = Console(stderr=True)
 
 logger = logging.getLogger("eeroctl")
 
@@ -318,8 +318,8 @@ def with_client(func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
                     await prepare_client(client)
                     return await func(*args, client=client, **kwargs)
             except EeroAuthenticationException:
-                console.print("[bold red]Not authenticated[/bold red]")
-                console.print("Please login first: [bold]eero auth login[/bold]")
+                err_console.print("[bold red]Not authenticated[/bold red]")
+                err_console.print("Please login first: [bold]eero auth login[/bold]")
                 sys.exit(3)  # ExitCode.AUTH_REQUIRED
             except EeroException as e:
                 # A malformed EEROCTL_SESSION_TOKEN surfaces here from
@@ -334,7 +334,7 @@ def with_client(func: Callable[..., Awaitable[T]]) -> Callable[..., T]:
                 # docstring for why a bare catch would be wrong here too.
                 from .errors import handle_cli_error
 
-                sys.exit(handle_cli_error(e, console))
+                sys.exit(handle_cli_error(e, err_console))
 
         return asyncio.run(run())
 
@@ -452,7 +452,7 @@ def ensure_config() -> dict:
         with open(config_file, "w") as f:
             json.dump(config, f, indent=2)
     except IOError as e:
-        console.print(f"[bold red]Error creating config: {e}[/bold red]")
+        err_console.print(f"[bold red]Error creating config: {e}[/bold red]")
 
     return config
 
@@ -482,7 +482,7 @@ def _save_config(config: dict) -> None:
         with open(config_file, "w") as f:
             json.dump(config, f, indent=2)
     except IOError as e:
-        console.print(f"[bold red]Error saving config: {e}[/bold red]")
+        err_console.print(f"[bold red]Error saving config: {e}[/bold red]")
 
 
 # ==================== Preferred Network ====================
@@ -640,17 +640,17 @@ async def run_with_client(func, cli_ctx: Optional[EeroCliContext] = None):
         async with build_client(cli_ctx) as client:
             await prepare_client(client)
             await func(client)
-    except EeroAuthenticationException:
-        console.print("[bold red]Not authenticated[/bold red]")
-        console.print("Please login first: [bold]eero auth login[/bold]")
-        raise SystemExit(ExitCode.AUTH_REQUIRED)
+    except EeroAuthenticationException as exc:
+        err_console.print("[bold red]Not authenticated[/bold red]")
+        err_console.print("Please login first: [bold]eero auth login[/bold]")
+        raise SystemExit(ExitCode.AUTH_REQUIRED) from exc
     except EeroException as e:
         # Deliberately not `except Exception`: a bare catch would swallow the
         # SystemExit that commands raise via sys.exit() inside the coroutine,
         # and would mask genuine bugs as tidy CLI errors.
         from .errors import handle_cli_error
 
-        raise SystemExit(handle_cli_error(e, console))
+        raise SystemExit(handle_cli_error(e, err_console)) from e
 
 
 def _write_accepted(result: Any) -> bool:

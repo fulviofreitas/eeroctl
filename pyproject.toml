@@ -80,7 +80,6 @@ target-version = "py312"
 select = ["E", "F", "B", "W", "I"]
 ignore = [
     "E501",  # Line too long - handled by black
-    "B904",  # raise-without-from-inside-except - existing code pattern
 ]
 
 [tool.pytest.ini_options]

@@ -29,7 +29,7 @@ from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, safe_get
-from ...utils import console, run_with_client
+from ...utils import err_console, run_with_client
 
 DNS_PROVIDERS_SCHEMA = "eero.network.dns.providers/v1"
 """Schema identifier for ``dns providers`` structured output."""
@@ -110,9 +110,9 @@ def _split_servers(values: Sequence[str]) -> Tuple[List[str], List[str]]:
 
 def _fail_usage(message: str, hint: Optional[str] = None) -> NoReturn:
     """Report invalid input and exit with the usage error code."""
-    console.print(f"[bold red]Error:[/bold red] {message}")
+    err_console.print(f"[bold red]Error:[/bold red] {message}")
     if hint:
-        console.print(f"[dim]Hint: {hint}[/dim]")
+        err_console.print(f"[dim]Hint: {hint}[/dim]")
     sys.exit(ExitCode.USAGE_ERROR)
 
 
@@ -151,7 +151,7 @@ def _resolve_provider(name: str, view: Dict[str, Any]) -> Tuple[List[str], List[
 
     fallback = FALLBACK_PROVIDERS.get(name.strip().lower())
     if fallback is not None:
-        console.print(
+        err_console.print(
             "[yellow]Warning:[/yellow] the network served no DNS provider catalogue; "
             f"using eeroctl's built-in addresses for {name}."
         )
