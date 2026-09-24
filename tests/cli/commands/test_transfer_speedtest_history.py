@@ -231,9 +231,8 @@ class TestExtractSpeedTestHelpers:
     """Unit tests for the shared speedtest transformer accessors."""
 
     def test_extract_speed_test_history_tolerates_bare_list(self):
-        assert extract_speed_test_history(SPEED_TESTS_LIST_RESPONSE) == (
-            SPEED_TESTS_LIST_RESPONSE["data"]
-        )
+        expected = SPEED_TESTS_LIST_RESPONSE["data"]
+        assert extract_speed_test_history(SPEED_TESTS_LIST_RESPONSE) == expected
 
     def test_extract_speed_test_history_tolerates_single_dict(self):
         assert extract_speed_test_history(SPEED_TESTS_SINGLE_RESPONSE) == [SPEED_TEST_ENTRY]
