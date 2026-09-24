@@ -5,6 +5,7 @@ import functools
 import json
 import logging
 import os
+import stat
 import sys
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional, TypeVar
@@ -171,7 +172,7 @@ def backup_legacy_cookie_file(cookie_file: Path) -> Optional[Path]:
         return None
 
     # Log the path only -- never the token, which the raw content may carry.
-    logger.info("Backed up pre-v8 credential file to %s", backup_path)
+    logger.info("Wrote the pre-v8 backup file %s", backup_path)
     return backup_path
 
 
@@ -373,9 +374,9 @@ def get_config_dir() -> Path:
     # directory that already existed with looser permissions is tightened
     # on every run. Never fatal: an unowned or read-only parent must not
     # block the CLI from working.
-    config_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+    config_dir.mkdir(mode=stat.S_IRWXU, parents=True, exist_ok=True)
     try:
-        os.chmod(config_dir, 0o700)
+        os.chmod(config_dir, stat.S_IRWXU)
     except OSError:
         pass
 

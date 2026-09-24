@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 # EEROCTL_SESSION_TOKEN fully owns the session for the process; there is
 # nothing on disk or in the keyring to log in/out of or clear.
-_SESSION_TOKEN_REFUSAL = (
+_SESSION_FROM_ENV_REFUSAL = (
     "session comes from EEROCTL_SESSION_TOKEN; unset it to manage stored credentials"
 )
 
@@ -54,7 +54,7 @@ def _refuse_if_session_token_managed(cli_ctx: EeroCliContext) -> bool:
     """
     if get_session_token_override() is None:
         return False
-    cli_ctx.renderer.render_error(_SESSION_TOKEN_REFUSAL)
+    cli_ctx.renderer.render_error(_SESSION_FROM_ENV_REFUSAL)
     return True
 
 
@@ -72,7 +72,7 @@ def _remove_legacy_backup_if_present(cli_ctx: EeroCliContext) -> None:
             backup_path.unlink()
             cli_ctx.err_console.print("removed pre-v8 credential backup")
     except OSError as ex:
-        logger.debug("Failed to remove pre-v8 credential backup: %s", ex)
+        logger.debug("Could not remove the pre-v8 backup file: %s", ex)
 
 
 class _UserData(TypedDict):

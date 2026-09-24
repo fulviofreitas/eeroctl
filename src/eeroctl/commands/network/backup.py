@@ -43,6 +43,9 @@ from ...transformers.backup_access_points import (
 )
 from ...utils import run_with_client, write_if_changed
 
+# `--password` with no value: prompt for the secret instead of reading argv.
+PROMPT_SENTINEL = "PROMPT"
+
 
 @click.group(name="backup")
 @click.pass_context
@@ -464,13 +467,13 @@ def backup_access_points_add(
 @click.option(
     "--password",
     is_flag=False,
-    flag_value="PROMPT",
+    flag_value=PROMPT_SENTINEL,
     help=(
         "New password. Omitted, the password is left unchanged. Passed with no "
         "value, prompts for it (input hidden, confirmed) instead of taking it "
-        "from argv. The literal value PROMPT is reserved for this sentinel: "
-        "'--password PROMPT' prompts rather than setting that string as the "
-        "password."
+        f"from argv. The literal value {PROMPT_SENTINEL} is reserved for this "
+        f"sentinel: '--password {PROMPT_SENTINEL}' prompts rather than setting "
+        "that string as the password."
     ),
 )
 @click.option(
@@ -508,7 +511,7 @@ def backup_access_points_update(
     # satisfied under --non-interactive (no prompt will run), so this guard
     # stays before the confirmation, mirroring the `password is None and
     # non_interactive` guards on the other secret-prompting commands.
-    if password == "PROMPT" and cli_ctx.non_interactive:
+    if password == PROMPT_SENTINEL and cli_ctx.non_interactive:
         console.print("[red]--password requires a value when --non-interactive is set[/red]")
         sys.exit(ExitCode.USAGE_ERROR)
 
@@ -532,7 +535,7 @@ def backup_access_points_update(
     # `--password` with no value prompts for the secret instead of taking it
     # from argv (shell history, `ps`, CI logs). Omitted entirely, the
     # password is left unchanged (see the None default above).
-    if password == "PROMPT":
+    if password == PROMPT_SENTINEL:
         password = click.prompt(
             "Backup access point password",
             hide_input=True,
