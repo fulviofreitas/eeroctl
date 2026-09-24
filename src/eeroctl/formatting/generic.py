@@ -92,7 +92,8 @@ def render_generic(cli_ctx: EeroCliContext, data: Any, schema: str) -> None:
         cli_ctx.render_structured(safe_data, schema)
         return
 
-    assert cli_ctx.output_manager is not None  # set in EeroCliContext.__post_init__
+    if cli_ctx.output_manager is None:
+        raise RuntimeError("Output manager not initialized in CLI context")
     cli_ctx.output_manager.render(
         cli_ctx.output_format,
         safe_data,

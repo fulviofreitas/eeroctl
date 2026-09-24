@@ -15,7 +15,7 @@ Commands:
 - eero network subnets filters set <subnet-id> --config-json
   -- set_subnet_content_filters (client.py:3016); MEDIUM + unverified.
   DIGEST deviation from the task brief: the facade signature is
-  ``set_content_filters(network_id, filters)`` -- no ``subnet_id``
+  ``set_subnet_content_filters(network_id, filters)`` -- no ``subnet_id``
   parameter; the endpoint (`subnets_config/dns_policies/content_filters`)
   is network-scoped and the API's own declared fields are ``content_filters``
   and ``subnets`` (`api/subnets.py:150-151`), so the subnet the filters
