@@ -17,7 +17,18 @@ their own (non-typed) confirmation.
 import asyncio
 import ipaddress
 import sys
-from typing import Any, Dict, List, NoReturn, Optional, Sequence, Set, Tuple
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    NoReturn,
+    Optional,
+    Sequence,
+    Set,
+    Tuple,
+)
 
 import click
 from eero import EeroClient
@@ -479,45 +490,18 @@ def dns_mode_set(
 
             current = _current_state(view)
             effective_force = force or cli_ctx.force
-
-            if requested in ("auto", "automatic"):
-                target_family = None if family in (None, "both") else family
-                desired = _desired_for_auto(current, target_family)
-                describe = "to automatic (ISP-assigned)"
-
-                async def write() -> Any:
-                    return await client.clear_custom_dns(target_family, cli_ctx.network_id)
-
-            elif requested == "custom":
-                if not servers:
-                    # Mode-only re-enable: the API retains stored servers across a
-                    # switch to automatic, so flipping the selector brings them back.
-                    desired = {**current, "ipv4_mode": "custom", "ipv6_mode": "custom"}
-                    describe = "to custom (re-enabling stored servers)"
-
-                    async def write() -> Any:
-                        return await client.set_dns_mode("custom", None, cli_ctx.network_id)
-
-                else:
-                    desired, write = _plan_custom(
-                        client, cli_ctx, current, ipv4_arg, ipv6_arg, family
-                    )
-                    describe = "to custom"
-
-            else:
-                provider_v4, provider_v6 = _resolve_provider(mode, view)
-                # Providers default to IPv4 only, matching prior behaviour: a
-                # preset should not silently rewrite IPv6 nobody mentioned.
-                scope = family or "ipv4"
-                desired, write = _plan_custom(
-                    client,
-                    cli_ctx,
-                    current,
-                    provider_v4,
-                    provider_v6,
-                    None if scope == "both" else scope,
-                )
-                describe = f"to {mode}"
+            desired, write, describe = _plan_mode_change(
+                client,
+                cli_ctx,
+                view,
+                current,
+                requested,
+                mode,
+                servers,
+                ipv4_arg,
+                ipv6_arg,
+                family,
+            )
 
             if _states_match(current, desired):
                 if not effective_force:
@@ -545,6 +529,59 @@ def dns_mode_set(
         await run_with_client(apply)
 
     asyncio.run(run_cmd())
+
+
+def _plan_mode_change(
+    client: EeroClient,
+    cli_ctx: EeroCliContext,
+    view: Dict[str, Any],
+    current: Dict[str, Any],
+    requested: str,
+    mode: str,
+    servers: Sequence[str],
+    ipv4_arg: Sequence[str],
+    ipv6_arg: Sequence[str],
+    family: Optional[str],
+) -> Tuple[Dict[str, Any], Callable[[], Awaitable[Any]], str]:
+    """Build the desired state, the write coroutine factory and a description for MODE."""
+    if requested in ("auto", "automatic"):
+        target_family = None if family in (None, "both") else family
+        desired = _desired_for_auto(current, target_family)
+        describe = "to automatic (ISP-assigned)"
+
+        async def write() -> Any:
+            return await client.clear_custom_dns(target_family, cli_ctx.network_id)
+
+    elif requested == "custom":
+        if not servers:
+            # Mode-only re-enable: the API retains stored servers across a
+            # switch to automatic, so flipping the selector brings them back.
+            desired = {**current, "ipv4_mode": "custom", "ipv6_mode": "custom"}
+            describe = "to custom (re-enabling stored servers)"
+
+            async def write() -> Any:
+                return await client.set_dns_mode("custom", None, cli_ctx.network_id)
+
+        else:
+            desired, write = _plan_custom(client, cli_ctx, current, ipv4_arg, ipv6_arg, family)
+            describe = "to custom"
+
+    else:
+        provider_v4, provider_v6 = _resolve_provider(mode, view)
+        # Providers default to IPv4 only, matching prior behaviour: a
+        # preset should not silently rewrite IPv6 nobody mentioned.
+        scope = family or "ipv4"
+        desired, write = _plan_custom(
+            client,
+            cli_ctx,
+            current,
+            provider_v4,
+            provider_v6,
+            None if scope == "both" else scope,
+        )
+        describe = f"to {mode}"
+
+    return desired, write, describe
 
 
 def _desired_for_auto(current: Dict[str, Any], family: Optional[str]) -> Dict[str, Any]:
