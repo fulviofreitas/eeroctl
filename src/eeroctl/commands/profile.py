@@ -135,6 +135,40 @@ def _blocked_app_ids(applications: List[Union[str, Dict[str, Any]]]) -> Set[str]
     return blocked
 
 
+def _resolve_device_urls(
+    all_devices: List[Dict[str, Any]], identifiers: tuple
+) -> tuple[list[str], list[str]]:
+    """Map device identifiers to URLs; return (resolved_urls, missing_identifiers)."""
+    resolved_urls: list[str] = []
+    missing: list[str] = []
+    for identifier in identifiers:
+        found = _find_device(all_devices, identifier)
+        if not found or not found.get("url"):
+            missing.append(identifier)
+        else:
+            resolved_urls.append(found["url"])
+    return resolved_urls, missing
+
+
+def _current_profile_device_urls(raw: Any) -> frozenset[str]:
+    """Project a raw get_profile_devices response to the set of device URLs."""
+    data = extract_data(raw) if isinstance(raw, dict) else raw
+    if isinstance(data, dict):
+        current_list = data.get("devices", [])
+    elif isinstance(data, list):
+        current_list = data
+    else:
+        current_list = []
+
+    current_urls: set[str] = set()
+    for entry in current_list or []:
+        if isinstance(entry, dict) and entry.get("url"):
+            current_urls.add(entry["url"])
+        elif isinstance(entry, str):
+            current_urls.add(entry)
+    return frozenset(current_urls)
+
+
 @click.group(name="profile")
 @click.pass_context
 def profile_group(ctx: click.Context) -> None:
@@ -1315,16 +1349,7 @@ def devices_set(
                 raw_devices = await client.get_devices(cli_ctx.network_id)
 
             all_devices = extract_devices(raw_devices)
-
-            resolved_urls = []
-            missing = []
-            for identifier in devices:
-                found = _find_device(all_devices, identifier)
-                if not found or not found.get("url"):
-                    missing.append(identifier)
-                else:
-                    resolved_urls.append(found["url"])
-
+            resolved_urls, missing = _resolve_device_urls(all_devices, devices)
             if missing:
                 console.print(f"[red]Device(s) not found: {', '.join(missing)}[/red]")
                 console.print("[dim]Try: eero device list[/dim]")
@@ -1352,21 +1377,7 @@ def devices_set(
             async def read() -> frozenset:
                 with cli_ctx.status("Reading current profile devices..."):
                     raw_current = await client.get_profile_devices(target["id"], cli_ctx.network_id)
-                data = extract_data(raw_current) if isinstance(raw_current, dict) else raw_current
-                if isinstance(data, dict):
-                    current_list = data.get("devices", [])
-                elif isinstance(data, list):
-                    current_list = data
-                else:
-                    current_list = []
-
-                current_urls = set()
-                for entry in current_list or []:
-                    if isinstance(entry, dict) and entry.get("url"):
-                        current_urls.add(entry["url"])
-                    elif isinstance(entry, str):
-                        current_urls.add(entry)
-                return frozenset(current_urls)
+                return _current_profile_device_urls(raw_current)
 
             async def write() -> Any:
                 with cli_ctx.status("Setting profile devices..."):

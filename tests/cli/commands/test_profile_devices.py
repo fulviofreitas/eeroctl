@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from click.testing import CliRunner
 
+from eeroctl.commands.profile import _current_profile_device_urls, _resolve_device_urls
 from eeroctl.exit_codes import ExitCode
 from eeroctl.main import cli
 
@@ -133,3 +134,35 @@ class TestProfileDevicesSet:
 
         assert result.exit_code == ExitCode.SAFETY_RAIL
         mock_client.set_profile_devices.assert_not_called()
+
+
+class TestProfileDevicesHelpers:
+    """Unit tests for the pure helpers behind `profile devices set`."""
+
+    def test_resolve_device_urls_splits_found_and_missing(self) -> None:
+        devices = [
+            {"id": "dev1", "url": "/devices/dev1", "nickname": "iPad", "display_name": "iPad"},
+            {"id": "dev2", "nickname": "NoUrl", "display_name": "NoUrl"},
+        ]
+
+        resolved, missing = _resolve_device_urls(devices, ("iPad", "NoUrl", "ghost"))
+
+        assert resolved == ["/devices/dev1"]
+        assert missing == ["NoUrl", "ghost"]
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            (
+                {"data": {"devices": [{"url": "/d/1"}, "/d/2", {"name": "no-url"}]}},
+                {"/d/1", "/d/2"},
+            ),
+            ({"data": ["/d/3"]}, {"/d/3"}),
+            ([{"url": "/d/4"}], {"/d/4"}),
+            ({"data": {"devices": None}}, set()),
+            ({"data": None}, set()),
+            (None, set()),
+        ],
+    )
+    def test_current_profile_device_urls(self, raw: object, expected: set[str]) -> None:
+        assert _current_profile_device_urls(raw) == frozenset(expected)
