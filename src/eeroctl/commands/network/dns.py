@@ -17,6 +17,7 @@ their own (non-typed) confirmation.
 import asyncio
 import ipaddress
 import sys
+from dataclasses import dataclass
 from typing import (
     Any,
     Awaitable,
@@ -483,6 +484,8 @@ def dns_mode_set(
     if requested == "custom" and not servers and family:
         _fail_usage("--family has no effect on 'custom' without --servers.")
 
+    request = _ModeRequest(mode, servers, ipv4_arg, ipv6_arg, family)
+
     async def run_cmd() -> None:
         async def apply(client: EeroClient) -> None:
             with cli_ctx.status("Reading current DNS settings..."):
@@ -490,18 +493,7 @@ def dns_mode_set(
 
             current = _current_state(view)
             effective_force = force or cli_ctx.force
-            desired, write, describe = _plan_mode_change(
-                client,
-                cli_ctx,
-                view,
-                current,
-                requested,
-                mode,
-                servers,
-                ipv4_arg,
-                ipv6_arg,
-                family,
-            )
+            desired, write, describe = _plan_mode_change(client, cli_ctx, view, current, request)
 
             if _states_match(current, desired):
                 if not effective_force:
@@ -531,20 +523,31 @@ def dns_mode_set(
     asyncio.run(run_cmd())
 
 
+@dataclass(frozen=True)
+class _ModeRequest:
+    """The parsed inputs of ``dns mode set``."""
+
+    mode: str
+    servers: Sequence[str]
+    ipv4: Sequence[str]
+    ipv6: Sequence[str]
+    family: Optional[str]
+
+    @property
+    def requested(self) -> str:
+        return self.mode.strip().lower()
+
+
 def _plan_mode_change(
     client: EeroClient,
     cli_ctx: EeroCliContext,
     view: Dict[str, Any],
     current: Dict[str, Any],
-    requested: str,
-    mode: str,
-    servers: Sequence[str],
-    ipv4_arg: Sequence[str],
-    ipv6_arg: Sequence[str],
-    family: Optional[str],
+    request: _ModeRequest,
 ) -> Tuple[Dict[str, Any], Callable[[], Awaitable[Any]], str]:
     """Build the desired state, the write coroutine factory and a description for MODE."""
-    if requested in ("auto", "automatic"):
+    family = request.family
+    if request.requested in ("auto", "automatic"):
         target_family = None if family in (None, "both") else family
         desired = _desired_for_auto(current, target_family)
         describe = "to automatic (ISP-assigned)"
@@ -552,8 +555,8 @@ def _plan_mode_change(
         async def write() -> Any:
             return await client.clear_custom_dns(target_family, cli_ctx.network_id)
 
-    elif requested == "custom":
-        if not servers:
+    elif request.requested == "custom":
+        if not request.servers:
             # Mode-only re-enable: the API retains stored servers across a
             # switch to automatic, so flipping the selector brings them back.
             desired = {**current, "ipv4_mode": "custom", "ipv6_mode": "custom"}
@@ -563,11 +566,13 @@ def _plan_mode_change(
                 return await client.set_dns_mode("custom", None, cli_ctx.network_id)
 
         else:
-            desired, write = _plan_custom(client, cli_ctx, current, ipv4_arg, ipv6_arg, family)
+            desired, write = _plan_custom(
+                client, cli_ctx, current, request.ipv4, request.ipv6, family
+            )
             describe = "to custom"
 
     else:
-        provider_v4, provider_v6 = _resolve_provider(mode, view)
+        provider_v4, provider_v6 = _resolve_provider(request.mode, view)
         # Providers default to IPv4 only, matching prior behaviour: a
         # preset should not silently rewrite IPv6 nobody mentioned.
         scope = family or "ipv4"
@@ -579,7 +584,7 @@ def _plan_mode_change(
             provider_v6,
             None if scope == "both" else scope,
         )
-        describe = f"to {mode}"
+        describe = f"to {request.mode}"
 
     return desired, write, describe
 
