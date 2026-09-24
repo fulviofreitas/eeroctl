@@ -77,10 +77,17 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "B", "W", "I"]
+select = ["E", "F", "B", "W", "I", "S", "C90"]
 ignore = [
     "E501",  # Line too long - handled by black
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# assert and fake credentials are the pytest idiom
+"tests/**" = ["S101", "S103", "S105", "S106"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
