@@ -1,0 +1,6 @@
+---
+# Codacy static-analysis configuration for eeroctl.
+# See CODACY.md for the rationale behind these exclusions.
+
+exclude_paths:
+  - "tests/**"
