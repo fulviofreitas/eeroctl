@@ -30,6 +30,8 @@ from ..transformers import (
 )
 from ..utils import with_client
 
+DoctorCheck = tuple[str, str, str]
+
 
 def _get_network_status(network: dict) -> str:
     """Extract status from network dict."""
@@ -253,71 +255,14 @@ async def troubleshoot_doctor(
     cli_ctx = apply_options(ctx, output=output, network_id=network_id)
     console = cli_ctx.console
 
-    checks = []
-
     with cli_ctx.status("Running diagnostics..."):
-        # Check network status
-        try:
-            raw_network = await client.get_network(cli_ctx.network_id)
-            network = normalize_network(extract_data(raw_network))
-            status = network.get("status", "unknown")
-            if "online" in status.lower() or "connected" in status.lower():
-                checks.append(("Network Status", "pass", status))
-            else:
-                checks.append(("Network Status", "fail", status))
-        except Exception as e:
-            checks.append(("Network Status", "fail", str(e)))
-
-        # Check eeros
-        try:
-            raw_eeros = await client.get_eeros(cli_ctx.network_id)
-            eeros = extract_eeros(raw_eeros)
-            normalized_eeros = [normalize_eero(e) for e in eeros]
-            online_count = sum(1 for e in normalized_eeros if e.get("status") == "green")
-            total_count = len(normalized_eeros)
-            if online_count == total_count:
-                checks.append(("Mesh Nodes", "pass", f"{online_count}/{total_count} online"))
-            elif online_count > 0:
-                checks.append(("Mesh Nodes", "warn", f"{online_count}/{total_count} online"))
-            else:
-                checks.append(("Mesh Nodes", "fail", f"0/{total_count} online"))
-        except Exception as e:
-            checks.append(("Mesh Nodes", "fail", str(e)))
-
-        # Check devices
-        try:
-            raw_devices = await client.get_devices(cli_ctx.network_id)
-            devices = extract_devices(raw_devices)
-            normalized_devices = [normalize_device(d) for d in devices]
-            connected = sum(1 for d in normalized_devices if d.get("connected"))
-            checks.append(("Connected Devices", "info", f"{connected} devices"))
-        except Exception as e:
-            checks.append(("Connected Devices", "warn", str(e)))
-
-        # Check diagnostics
-        try:
-            _ = await client.get_diagnostics(cli_ctx.network_id)
-            checks.append(("Diagnostics API", "pass", "Available"))
-        except Exception:
-            checks.append(("Diagnostics API", "warn", "Not available"))
-
-        # Check premium status via entitlements (get_entitlement_features,
-        # client.py:2292). `is_premium(nid)` never existed on any SDK version
-        # (migration plan §1.3/§4, "replaces the dead is_premium in
-        # troubleshoot doctor"); the shape of `data` is undocumented, so this
-        # only checks for any truthy premium-ish flag rather than assuming a
-        # specific key.
-        try:
-            raw_entitlements = await client.get_entitlement_features(cli_ctx.network_id)
-            entitlements_data = extract_data(raw_entitlements)
-            is_premium = isinstance(entitlements_data, dict) and any(
-                bool(value)
-                for key, value in entitlements_data.items()
-                if any(hint in key.lower() for hint in ("premium", "eero_plus", "plus"))
-            )
-            checks.append(("Eero Plus", "info", "Active" if is_premium else "Not active"))
-        except Exception:
-            checks.append(("Eero Plus", "info", "Unknown"))
+        checks = [
+            await _check_network_status(client, cli_ctx.network_id),
+            await _check_mesh_nodes(client, cli_ctx.network_id),
+            await _check_connected_devices(client, cli_ctx.network_id),
+            await _check_diagnostics_api(client, cli_ctx.network_id),
+            await _check_eero_plus(client, cli_ctx.network_id),
+        ]
 
     if cli_ctx.is_structured_output():
         data = {
@@ -328,26 +273,8 @@ async def troubleshoot_doctor(
         }
         cli_ctx.render_structured(data, "eero.troubleshoot.doctor/v1")
     else:
-        table = Table(title="Network Health Check")
-        table.add_column("Check", style="cyan")
-        table.add_column("Status", justify="center")
-        table.add_column("Details")
+        console.print(_build_doctor_table(checks))
 
-        for name, status, message in checks:
-            if status == "pass":
-                status_display = "[green]✓ PASS[/green]"
-            elif status == "fail":
-                status_display = "[red]✗ FAIL[/red]"
-            elif status == "warn":
-                status_display = "[yellow]⚠ WARN[/yellow]"
-            else:
-                status_display = "[blue]ℹ INFO[/blue]"
-
-            table.add_row(name, status_display, message)
-
-        console.print(table)
-
-        # Overall status
         has_failures = any(s == "fail" for _, s, _ in checks)
         has_warnings = any(s == "warn" for _, s, _ in checks)
 
@@ -357,6 +284,100 @@ async def troubleshoot_doctor(
             console.print("\n[bold yellow]⚠ Some warnings detected.[/bold yellow]")
         else:
             console.print("\n[bold green]✓ All checks passed![/bold green]")
+
+
+async def _check_network_status(client: EeroClient, network_id: Optional[str]) -> DoctorCheck:
+    """Check that the network reports an online/connected status."""
+    try:
+        raw_network = await client.get_network(network_id)
+        network = normalize_network(extract_data(raw_network))
+        status = network.get("status", "unknown")
+        if "online" in status.lower() or "connected" in status.lower():
+            return ("Network Status", "pass", status)
+        return ("Network Status", "fail", status)
+    except Exception as e:
+        return ("Network Status", "fail", str(e))
+
+
+async def _check_mesh_nodes(client: EeroClient, network_id: Optional[str]) -> DoctorCheck:
+    """Check how many mesh nodes are online."""
+    try:
+        raw_eeros = await client.get_eeros(network_id)
+        eeros = extract_eeros(raw_eeros)
+        normalized_eeros = [normalize_eero(e) for e in eeros]
+        online_count = sum(1 for e in normalized_eeros if e.get("status") == "green")
+        total_count = len(normalized_eeros)
+        if online_count == total_count:
+            return ("Mesh Nodes", "pass", f"{online_count}/{total_count} online")
+        if online_count > 0:
+            return ("Mesh Nodes", "warn", f"{online_count}/{total_count} online")
+        return ("Mesh Nodes", "fail", f"0/{total_count} online")
+    except Exception as e:
+        return ("Mesh Nodes", "fail", str(e))
+
+
+async def _check_connected_devices(client: EeroClient, network_id: Optional[str]) -> DoctorCheck:
+    """Count the connected devices on the network."""
+    try:
+        raw_devices = await client.get_devices(network_id)
+        devices = extract_devices(raw_devices)
+        normalized_devices = [normalize_device(d) for d in devices]
+        connected = sum(1 for d in normalized_devices if d.get("connected"))
+        return ("Connected Devices", "info", f"{connected} devices")
+    except Exception as e:
+        return ("Connected Devices", "warn", str(e))
+
+
+async def _check_diagnostics_api(client: EeroClient, network_id: Optional[str]) -> DoctorCheck:
+    """Check whether the diagnostics endpoint is reachable."""
+    try:
+        _ = await client.get_diagnostics(network_id)
+        return ("Diagnostics API", "pass", "Available")
+    except Exception:
+        return ("Diagnostics API", "warn", "Not available")
+
+
+async def _check_eero_plus(client: EeroClient, network_id: Optional[str]) -> DoctorCheck:
+    """Report Eero Plus status from the entitlement features."""
+    # Check premium status via entitlements (get_entitlement_features,
+    # client.py:2292). `is_premium(nid)` never existed on any SDK version
+    # (migration plan §1.3/§4, "replaces the dead is_premium in
+    # troubleshoot doctor"); the shape of `data` is undocumented, so this
+    # only checks for any truthy premium-ish flag rather than assuming a
+    # specific key.
+    try:
+        raw_entitlements = await client.get_entitlement_features(network_id)
+        entitlements_data = extract_data(raw_entitlements)
+        is_premium = isinstance(entitlements_data, dict) and any(
+            bool(value)
+            for key, value in entitlements_data.items()
+            if any(hint in key.lower() for hint in ("premium", "eero_plus", "plus"))
+        )
+        return ("Eero Plus", "info", "Active" if is_premium else "Not active")
+    except Exception:
+        return ("Eero Plus", "info", "Unknown")
+
+
+def _build_doctor_table(checks: list[DoctorCheck]) -> Table:
+    """Render the doctor checks as a health-check table."""
+    table = Table(title="Network Health Check")
+    table.add_column("Check", style="cyan")
+    table.add_column("Status", justify="center")
+    table.add_column("Details")
+
+    for name, status, message in checks:
+        if status == "pass":
+            status_display = "[green]✓ PASS[/green]"
+        elif status == "fail":
+            status_display = "[red]✗ FAIL[/red]"
+        elif status == "warn":
+            status_display = "[yellow]⚠ WARN[/yellow]"
+        else:
+            status_display = "[blue]ℹ INFO[/blue]"
+
+        table.add_row(name, status_display, message)
+
+    return table
 
 
 @troubleshoot_group.group(name="diagnostics")
