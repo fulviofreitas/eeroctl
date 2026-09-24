@@ -19,6 +19,7 @@ from typing import Any, Dict, List, Literal, Optional, Set, Union
 import click
 from eero import EeroClient
 from eero.exceptions import EeroException, EeroNotFoundException, EeroPremiumRequiredException
+from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
@@ -26,7 +27,13 @@ from ..context import EeroCliContext, ensure_cli_context
 from ..exit_codes import ExitCode
 from ..options import apply_options, force_option, network_option, output_option
 from ..output import OutputFormat
-from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
+from ..safety import (
+    SafetyContext,
+    SafetyError,
+    WriteSpec,
+    get_write_spec,
+    require_write_confirmation,
+)
 from ..transformers import (
     extract_data,
     extract_devices,
@@ -737,6 +744,96 @@ def apps_list(
     asyncio.run(run_cmd())
 
 
+async def _require_profile(
+    client: EeroClient, cli_ctx: EeroCliContext, profile_identifier: str, console: Console
+) -> Dict[str, Any]:
+    """Resolve PROFILE_IDENTIFIER to a profile with an id, or exit NOT_FOUND."""
+    with cli_ctx.status("Finding profile..."):
+        raw_profiles = await client.get_profiles(cli_ctx.network_id)
+
+    target = _find_profile(extract_profiles(raw_profiles), profile_identifier)
+    if not target or not target.get("id"):
+        console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
+        console.print("[dim]Try: eero profile list[/dim]")
+        sys.exit(ExitCode.NOT_FOUND)
+    return target
+
+
+async def _update_blocked_apps(
+    client: EeroClient,
+    cli_ctx: EeroCliContext,
+    spec: WriteSpec,
+    profile_identifier: str,
+    apps: tuple,
+    action: Literal["block", "unblock"],
+) -> None:
+    """Read-modify-write a profile's blocked application list."""
+    console = cli_ctx.console
+    target = await _require_profile(client, cli_ctx, profile_identifier, console)
+
+    try:
+        require_write_confirmation(
+            spec,
+            target=f"{target.get('name') or profile_identifier}: {', '.join(apps)}",
+            ctx=SafetyContext(
+                force=cli_ctx.force,
+                non_interactive=cli_ctx.non_interactive,
+                dry_run=cli_ctx.dry_run,
+            ),
+            console=cli_ctx.err_console,
+        )
+    except SafetyError as e:
+        cli_ctx.renderer.render_error(e.message)
+        sys.exit(e.exit_code)
+
+    with cli_ctx.status("Getting current blocked apps..."):
+        try:
+            raw_apps = await client.get_dns_policy_applications(target["id"], cli_ctx.network_id)
+        except EeroException as e:
+            if isinstance(e, EeroPremiumRequiredException):
+                console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                sys.exit(ExitCode.PREMIUM_REQUIRED)
+            raise
+
+    current = _blocked_app_ids(_extract_dns_policy_applications(raw_apps))
+    new_blocked = current | set(apps) if action == "block" else current - set(apps)
+
+    # `set_profile_blocked_applications` REPLACES the full list -- show
+    # the user exactly what will be sent before issuing the write.
+    cli_ctx.err_console.print(f"Blocked applications after this change: {sorted(new_blocked)}")
+
+    result = await _write_blocked_apps(client, cli_ctx, target["id"], sorted(new_blocked), action)
+
+    meta = result.get("meta", {}) if isinstance(result, dict) else {}
+    if meta.get("code") == 200 or result:
+        for app in apps:
+            console.print(f"[green]✓[/green] {app} {action}ed")
+    else:
+        console.print(f"[red]✗[/red] Failed to {action} apps")
+        sys.exit(ExitCode.GENERIC_ERROR)
+
+
+async def _write_blocked_apps(
+    client: EeroClient,
+    cli_ctx: EeroCliContext,
+    profile_id: str,
+    blocked: List[str],
+    action: Literal["block", "unblock"],
+) -> Any:
+    """Send the replacement blocked-application list; exit on API failure."""
+    with cli_ctx.status(f"{action.capitalize()}ing apps..."):
+        try:
+            return await client.set_profile_blocked_applications(
+                profile_id, blocked, cli_ctx.network_id
+            )
+        except EeroException as e:
+            if isinstance(e, EeroPremiumRequiredException):
+                cli_ctx.console.print("[yellow]This feature requires Eero Plus[/yellow]")
+                sys.exit(ExitCode.PREMIUM_REQUIRED)
+            cli_ctx.console.print(f"[red]✗[/red] Error {action}ing apps: {e}")
+            sys.exit(ExitCode.GENERIC_ERROR)
+
+
 @apps_group.command(name="block")
 @click.argument("profile_identifier")
 @click.argument("apps", nargs=-1, required=True)
@@ -762,78 +859,12 @@ def apps_block(
       eero profile apps block "Kids" tiktok facebook
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
     spec = get_write_spec("profile apps block")
     cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def block_apps(client: EeroClient) -> None:
-            # Find profile first
-            with cli_ctx.status("Finding profile..."):
-                raw_response = await client.get_profiles(cli_ctx.network_id)
-
-            profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_identifier)
-
-            if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
-                console.print("[dim]Try: eero profile list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
-
-            try:
-                require_write_confirmation(
-                    spec,
-                    target=f"{target.get('name') or profile_identifier}: {', '.join(apps)}",
-                    ctx=SafetyContext(
-                        force=cli_ctx.force,
-                        non_interactive=cli_ctx.non_interactive,
-                        dry_run=cli_ctx.dry_run,
-                    ),
-                    console=cli_ctx.err_console,
-                )
-            except SafetyError as e:
-                cli_ctx.renderer.render_error(e.message)
-                sys.exit(e.exit_code)
-
-            with cli_ctx.status("Getting current blocked apps..."):
-                try:
-                    raw_apps = await client.get_dns_policy_applications(
-                        target["id"], cli_ctx.network_id
-                    )
-                except EeroException as e:
-                    if isinstance(e, EeroPremiumRequiredException):
-                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
-                        sys.exit(ExitCode.PREMIUM_REQUIRED)
-                    raise
-
-            applications = _extract_dns_policy_applications(raw_apps)
-            new_blocked = _blocked_app_ids(applications) | set(apps)
-
-            # `set_profile_blocked_applications` REPLACES the full list -- show
-            # the user exactly what will be sent before issuing the write.
-            cli_ctx.err_console.print(
-                f"Blocked applications after this change: {sorted(new_blocked)}"
-            )
-
-            with cli_ctx.status("Blocking apps..."):
-                try:
-                    result = await client.set_profile_blocked_applications(
-                        target["id"], sorted(new_blocked), cli_ctx.network_id
-                    )
-                except EeroException as e:
-                    if isinstance(e, EeroPremiumRequiredException):
-                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
-                        sys.exit(ExitCode.PREMIUM_REQUIRED)
-                    console.print(f"[red]✗[/red] Error blocking apps: {e}")
-                    sys.exit(ExitCode.GENERIC_ERROR)
-
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                for app in apps:
-                    console.print(f"[green]✓[/green] {app} blocked")
-            else:
-                console.print("[red]✗[/red] Failed to block apps")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            await _update_blocked_apps(client, cli_ctx, spec, profile_identifier, apps, "block")
 
         await run_with_client(block_apps)
 
@@ -861,78 +892,12 @@ def apps_unblock(
       APPS                App identifier(s) to unblock
     """
     cli_ctx = apply_options(ctx, network_id=network_id, force=force)
-    console = cli_ctx.console
     spec = get_write_spec("profile apps unblock")
     cli_ctx.active_write_spec = spec
 
     async def run_cmd() -> None:
         async def unblock_apps(client: EeroClient) -> None:
-            # Find profile first
-            with cli_ctx.status("Finding profile..."):
-                raw_response = await client.get_profiles(cli_ctx.network_id)
-
-            profiles = extract_profiles(raw_response)
-            target = _find_profile(profiles, profile_identifier)
-
-            if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
-                console.print("[dim]Try: eero profile list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
-
-            try:
-                require_write_confirmation(
-                    spec,
-                    target=f"{target.get('name') or profile_identifier}: {', '.join(apps)}",
-                    ctx=SafetyContext(
-                        force=cli_ctx.force,
-                        non_interactive=cli_ctx.non_interactive,
-                        dry_run=cli_ctx.dry_run,
-                    ),
-                    console=cli_ctx.err_console,
-                )
-            except SafetyError as e:
-                cli_ctx.renderer.render_error(e.message)
-                sys.exit(e.exit_code)
-
-            with cli_ctx.status("Getting current blocked apps..."):
-                try:
-                    raw_apps = await client.get_dns_policy_applications(
-                        target["id"], cli_ctx.network_id
-                    )
-                except EeroException as e:
-                    if isinstance(e, EeroPremiumRequiredException):
-                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
-                        sys.exit(ExitCode.PREMIUM_REQUIRED)
-                    raise
-
-            applications = _extract_dns_policy_applications(raw_apps)
-            new_blocked = _blocked_app_ids(applications) - set(apps)
-
-            # `set_profile_blocked_applications` REPLACES the full list -- show
-            # the user exactly what will be sent before issuing the write.
-            cli_ctx.err_console.print(
-                f"Blocked applications after this change: {sorted(new_blocked)}"
-            )
-
-            with cli_ctx.status("Unblocking apps..."):
-                try:
-                    result = await client.set_profile_blocked_applications(
-                        target["id"], sorted(new_blocked), cli_ctx.network_id
-                    )
-                except EeroException as e:
-                    if isinstance(e, EeroPremiumRequiredException):
-                        console.print("[yellow]This feature requires Eero Plus[/yellow]")
-                        sys.exit(ExitCode.PREMIUM_REQUIRED)
-                    console.print(f"[red]✗[/red] Error unblocking apps: {e}")
-                    sys.exit(ExitCode.GENERIC_ERROR)
-
-            meta = result.get("meta", {}) if isinstance(result, dict) else {}
-            if meta.get("code") == 200 or result:
-                for app in apps:
-                    console.print(f"[green]✓[/green] {app} unblocked")
-            else:
-                console.print("[red]✗[/red] Failed to unblock apps")
-                sys.exit(ExitCode.GENERIC_ERROR)
+            await _update_blocked_apps(client, cli_ctx, spec, profile_identifier, apps, "unblock")
 
         await run_with_client(unblock_apps)
 
@@ -1334,16 +1299,7 @@ def devices_set(
 
     async def run_cmd() -> None:
         async def set_devices(client: EeroClient) -> None:
-            with cli_ctx.status("Finding profile..."):
-                raw_profiles = await client.get_profiles(cli_ctx.network_id)
-
-            profiles = extract_profiles(raw_profiles)
-            target = _find_profile(profiles, profile_identifier)
-
-            if not target or not target.get("id"):
-                console.print(f"[red]Profile '{profile_identifier}' not found[/red]")
-                console.print("[dim]Try: eero profile list[/dim]")
-                sys.exit(ExitCode.NOT_FOUND)
+            target = await _require_profile(client, cli_ctx, profile_identifier, console)
 
             with cli_ctx.status("Finding devices..."):
                 raw_devices = await client.get_devices(cli_ctx.network_id)
