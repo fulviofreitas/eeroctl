@@ -947,3 +947,68 @@ class TestSessionTokenOverride:
         result = runner.invoke(cli, ["auth", "status"])
 
         assert result.exit_code == 2
+
+
+class TestAuthStatusHelpers:
+    """Tests for the pure helpers behind ``eero auth status`` and the login flow."""
+
+    @pytest.mark.parametrize(
+        ("is_auth", "session_valid", "expected"),
+        [
+            (True, True, "valid"),
+            (True, None, "stored_not_verified"),
+            (True, False, "invalid"),
+            (False, False, "not_authenticated"),
+            (False, None, "stored_not_verified"),
+        ],
+    )
+    def test_status_label(self, is_auth, session_valid, expected):
+        from eeroctl.commands.auth import _STATUS_MARKUP, _status_label
+
+        assert _status_label(is_auth, session_valid) == expected
+        assert expected in _STATUS_MARKUP
+
+    def test_parse_account_unwraps_envelope_and_derives_id_from_url(self):
+        from eeroctl.commands.auth import _parse_account
+
+        raw = {
+            "data": {
+                "url": "/2.2/accounts/12345/",
+                "name": "Home",
+                "premium_status": "active",
+                "premium_expiry": 20301231,
+                "created_at": None,
+                "users": [{"email": "a@b.c", "role": "owner", "created_at": 1}, "junk"],
+            }
+        }
+
+        parsed = _parse_account(raw)
+
+        assert parsed is not None
+        assert parsed["id"] == "12345"
+        assert parsed["premium_expiry"] == "20301231"
+        assert parsed["created_at"] is None
+        assert [u["email"] for u in parsed["users"]] == ["a@b.c"]
+        assert parsed["users"][0]["created_at"] == "1"
+        assert parsed["users"][0]["name"] is None
+
+    def test_parse_account_returns_none_for_non_dict_payload(self):
+        from eeroctl.commands.auth import _parse_account
+
+        assert _parse_account({"data": ["not", "a", "dict"]}) is None
+
+    @pytest.mark.parametrize(
+        ("response", "expected"),
+        [
+            ({"data": [{"id": 7}]}, "7"),
+            ({"data": {"networks": [{"url": "/2.2/networks/99/"}]}}, "99"),
+            ({"data": {"data": [{"id": "abc"}]}}, "abc"),
+            ({"data": []}, None),
+            ({"data": {"networks": [{"name": "no id"}]}}, None),
+            ({}, None),
+        ],
+    )
+    def test_first_network_id(self, response, expected):
+        from eeroctl.commands.auth import _first_network_id
+
+        assert _first_network_id(response) == expected

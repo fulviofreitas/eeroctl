@@ -11,11 +11,13 @@ import asyncio
 import json
 import logging
 import sys
+from dataclasses import dataclass
 from typing import Any, Optional, TypedDict
 
 import click
 from eero import EeroClient
 from eero.exceptions import EeroAuthenticationException, EeroException, EeroValidationException
+from rich.console import Console
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
@@ -205,50 +207,37 @@ def _render_auth_error(exc: EeroAuthenticationException) -> str:
     return message
 
 
-async def _interactive_login(
-    client: EeroClient, force: bool, console, cli_ctx: EeroCliContext
-) -> bool:
-    """Interactive login process."""
+async def _try_reuse_session(client: EeroClient, console: Console, cli_ctx: EeroCliContext) -> bool:
+    """Offer to keep the existing session; True only if the user accepts and it works."""
     # Check for an existing session via the client's own state, never the
     # cookie file directly: schema 2 drops session_expiry (migration plan
     # §2.1), and a valid session can live in the keyring alone with no
     # cookie file on disk.
-    if client.is_authenticated and not force:
-        console.print(
-            Panel.fit(
-                "An existing authentication session was found.",
-                title="Eero Login",
-                border_style="blue",
-            )
-        )
-        reuse = Confirm.ask("Do you want to reuse the existing session?")
-
-        if reuse:
-            with cli_ctx.status("Testing existing session..."):
-                try:
-                    networks = await client.get_networks()
-                    console.print(
-                        f"[bold green]Session valid! Found {len(networks)} network(s).[/bold green]"
-                    )
-                    return True
-                except EeroException as ex:
-                    logger.debug("Session validation failed: %s", ex)
-                    console.print("[yellow]Existing session invalid.[/yellow]")
-
-    # Clear existing auth data
-    await clear_all_credentials(client)
-
-    # Start fresh login
     console.print(
         Panel.fit(
-            "Please login to your Eero account.\nA verification code will be sent to you.",
+            "An existing authentication session was found.",
             title="Eero Login",
             border_style="blue",
         )
     )
+    if not Confirm.ask("Do you want to reuse the existing session?"):
+        return False
 
-    user_identifier = Prompt.ask("Email or phone number")
+    with cli_ctx.status("Testing existing session..."):
+        try:
+            networks = await client.get_networks()
+        except EeroException as ex:
+            logger.debug("Session validation failed: %s", ex)
+            console.print("[yellow]Existing session invalid.[/yellow]")
+            return False
+        console.print(f"[bold green]Session valid! Found {len(networks)} network(s).[/bold green]")
+        return True
 
+
+async def _request_verification_code(
+    client: EeroClient, user_identifier: str, console: Console, cli_ctx: EeroCliContext
+) -> None:
+    """Send the verification code; exits 3 on any failure."""
     with cli_ctx.status("Requesting verification code..."):
         try:
             result = await client.login(user_identifier)
@@ -268,48 +257,87 @@ async def _interactive_login(
             sys.exit(ExitCode.AUTH_REQUIRED)
         console.print("[bold green]Verification code sent![/bold green]")
 
-    # Verification loop
+
+def _first_network_id(networks_response: dict[str, Any]) -> Optional[str]:
+    """Pick the first network ID out of a ``get_networks()`` envelope."""
+    data = networks_response.get("data", {})
+    network_list: list[dict[str, Any]] = []
+    if isinstance(data, list):
+        network_list = data
+    elif isinstance(data, dict):
+        network_list = data.get("networks") or data.get("data") or []
+    if not network_list:
+        return None
+    first_network = network_list[0]
+    net_id = first_network.get("id")
+    if not net_id and first_network.get("url"):
+        net_id = str(first_network["url"]).rstrip("/").split("/")[-1]
+    return str(net_id) if net_id else None
+
+
+async def _save_preferred_network(client: EeroClient) -> None:
+    """Best-effort: remember the first network as the preferred one."""
+    try:
+        net_id = _first_network_id(await client.get_networks())
+        if net_id:
+            set_preferred_network(net_id)
+            logger.debug("Saved preferred network: %s", net_id)
+    except Exception as ex:
+        logger.debug("Could not get networks for preferred: %s", ex)
+
+
+async def _verify_code(
+    client: EeroClient, verification_code: str, console: Console, cli_ctx: EeroCliContext
+) -> bool:
+    """Submit one verification code; True on a successful login."""
+    with cli_ctx.status("Verifying..."):
+        try:
+            result = await client.verify(verification_code)
+        except EeroException as ex:
+            console.print(f"[bold red]Error:[/bold red] {ex}")
+            return False
+        if not result:
+            return False
+        console.print("[bold green]Login successful![/bold green]")
+        await _save_preferred_network(client)
+        return True
+
+
+async def _offer_resend(client: EeroClient, console: Console, cli_ctx: EeroCliContext) -> None:
+    """Ask whether to resend the verification code and do so if accepted."""
+    if Confirm.ask("Resend verification code?"):
+        with cli_ctx.status("Resending..."):
+            await resend_verification_code(client)
+            console.print("[green]Code resent![/green]")
+
+
+async def _interactive_login(
+    client: EeroClient, force: bool, console: Console, cli_ctx: EeroCliContext
+) -> bool:
+    """Interactive login process."""
+    if client.is_authenticated and not force:
+        if await _try_reuse_session(client, console, cli_ctx):
+            return True
+
+    await clear_all_credentials(client)
+
+    console.print(
+        Panel.fit(
+            "Please login to your Eero account.\nA verification code will be sent to you.",
+            title="Eero Login",
+            border_style="blue",
+        )
+    )
+    user_identifier = Prompt.ask("Email or phone number")
+    await _request_verification_code(client, user_identifier, console, cli_ctx)
+
     max_attempts = 3
     for attempt in range(max_attempts):
         verification_code = Prompt.ask("Verification code (check your email/phone)")
-
-        with cli_ctx.status("Verifying..."):
-            try:
-                result = await client.verify(verification_code)
-                if result:
-                    console.print("[bold green]Login successful![/bold green]")
-
-                    # Get networks and save preferred network to config
-                    try:
-                        networks_response = await client.get_networks()
-                        data = networks_response.get("data", {})
-                        network_list: list[dict[str, Any]] = []
-                        if isinstance(data, list):
-                            network_list = data
-                        elif isinstance(data, dict):
-                            network_list = data.get("networks") or data.get("data") or []
-
-                        if network_list:
-                            first_network = network_list[0]
-                            net_id = first_network.get("id")
-                            if not net_id and first_network.get("url"):
-                                net_id = str(first_network["url"]).rstrip("/").split("/")[-1]
-                            if net_id:
-                                set_preferred_network(str(net_id))
-                                logger.debug("Saved preferred network: %s", net_id)
-                    except Exception as ex:
-                        logger.debug("Could not get networks for preferred: %s", ex)
-
-                    return True
-            except EeroException as ex:
-                console.print(f"[bold red]Error:[/bold red] {ex}")
-
+        if await _verify_code(client, verification_code, console, cli_ctx):
+            return True
         if attempt < max_attempts - 1:
-            resend = Confirm.ask("Resend verification code?")
-            if resend:
-                with cli_ctx.status("Resending..."):
-                    await resend_verification_code(client)
-                    console.print("[green]Code resent![/green]")
+            await _offer_resend(client, console, cli_ctx)
 
     console.print("[bold red]Too many failed attempts[/bold red]")
     return False
@@ -456,6 +484,212 @@ def _check_keyring_available() -> bool:
         return False
 
 
+@dataclass(frozen=True)
+class _StatusReport:
+    """Everything ``eero auth status`` knows, in one place for the renderers."""
+
+    is_auth: bool
+    # True: live probe confirmed the session works. False: not
+    # authenticated, or the probe rejected the stored token
+    # (EeroAuthenticationException/other API error). None: unknown
+    # because --offline skipped the probe.
+    session_valid: Optional[bool]
+    auth_method: str
+    session_info: _SessionInfo
+    keyring_available: bool
+    account_data: Optional[_AccountData]
+
+
+_STATUS_MARKUP = {
+    "valid": "[green]Valid[/green]",
+    "stored_not_verified": "[blue]Stored, not verified[/blue]",
+    "invalid": "[yellow]Invalid[/yellow]",
+    "not_authenticated": "[red]Not authenticated[/red]",
+}
+
+
+def _stored_state(session_token: Optional[str]) -> tuple[_SessionInfo, bool]:
+    """Return (cookie-file info, keyring-has-credential) for the stored state."""
+    if session_token is None:
+        return _get_session_info(), _check_keyring_available()
+    # No file or keyring is used in this mode; report accordingly
+    # regardless of what may happen to exist on disk. A pre-v8
+    # backup, if any, is still a real leftover file worth surfacing.
+    cookie_file = get_cookie_file()
+    session_info = _SessionInfo(
+        path=str(cookie_file),
+        present=False,
+        schema_version=None,
+        legacy_backup_present=get_legacy_backup_path(cookie_file).exists(),
+    )
+    return session_info, False
+
+
+def _str_or_none(value: Any) -> Optional[str]:
+    """``str(value)`` for a truthy value, else ``None``."""
+    return str(value) if value else None
+
+
+def _parse_user(user: dict[str, Any]) -> _UserData:
+    """Build a ``_UserData`` from one raw ``users[]`` entry."""
+    return _UserData(
+        id=user.get("id"),
+        name=user.get("name"),
+        email=user.get("email"),
+        phone=user.get("phone"),
+        role=user.get("role"),
+        created_at=_str_or_none(user.get("created_at")),
+    )
+
+
+def _parse_account(raw_account: dict[str, Any]) -> Optional[_AccountData]:
+    """Extract account data from a ``GET /account`` envelope; None if malformed."""
+    account = raw_account.get("data", raw_account)
+    if not isinstance(account, dict):
+        return None
+    account_id = account.get("id")
+    if not account_id and account.get("url"):
+        account_id = account["url"].rstrip("/").split("/")[-1]
+    return _AccountData(
+        id=account_id,
+        name=account.get("name"),
+        premium_status=account.get("premium_status"),
+        premium_expiry=_str_or_none(account.get("premium_expiry")),
+        created_at=_str_or_none(account.get("created_at")),
+        users=[_parse_user(u) for u in (account.get("users") or []) if isinstance(u, dict)],
+    )
+
+
+async def _probe_session(
+    client: EeroClient, cli_ctx: EeroCliContext, is_auth: bool, offline: bool
+) -> tuple[Optional[bool], Optional[_AccountData]]:
+    """Live-check the stored session; see ``_StatusReport.session_valid``."""
+    if not is_auth:
+        return False, None
+    if offline:
+        return None, None
+    try:
+        with cli_ctx.status("Getting account info..."):
+            raw_account = await client.get_account()
+    except EeroException as ex:
+        logger.debug("Account probe failed: %s", ex)
+        return False, None
+    return True, _parse_account(raw_account)
+
+
+def _status_label(is_auth: bool, session_valid: Optional[bool]) -> str:
+    """Map the (authenticated, session_valid) pair to its plain status label."""
+    if session_valid is True:
+        return "valid"
+    if session_valid is None:
+        return "stored_not_verified"
+    return "invalid" if is_auth else "not_authenticated"
+
+
+def _status_payload(report: _StatusReport) -> dict[str, Any]:
+    """The ``eero.auth.status/v2`` structured payload."""
+    session_info = report.session_info
+    return {
+        "authenticated": report.is_auth,
+        "session_valid": report.session_valid,
+        "auth_method": report.auth_method,
+        "storage": {
+            "keyring": {"present": report.keyring_available},
+            "cookie_file": {
+                "path": session_info["path"],
+                "present": session_info["present"],
+                "schema_version": session_info["schema_version"],
+                "legacy_backup_present": session_info["legacy_backup_present"],
+            },
+        },
+        "account": report.account_data,
+    }
+
+
+def _render_status_list(report: _StatusReport) -> None:
+    """Parseable key-value rows on stdout."""
+    session_info = report.session_info
+    schema_version = session_info["schema_version"]
+    print(f"status              {_status_label(report.is_auth, report.session_valid)}")
+    print(f"auth_method         {report.auth_method}")
+    print(f"cookie_file         {session_info['path']}")
+    print(f"schema_version      {schema_version if schema_version is not None else 'N/A'}")
+    print(f"keyring_available   {report.keyring_available}")
+    print(f"legacy_backup       {session_info['legacy_backup_present']}")
+    account_data = report.account_data
+    if account_data:
+        print(f"account_id          {account_data['id']}")
+        print(f"account_name        {account_data['name'] or 'N/A'}")
+        print(f"premium_status      {account_data['premium_status'] or 'N/A'}")
+        print(f"premium_expiry      {account_data['premium_expiry'] or 'N/A'}")
+        for u in account_data.get("users", []):
+            print(f"user                {u['email']}  {u['role']}  {u['name'] or ''}")
+
+
+def _session_table(report: _StatusReport) -> Table:
+    """The "Session Information" Rich table."""
+    session_info = report.session_info
+    schema_version = session_info["schema_version"]
+    table = Table(title="Session Information")
+    table.add_column("Property", style="cyan")
+    table.add_column("Value")
+    table.add_row("Status", _STATUS_MARKUP[_status_label(report.is_auth, report.session_valid)])
+    table.add_row("Auth Method", f"[blue]{report.auth_method}[/blue]")
+    table.add_row("Credential Schema", str(schema_version) if schema_version is not None else "N/A")
+    table.add_row(
+        "Keyring Available",
+        "[green]Yes[/green]" if report.keyring_available else "[dim]No[/dim]",
+    )
+    table.add_row("Cookie File", session_info["path"])
+    table.add_row(
+        "Legacy Backup",
+        "[yellow]Present[/yellow]" if session_info["legacy_backup_present"] else "[dim]No[/dim]",
+    )
+    return table
+
+
+def _account_table(account_data: _AccountData) -> Table:
+    """The "Account Information" Rich table."""
+    table = Table(title="Account Information")
+    table.add_column("Property", style="cyan")
+    table.add_column("Value")
+    table.add_row("Account ID", account_data["id"])
+    table.add_row("Account Name", account_data["name"] or "N/A")
+    premium = account_data["premium_status"] or "N/A"
+    if premium and "active" in premium.lower():
+        premium = f"[green]{premium}[/green]"
+    table.add_row("Premium Status", premium)
+    table.add_row("Premium Expiry", account_data["premium_expiry"] or "N/A")
+    table.add_row("Created", account_data["created_at"] or "N/A")
+    return table
+
+
+def _users_table(users: list[_UserData]) -> Table:
+    """The "Account Users" Rich table."""
+    table = Table(title="Account Users")
+    table.add_column("Email", style="cyan")
+    table.add_column("Name")
+    table.add_column("Role", style="magenta")
+    for u in users:
+        table.add_row(u["email"], u["name"] or "", u["role"])
+    return table
+
+
+def _render_status_table(report: _StatusReport, console: Console) -> None:
+    """Rich tables on stdout, plus a login hint when the session is not confirmed."""
+    console.print(_session_table(report))
+    account_data = report.account_data
+    if account_data:
+        console.print()
+        console.print(_account_table(account_data))
+        if account_data.get("users"):
+            console.print()
+            console.print(_users_table(account_data["users"]))
+    elif report.session_valid is not True:
+        console.print()
+        console.print("[yellow]Run `eero auth login` to authenticate.[/yellow]")
+
+
 @auth_group.command(name="status")
 @click.option(
     "--offline",
@@ -496,207 +730,33 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
 
     async def run() -> bool:
         session_token = get_session_token_override()
-        if session_token is not None:
-            # No file or keyring is used in this mode; report accordingly
-            # regardless of what may happen to exist on disk. A pre-v8
-            # backup, if any, is still a real leftover file worth surfacing.
-            cookie_file = get_cookie_file()
-            session_info = _SessionInfo(
-                path=str(cookie_file),
-                present=False,
-                schema_version=None,
-                legacy_backup_present=get_legacy_backup_path(cookie_file).exists(),
-            )
-            keyring_available = False
-        else:
-            session_info = _get_session_info()
-            keyring_available = _check_keyring_available()
+        session_info, keyring_available = _stored_state(session_token)
 
         async with build_client() as client:
             await prepare_client(client)
             is_auth = client.is_authenticated
-            account_data: _AccountData | None = None
-            # True: live probe confirmed the session works. False: not
-            # authenticated, or the probe rejected the stored token
-            # (EeroAuthenticationException/other API error). None: unknown
-            # because --offline skipped the probe.
-            session_valid: Optional[bool]
-
-            if not is_auth:
-                session_valid = False
-            elif offline:
-                session_valid = None
-            else:
-                try:
-                    with cli_ctx.status("Getting account info..."):
-                        raw_account = await client.get_account()
-                except EeroException as ex:
-                    logger.debug("Account probe failed: %s", ex)
-                    session_valid = False
-                else:
-                    session_valid = True
-                    # Extract data from raw response envelope
-                    account = raw_account.get("data", raw_account)
-                    if isinstance(account, dict):
-                        # Extract account ID from URL if not directly available
-                        account_id = account.get("id")
-                        if not account_id and account.get("url"):
-                            account_id = account["url"].rstrip("/").split("/")[-1]
-
-                        users_list: list[_UserData] = [
-                            _UserData(
-                                id=u.get("id"),
-                                name=u.get("name"),
-                                email=u.get("email"),
-                                phone=u.get("phone"),
-                                role=u.get("role"),
-                                created_at=(
-                                    str(u.get("created_at")) if u.get("created_at") else None
-                                ),
-                            )
-                            for u in (account.get("users") or [])
-                            if isinstance(u, dict)
-                        ]
-                        account_data = _AccountData(
-                            id=account_id,
-                            name=account.get("name"),
-                            premium_status=account.get("premium_status"),
-                            premium_expiry=(
-                                str(account.get("premium_expiry"))
-                                if account.get("premium_expiry")
-                                else None
-                            ),
-                            created_at=(
-                                str(account.get("created_at"))
-                                if account.get("created_at")
-                                else None
-                            ),
-                            users=users_list,
-                        )
+            session_valid, account_data = await _probe_session(client, cli_ctx, is_auth, offline)
 
             # Determine auth method: the *configured* method verbatim
             # ("env" under EEROCTL_SESSION_TOKEN, else get_auth_method()'s
             # "keyring"/"cookie_file"), independent of whether the keyring
             # probe actually found a record there -- that's a separate
             # fact, already carried by storage.keyring.present.
-            auth_method = "env" if session_token is not None else get_auth_method()
-            schema_version = session_info["schema_version"]
+            report = _StatusReport(
+                is_auth=is_auth,
+                session_valid=session_valid,
+                auth_method="env" if session_token is not None else get_auth_method(),
+                session_info=session_info,
+                keyring_available=keyring_available,
+                account_data=account_data,
+            )
 
             if cli_ctx.is_structured_output():
-                data = {
-                    "authenticated": is_auth,
-                    "session_valid": session_valid,
-                    "auth_method": auth_method,
-                    "storage": {
-                        "keyring": {"present": keyring_available},
-                        "cookie_file": {
-                            "path": session_info["path"],
-                            "present": session_info["present"],
-                            "schema_version": schema_version,
-                            "legacy_backup_present": session_info["legacy_backup_present"],
-                        },
-                    },
-                    "account": account_data,
-                }
-                cli_ctx.render_structured(data, "eero.auth.status/v2")
-
+                cli_ctx.render_structured(_status_payload(report), "eero.auth.status/v2")
             elif cli_ctx.output_format == OutputFormat.LIST:
-                # List format - parseable key-value rows
-                if session_valid is True:
-                    status = "valid"
-                elif session_valid is None:
-                    status = "stored_not_verified"
-                elif is_auth:
-                    status = "invalid"
-                else:
-                    status = "not_authenticated"
-                print(f"status              {status}")
-                print(f"auth_method         {auth_method}")
-                print(f"cookie_file         {session_info['path']}")
-                print(
-                    f"schema_version      {schema_version if schema_version is not None else 'N/A'}"
-                )
-                print(f"keyring_available   {keyring_available}")
-                print(f"legacy_backup       {session_info['legacy_backup_present']}")
-                if account_data:
-                    print(f"account_id          {account_data['id']}")
-                    print(f"account_name        {account_data['name'] or 'N/A'}")
-                    print(f"premium_status      {account_data['premium_status'] or 'N/A'}")
-                    print(f"premium_expiry      {account_data['premium_expiry'] or 'N/A'}")
-                    for u in account_data.get("users", []):
-                        print(f"user                {u['email']}  {u['role']}  {u['name'] or ''}")
-
+                _render_status_list(report)
             else:
-                # Table format - Rich tables
-                # Session info table
-                session_table = Table(title="Session Information")
-                session_table.add_column("Property", style="cyan")
-                session_table.add_column("Value")
-
-                if session_valid is True:
-                    status_display = "[green]Valid[/green]"
-                elif session_valid is None:
-                    status_display = "[blue]Stored, not verified[/blue]"
-                elif is_auth:
-                    status_display = "[yellow]Invalid[/yellow]"
-                else:
-                    status_display = "[red]Not authenticated[/red]"
-
-                session_table.add_row("Status", status_display)
-                session_table.add_row("Auth Method", f"[blue]{auth_method}[/blue]")
-                session_table.add_row(
-                    "Credential Schema",
-                    str(schema_version) if schema_version is not None else "N/A",
-                )
-                session_table.add_row(
-                    "Keyring Available",
-                    "[green]Yes[/green]" if keyring_available else "[dim]No[/dim]",
-                )
-                session_table.add_row("Cookie File", session_info["path"])
-                session_table.add_row(
-                    "Legacy Backup",
-                    (
-                        "[yellow]Present[/yellow]"
-                        if session_info["legacy_backup_present"]
-                        else "[dim]No[/dim]"
-                    ),
-                )
-
-                console.print(session_table)
-
-                # Account info table (only if we got account data)
-                if account_data:
-                    console.print()
-                    account_table = Table(title="Account Information")
-                    account_table.add_column("Property", style="cyan")
-                    account_table.add_column("Value")
-
-                    account_table.add_row("Account ID", account_data["id"])
-                    account_table.add_row("Account Name", account_data["name"] or "N/A")
-                    premium = account_data["premium_status"] or "N/A"
-                    if premium and "active" in premium.lower():
-                        premium = f"[green]{premium}[/green]"
-                    account_table.add_row("Premium Status", premium)
-                    account_table.add_row("Premium Expiry", account_data["premium_expiry"] or "N/A")
-                    account_table.add_row("Created", account_data["created_at"] or "N/A")
-
-                    console.print(account_table)
-
-                    # Users table
-                    if account_data.get("users"):
-                        console.print()
-                        users_table = Table(title="Account Users")
-                        users_table.add_column("Email", style="cyan")
-                        users_table.add_column("Name")
-                        users_table.add_column("Role", style="magenta")
-
-                        for u in account_data["users"]:
-                            users_table.add_row(u["email"], u["name"] or "", u["role"])
-
-                        console.print(users_table)
-                elif session_valid is not True:
-                    console.print()
-                    console.print("[yellow]Run `eero auth login` to authenticate.[/yellow]")
+                _render_status_table(report, console)
 
             # "ok" for --check: authenticated, and either confirmed valid or
             # unverified (--offline); never ok when the live probe rejected
