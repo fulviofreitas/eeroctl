@@ -488,7 +488,7 @@ def _check_keyring_available() -> bool:
 class _StatusReport:
     """Everything ``eero auth status`` knows, in one place for the renderers."""
 
-    is_auth: bool
+    authenticated: bool
     # True: live probe confirmed the session works. False: not
     # authenticated, or the probe rejected the stored token
     # (EeroAuthenticationException/other API error). None: unknown
@@ -590,7 +590,7 @@ def _status_payload(report: _StatusReport) -> dict[str, Any]:
     """The ``eero.auth.status/v2`` structured payload."""
     session_info = report.session_info
     return {
-        "authenticated": report.is_auth,
+        "authenticated": report.authenticated,
         "session_valid": report.session_valid,
         "auth_method": report.auth_method,
         "storage": {
@@ -610,7 +610,7 @@ def _render_status_list(report: _StatusReport) -> None:
     """Parseable key-value rows on stdout."""
     session_info = report.session_info
     schema_version = session_info["schema_version"]
-    print(f"status              {_status_label(report.is_auth, report.session_valid)}")
+    print(f"status              {_status_label(report.authenticated, report.session_valid)}")
     print(f"auth_method         {report.auth_method}")
     print(f"cookie_file         {session_info['path']}")
     print(f"schema_version      {schema_version if schema_version is not None else 'N/A'}")
@@ -633,7 +633,9 @@ def _session_table(report: _StatusReport) -> Table:
     table = Table(title="Session Information")
     table.add_column("Property", style="cyan")
     table.add_column("Value")
-    table.add_row("Status", _STATUS_MARKUP[_status_label(report.is_auth, report.session_valid)])
+    table.add_row(
+        "Status", _STATUS_MARKUP[_status_label(report.authenticated, report.session_valid)]
+    )
     table.add_row("Auth Method", f"[blue]{report.auth_method}[/blue]")
     table.add_row("Credential Schema", str(schema_version) if schema_version is not None else "N/A")
     table.add_row(
@@ -743,7 +745,7 @@ def auth_status(ctx: click.Context, offline: bool, check_only: bool) -> None:
             # probe actually found a record there -- that's a separate
             # fact, already carried by storage.keyring.present.
             report = _StatusReport(
-                is_auth=is_auth,
+                authenticated=is_auth,
                 session_valid=session_valid,
                 auth_method="env" if session_token is not None else get_auth_method(),
                 session_info=session_info,
