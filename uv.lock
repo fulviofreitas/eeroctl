@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.12"
 
 [[package]]
@@ -352,21 +352,21 @@ wheels = [
 
 [[package]]
 name = "eero-api"
-version = "8.0.5"
+version = "8.0.6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "keyring" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/98/47/9208fcd6e8e126729c39e61ede72dc2e0548e43407a4129442ce07b7880c/eero_api-8.0.5.tar.gz", hash = "sha256:f2be5cf029efc24fe0557140c25b1734012c3bdf2ca16392850a6a91291964cd", size = 128373, upload-time = "2026-09-29T07:01:57.468Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/50/0b/2046395f85a39460bf35ddb912500eaa8928f7e71fa3780cd5755301a912/eero_api-8.0.6.tar.gz", hash = "sha256:3bf8460b77d07b6d7289d08b7017f8b78b8b6079a8348325e9aa4fe1cbf9c861", size = 128343, upload-time = "2026-10-06T23:33:41.898Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b3/b1/1ba960f1fcede4797f737c46a7eb8e6cbad5b30ec0a3fa286fa77f1650c6/eero_api-8.0.5-py3-none-any.whl", hash = "sha256:5ca934a31eeff2b8ce460952388e54d11a3129223a30eb0d3fa12d33ac555fbf", size = 163236, upload-time = "2026-09-29T07:01:56.262Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/f4/b5d2e08e7e92213fe3fc3e0ee9ccded81ec8b4b18dae8b3defb41e179dcd/eero_api-8.0.6-py3-none-any.whl", hash = "sha256:3638e68dbca1e4687c3c4907fdae1b205dd75450c6318af4e319096a79b183da", size = 163181, upload-time = "2026-10-06T23:33:40.733Z" },
 ]
 
 [[package]]
 name = "eeroctl"
-version = "3.1.0"
+version = "3.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "click" },
@@ -390,7 +390,7 @@ dev = [
 requires-dist = [
     { name = "black", marker = "extra == 'dev'", specifier = ">=23.0.0" },
     { name = "click", specifier = ">=8.0.0" },
-    { name = "eero-api", specifier = "==8.0.5" },
+    { name = "eero-api", specifier = "==8.0.6" },
     { name = "isort", marker = "extra == 'dev'", specifier = ">=5.12.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.0.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
