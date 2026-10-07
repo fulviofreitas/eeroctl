@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.1](https://github.com/fulviofreitas/eeroctl/compare/v3.1.0...v3.1.1) (2026-10-07)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump multidict from 6.7.0 to 6.9.1 ([#125](https://github.com/fulviofreitas/eeroctl/issues/125)) ([3cbaf2b](https://github.com/fulviofreitas/eeroctl/commit/3cbaf2bfde962af0facafbf63ab49b6f9c776284))
+
 ## [3.1.0](https://github.com/fulviofreitas/eeroctl/compare/v3.0.0...v3.1.0) (2026-10-06)
 
 ### ✨ Features
