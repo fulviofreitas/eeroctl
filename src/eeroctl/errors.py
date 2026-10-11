@@ -4,6 +4,7 @@ This module provides utilities for translating exceptions to user-friendly
 error messages and appropriate exit codes.
 """
 
+import math
 from typing import Any, Callable, Optional, TypeVar
 
 from eero.exceptions import (
@@ -108,8 +109,11 @@ def _render_rate_limit(e: EeroRateLimitException, prefix: str) -> tuple[str, Exi
     """Render a rate-limit failure."""
     # No dedicated exit code for rate limiting (§2.6/Q5 of the v8
     # migration plan: exit 7 stays TIMEOUT-only); falls to GENERIC_ERROR.
+    # `retry_after` (eero-api >= 8.1.2) is the server's Retry-After, in seconds.
+    wait = f" {math.ceil(e.retry_after)}s" if e.retry_after is not None else ""
     return (
-        f"[yellow]{prefix}Rate limited. Please wait and try again.{_error_code_suffix(e)}[/yellow]",
+        f"[yellow]{prefix}Rate limited. Please wait{wait} and try again."
+        f"{_error_code_suffix(e)}[/yellow]",
         ExitCode.GENERIC_ERROR,
     )
 

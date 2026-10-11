@@ -197,6 +197,16 @@ class TestHandleCliError:
         console.print.assert_called_once()
         call_args = console.print.call_args[0][0]
         assert "Rate limited" in call_args
+        assert "Please wait and try again" in call_args
+
+    def test_rate_limit_exception_includes_retry_after(self, console):
+        """A server-supplied Retry-After is surfaced, rounded up to whole seconds."""
+        exc = EeroRateLimitException("Too many requests", status_code=429, retry_after=29.2)
+
+        exit_code = handle_cli_error(exc, console)
+
+        assert exit_code == ExitCode.GENERIC_ERROR
+        assert "Please wait 30s and try again" in console.print.call_args[0][0]
 
     def test_network_exception(self, console):
         """EeroNetworkException maps to the new NETWORK_ERROR (14)."""
