@@ -259,7 +259,9 @@ class TestSdkRejectsCrossNetworkChildLinks:
         async with real_client:
             for good_id in (GOOD_DEVICE_MAC, GOOD_DEVICE_PATH, GOOD_DEVICE_URL):
                 guard.reset_mock()
-                await real_client.get_device(good_id, "111111")
+                # eero-api >= 8.1.9 canonicalizes device cache keys, so all
+                # three forms share one entry -- bypass the cache.
+                await real_client.get_device(good_id, "111111", refresh_cache=True)
                 guard.assert_awaited_once()
 
 
