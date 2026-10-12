@@ -10,11 +10,12 @@ Commands:
 - eero network security mlo set: Multi-link operation mode
 - eero network security passpoint: Passpoint
 - eero network security proxied-nodes: Proxied nodes
+- eero network security hide-5g: Temporarily hide the 5 GHz band
 """
 
 import asyncio
 import sys
-from typing import Any
+from typing import Any, Callable, Dict, Optional, Union
 
 import click
 from eero import EeroClient
@@ -26,6 +27,7 @@ from ...formatting.wpa3 import print_fast_transition
 from ...options import apply_options, common_options
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
+from ...transformers.network import extract_hide_5g
 from ...transformers.wpa3 import extract_fast_transition
 from ...utils import run_with_client, write_if_changed
 
@@ -47,6 +49,7 @@ def security_group(ctx: click.Context) -> None:
       mlo            - Multi-link operation mode
       passpoint      - Passpoint
       proxied-nodes  - Proxied nodes
+      hide-5g        - Temporarily hide the 5 GHz band
 
     \b
     Examples:
@@ -63,7 +66,7 @@ def security_group(ctx: click.Context) -> None:
 def security_show(ctx: click.Context) -> None:
     """Show security settings.
 
-    Extended with `mlo_mode`, `passpoint`, `proxied_nodes`, and `ddns`, read
+    Extended with `mlo_mode`, `passpoint`, `proxied_nodes`, `hide_5g`, and `ddns`, read
     straight from the `get_network` envelope since no dedicated GETs exist
     for them (migration plan §4, `network security show` (extend) row).
     """
@@ -117,7 +120,7 @@ def security_show(ctx: click.Context) -> None:
                 extras_table = Table(title="Extended Security Settings")
                 extras_table.add_column("Field", style="cyan")
                 extras_table.add_column("Value")
-                for key in ("mlo_mode", "passpoint", "proxied_nodes", "ddns"):
+                for key in ("mlo_mode", "passpoint", "proxied_nodes", "hide_5g", "ddns"):
                     extras_table.add_row(key, str(safe_extras.get(key)))
                 console.print(extras_table)
 
@@ -223,9 +226,14 @@ def _set_security_setting(
 # `get_network` envelope, the same fields the phase-A extended `security
 # show` reads (migration plan §2.7). This factory mirrors
 # `_make_security_toggle` but reads its current state from there instead of
-# `get_security_settings`.
+# `get_security_settings`. `state_field` is either a top-level key of the
+# envelope's `data` or a function extracting the current state from it
+# (returning None when the state is unknown).
+NetworkStateField = Union[str, Callable[[Dict[str, Any]], Optional[bool]]]
+
+
 def _make_network_field_toggle(
-    setting_name: str, api_method: str, display_name: str, state_field: str
+    setting_name: str, api_method: str, display_name: str, state_field: NetworkStateField
 ):
     """Factory for security toggle command groups backed by `get_network`."""
 
@@ -262,7 +270,7 @@ def _set_network_field_setting(
     setting_name: str,
     api_method: str,
     display_name: str,
-    state_field: str,
+    state_field: NetworkStateField,
     enable: bool,
     force: bool,
 ):
@@ -296,6 +304,9 @@ def _set_network_field_setting(
                 with cli_ctx.status(f"Reading current {display_name} setting..."):
                     raw_network = await client.get_network(cli_ctx.network_id)
                 net_data = extract_data(raw_network) if isinstance(raw_network, dict) else {}
+                if callable(state_field):
+                    state = state_field(net_data)
+                    return not enable if state is None else state
                 return bool(net_data.get(state_field, not enable))
 
             async def write() -> Any:
@@ -398,6 +409,9 @@ passpoint_group = _make_network_field_toggle(
 )
 proxied_nodes_group = _make_network_field_toggle(
     "proxied-nodes", "set_proxied_nodes", "proxied nodes", "proxied_nodes"
+)
+hide_5g_group = _make_network_field_toggle(
+    "hide-5g", "set_hide_5g", "5 GHz hiding", extract_hide_5g
 )
 
 security_group.add_command(wpa3_group)
@@ -517,3 +531,4 @@ def fast_transition_disable(ctx: click.Context, force: bool) -> None:
 
 security_group.add_command(passpoint_group)
 security_group.add_command(proxied_nodes_group)
+security_group.add_command(hide_5g_group)

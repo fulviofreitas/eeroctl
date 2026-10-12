@@ -64,7 +64,7 @@ eero
 │   │       ├── block <domain> [--delete] [--keep-profiles ID]…
 │   │       └── allow-cnames <domain>…       # One or more CNAME domains
 │   ├── security     # Security settings
-│   │   ├── show                             # + mlo_mode, passpoint, proxied_nodes, ddns
+│   │   ├── show                             # + mlo_mode, passpoint, proxied_nodes, hide_5g, ddns
 │   │   ├── wpa3 <enable|disable>            # reboots the network
 │   │   ├── band-steering <enable|disable>   # reboots the network
 │   │   ├── upnp <enable|disable>            # reboots the network
@@ -73,6 +73,7 @@ eero
 │   │   ├── mlo set <disabled|single|multi>  # reboots the network
 │   │   ├── passpoint <enable|disable>       # unverified
 │   │   ├── proxied-nodes <enable|disable>   # unverified
+│   │   ├── hide-5g <enable|disable>         # Temporarily hide 5 GHz; enable: type DISCONNECT
 │   │   └── fast-transition                  # 802.11r
 │   │       ├── show                         # Current setting
 │   │       ├── enable                       # reboots the network
@@ -209,7 +210,8 @@ eero
 │   └── updates      # Software updates
 │       ├── show
 │       ├── check
-│       └── apply                            # Type REBOOT: every node restarts
+│       ├── apply                            # Type REBOOT: every node restarts
+│       └── hour set <0-23>                  # Preferred update hour; unverified
 │
 ├── device           # Connected device management
 │   ├── list         # List all devices
@@ -326,7 +328,7 @@ IANA name (e.g. `Europe/Lisbon`), defaults to UTC.
 | `network dhcp show` | — | read | `dhcp`, `lease`, `connection`, `ip_settings`, `wan_type` from the network envelope. |
 | `network wpa3 show` | — | read | Per-band WPA3 mode. Separate group from `network security wpa3 enable/disable`. |
 | `network security fast-transition show` | — | read | 802.11r fast-transition setting. |
-| `network security show` | — | read | Extended with `mlo_mode`, `passpoint`, `proxied_nodes`, `ddns` (read from the network envelope; no dedicated GETs). |
+| `network security show` | — | read | Extended with `mlo_mode`, `passpoint`, `proxied_nodes`, `hide_5g`, `ddns` (read from the network envelope; no dedicated GETs). |
 | `network power-saving schedules list` | — | read | Verified. Undocumented shape → generic renderer. |
 | `device type set <id> <type>` | `DEVICE_IDENTIFIER` (id, MAC or name), `DEVICE_TYPE` (free string; the API's own type names), `--force`, `--network-id` | write · **LOW** · verified · no reboot | Read-first: skips the write when the type already matches. Read-back: `eero device show <id>`. |
 | `network guest password set` | `--password <pass>` (omitted → hidden, confirmed prompt; `--non-interactive` without it exits `2` before any prompt), `--force` | write · **MEDIUM** · verified · disconnects guest clients | Never echoed. Read-back: `eero network guest show`. `network guest set --password` issues the same write. |
@@ -350,6 +352,7 @@ IANA name (e.g. `Europe/Lisbon`), defaults to UTC.
 | `network security mlo set <disabled\|single\|multi>` | `MODE`, `--force` | write · **HIGH `REBOOT`** · unverified · reboots the mesh | Read-first against `mlo_mode` on the network envelope. Read-back: `eero network security show`. |
 | `network security passpoint enable\|disable` | `--force` | write · **MEDIUM** · unverified · no reboot | Read-first against `passpoint` on the network envelope. Read-back: `eero network security show`. |
 | `network security proxied-nodes enable\|disable` | `--force` | write · **MEDIUM** · unverified · no reboot | Read-first against `proxied_nodes`. Read-back: `eero network security show`. |
+| `network security hide-5g enable\|disable` | `--force` | write · enable **HIGH `DISCONNECT`**, disable **MEDIUM** · unverified · disconnects clients | Temporarily hides the 5 GHz band (eero-api 8.3.0); the API expires the flag on its own. Read-first against `temporary_flags.hide_5g` on the network envelope. Read-back: `eero network security show`. |
 | `network password set` | `--password <pass>` (omitted → hidden, confirmed prompt **after** the `DISCONNECT` confirmation; `--non-interactive` without it exits `2` before any prompt), `--force` | write · **HIGH `DISCONNECT`** · unverified · disconnects every client | Never echoed. Read-back: `eero network show`. |
 | `network password clear` | `--force` | write · **HIGH `DISCONNECT`** · unverified · disconnects every client | Read-back: `eero network show`. |
 | `network reboot` | `--force` | write · **HIGH `REBOOT`** · unverified · reboots the mesh | Follows the network envelope's published `reboot` link. No read-first (a reboot has no idempotent state). Prints "Network reboot initiated." Read-back: `eero network show`. |
@@ -365,6 +368,7 @@ IANA name (e.g. `Europe/Lisbon`), defaults to UTC.
 | `eero nightlight override <id>` | `EERO_IDENTIFIER`, `--brightness 0-100` **required** | write · **LOW** · unverified · no reboot | One-shot override via the dedicated action, distinct from `nightlight brightness`. Beacon only (exit `12` elsewhere). Read-back: `eero eero nightlight show`. |
 | `eero nightlight schedule <id>` | exactly one of: `--on HH:MM` **with** `--off HH:MM`; `--disable`; `--schedule-json '{…}'` (raw object, forwarded unchanged) | write · **LOW** · unverified · no reboot | **Renamed** from `--on-time/--off-time`. None or more than one mode → exit `2`. Shape unverified — no Beacon available. Read-back: `eero eero nightlight show`. |
 | `eero updates apply` | `--force`, `--network-id` | write · **HIGH `REBOOT`** · unverified · reboots the mesh | Applies the pending update; every node restarts. No read-first. Read-back: `eero eero updates show`. |
+| `eero updates hour set <HOUR>` | `--force`, `--network-id` | write · **MEDIUM** · unverified · no reboot | Hour of day (0–23, network timezone) updates are applied (eero-api 8.3.0). Out-of-range hours exit `2` before any request. Read-first against `updates.preferred_update_hour`. Read-back: `eero eero updates show`. |
 
 | `network wpa3 set` | at least one of `--band-2-4 {WPA2, WPA2_WPA3, WPA3}`, `--band-5 {WPA2, WPA2_WPA3, WPA3}`; `--force`, `--network-id` | write · **HIGH `REBOOT`** · unverified · reboots the mesh | Neither flag → exit `2` before any prompt (the SDK rejects an empty update too). Read-first against `band_2_4_ghz`/`band_5_ghz`; an omitted band never counts as a difference. Read-back: `eero network wpa3 show`. |
 | `network security fast-transition enable\|disable` | `--force` | write · **HIGH `REBOOT`** · unverified · reboots the mesh | 802.11r. Read-first against `enabled`. Read-back: `eero network security fast-transition show`. |
@@ -509,11 +513,11 @@ text comes from it, not from each command.
 | Tier | Prompt | Applies to |
 | ---- | ------ | ---------- |
 | **LOW** | none | Cosmetic and per-device writes: `device rename`, `device type set`, `eero led *` (incl. `cycle`), `eero nightlight *` (incl. `override`), `eero location set`, `profile create`, `network speedtest run`, `troubleshoot diagnostics run`, `network notifications set/mark-read`, `network usage report set` |
-| **MEDIUM — disconnects clients** | Y/N: "Proceed with `<command>` (disconnects connected clients) on `<target>`?" | `network rename`, `network guest enable/disable/set`, `network guest password set/clear` — connected (or guest) clients drop and reconnect |
+| **MEDIUM — disconnects clients** | Y/N: "Proceed with `<command>` (disconnects connected clients) on `<target>`?" | `network rename`, `network guest enable/disable/set`, `network guest password set/clear`, `network security hide-5g disable` — connected (or guest) clients drop and reconnect |
 | **MEDIUM — reboots this eero** | Y/N: "… (reboots this eero) …" | `eero reboot <id>`, `eero ports cycle --reboot` — one node restarts |
-| **MEDIUM** (other) | Y/N: "Proceed with `<command>` on `<target>`?" | `device block/unblock/pause/unpause`, `profile pause/unpause/rename/devices set/dns allow/block/apps */schedule set/clear/delete`, `network backup enable/disable`, `network support bundle export`, `network security thread/passpoint/proxied-nodes *`, `network ddns *`, `network thread set`, `network forwards create/update/delete`, `network dhcp reservation create/update/delete`, `eero pppoe set`, `eero ports cycle`, `eero port`, `network dns policy allow/block/allow-cnames`, `network members invite create/update/delete/respond`, `network members promote/cancel-pending-admin`, `network power-saving schedules create/update/delete`, `network backup access-points add/update/delete/rearrange/check/discover --start`, `network subnets filters set`, `account name set`, `account email set/verify`, `account phone set/verify`, `account consents`, `account push set` |
+| **MEDIUM** (other) | Y/N: "Proceed with `<command>` on `<target>`?" | `device block/unblock/pause/unpause`, `profile pause/unpause/rename/devices set/dns allow/block/apps */schedule set/clear/delete`, `network backup enable/disable`, `network support bundle export`, `network security thread/passpoint/proxied-nodes *`, `eero updates hour set`, `network ddns *`, `network thread set`, `network forwards create/update/delete`, `network dhcp reservation create/update/delete`, `eero pppoe set`, `eero ports cycle`, `eero port`, `network dns policy allow/block/allow-cnames`, `network members invite create/update/delete/respond`, `network members promote/cancel-pending-admin`, `network power-saving schedules create/update/delete`, `network backup access-points add/update/delete/rearrange/check/discover --start`, `network subnets filters set`, `account name set`, `account email set/verify`, `account phone set/verify`, `account consents`, `account push set` |
 | **HIGH — reboots the mesh** | Type `REBOOT`. Before the prompt: "Warning: Applying this change reboots every eero on the network. All clients lose Wi-Fi and internet while the mesh restarts. The outage begins a few minutes after this command returns, not immediately." | `network dns mode set / clear / caching *`, `network security wpa3 / band-steering / upnp / ipv6 *`, `network security mlo set`, `network sqm enable/disable`, `network dhcp set`, `network dhcp connection-mode set`, `network dhcp nat-randomization *`, `network reboot`, `eero updates apply`, `network wpa3 set`, `network security fast-transition enable/disable`, `network power-saving enable/disable`, `network subnets set/delete`, `network wan multistaticip set`, `network wan secondary set`, `device wan-access` |
-| **HIGH** (other phrase) | Type the named phrase | `profile delete` → `DELETE`; `network password set/clear` → `DISCONNECT`; `network members remove-admin` → `REMOVE` (removing someone's admin role is irreversible from this command) |
+| **HIGH** (other phrase) | Type the named phrase | `profile delete` → `DELETE`; `network password set/clear` and `network security hide-5g enable` → `DISCONNECT`; `network members remove-admin` → `REMOVE` (removing someone's admin role is irreversible from this command) |
 
 The HIGH prompt reads "⚠ Warning: You are about to `<command>` (`<consequence>`)
 `<target>`." followed by "To confirm, type `<PHRASE>` and press Enter:". A mismatch

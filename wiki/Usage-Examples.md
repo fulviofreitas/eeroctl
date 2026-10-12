@@ -266,6 +266,13 @@ eero eero port "Office" 2 DISABLE_POE
 # Apply a pending software update — every node reboots; type REBOOT
 eero eero updates check
 eero eero updates apply
+
+# Apply future updates at 3am (network timezone)
+eero eero updates hour set 3
+
+# Temporarily hide the 5 GHz band — drops 5 GHz clients; type DISCONNECT
+eero network security hide-5g enable
+eero network security hide-5g disable
 ```
 
 ---

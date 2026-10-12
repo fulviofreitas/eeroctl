@@ -343,6 +343,8 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
         {},
         "network/security.py:proxied_nodes (getattr dispatch, client.py:2799)",
     ),
+    ("set_hide_5g", (True, "nid"), {}, "network/security.py:hide_5g (getattr dispatch, 8.3.0)"),
+    ("set_preferred_update_hour", (3, "nid"), {}, "eero/updates.py:hour_set (8.3.0)"),
     # -- network/speedtest.py ------------------------------------------------
     ("run_speed_test", ("nid",), {}, "network/speedtest.py:43"),
     # `run_speed_test` returns 202 with `data: null` (8.0.1); `speedtest show`
