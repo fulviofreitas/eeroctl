@@ -41,7 +41,7 @@ from ..transformers import (
     extract_profiles,
     normalize_profile,
 )
-from ..utils import looks_like_sdk_reference, run_with_client, write_if_changed
+from ..utils import looks_like_sdk_reference, progressive, run_with_client, write_if_changed
 from .device import _find_device
 
 
@@ -650,7 +650,7 @@ def _set_profile_paused(cli_ctx: EeroCliContext, profile_identifier: str, paused
                 return bool(target.get("paused", not paused))
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing profile..."):
+                with cli_ctx.status(f"{progressive(action)} profile..."):
                     return await client.pause_profile(target["id"], paused, cli_ctx.network_id)
 
             await write_if_changed(
@@ -821,7 +821,7 @@ async def _write_blocked_apps(
     action: Literal["block", "unblock"],
 ) -> Any:
     """Send the replacement blocked-application list; exit on API failure."""
-    with cli_ctx.status(f"{action.capitalize()}ing apps..."):
+    with cli_ctx.status(f"{progressive(action)} apps..."):
         try:
             return await client.set_profile_blocked_applications(
                 profile_id, blocked, cli_ctx.network_id

@@ -21,7 +21,7 @@ from rich.panel import Panel
 from ...context import EeroCliContext, get_cli_context
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
-from ...utils import run_with_client, write_if_changed
+from ...utils import progressive, run_with_client, write_if_changed
 
 
 @click.group(name="sqm")
@@ -130,7 +130,7 @@ def _set_sqm_enabled(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
                 return bool(sqm_data.get("enabled", not enable))
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing SQM..."):
+                with cli_ctx.status(f"{progressive(action)} SQM..."):
                     return await client.set_sqm(enable, cli_ctx.network_id)
 
             await write_if_changed(

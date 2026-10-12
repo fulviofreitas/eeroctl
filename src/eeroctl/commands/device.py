@@ -28,7 +28,7 @@ from ..options import apply_options, common_options, force_option, network_optio
 from ..output import OutputFormat
 from ..safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ..transformers import extract_data, extract_devices, normalize_device
-from ..utils import looks_like_sdk_reference, run_with_client, write_if_changed
+from ..utils import looks_like_sdk_reference, progressive, run_with_client, write_if_changed
 
 
 def _find_device(devices: list, identifier: str) -> Optional[Dict[str, Any]]:
@@ -509,7 +509,7 @@ def _set_device_blocked(cli_ctx: EeroCliContext, device_identifier: str, blocked
                 return bool(target.get("blacklisted", not blocked))
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
+                with cli_ctx.status(f"{progressive(action)} {device_name}..."):
                     if blocked:
                         return await client.block_device(target["id"], cli_ctx.network_id)
                     return await client.unblock_device(target["id"], cli_ctx.network_id)
@@ -613,7 +613,7 @@ def _set_device_paused(cli_ctx: EeroCliContext, device_identifier: str, paused: 
                 return bool(target.get("paused", not paused))
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing {device_name}..."):
+                with cli_ctx.status(f"{progressive(action)} {device_name}..."):
                     return await client.pause_device(target["id"], paused, cli_ctx.network_id)
 
             await write_if_changed(

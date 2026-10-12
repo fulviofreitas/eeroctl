@@ -41,7 +41,7 @@ from ...transformers.backup_access_points import (
     extract_backup_access_points,
     extract_backup_ssid_discovery,
 )
-from ...utils import run_with_client, write_if_changed
+from ...utils import progressive, run_with_client, write_if_changed
 
 # `--password` with no value: prompt for the secret instead of reading argv.
 PROMPT_SENTINEL = "PROMPT"
@@ -158,7 +158,7 @@ def _set_backup(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None:
                 )
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing backup internet..."):
+                with cli_ctx.status(f"{progressive(action)} backup internet..."):
                     try:
                         return await client.set_backup_internet(enable, cli_ctx.network_id)
                     except EeroException as e:

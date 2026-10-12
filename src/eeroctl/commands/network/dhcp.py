@@ -28,7 +28,7 @@ from ...options import apply_options, common_options, force_option, network_opti
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, extract_devices, normalize_device
 from ...transformers.network import extract_network, extract_network_dhcp_view
-from ...utils import run_with_client
+from ...utils import progressive, run_with_client
 
 
 def _parse_config_json(console: Any, raw: str) -> dict:
@@ -580,7 +580,7 @@ def _set_nat_randomization(cli_ctx, enable: bool, force: Optional[bool]) -> None
 
     async def run_cmd() -> None:
         async def set_nat(client: EeroClient) -> None:
-            with cli_ctx.status(f"{action.capitalize()}ing NAT port randomization..."):
+            with cli_ctx.status(f"{progressive(action)} NAT port randomization..."):
                 result = await client.set_nat_port_randomization(enable, cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}

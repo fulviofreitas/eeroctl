@@ -21,7 +21,7 @@ from ...context import EeroCliContext, get_cli_context
 from ...exit_codes import ExitCode
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, normalize_network
-from ...utils import run_with_client, write_if_changed
+from ...utils import progressive, run_with_client, write_if_changed
 
 
 @click.group(name="guest")
@@ -204,7 +204,7 @@ def _set_guest_network(
                     return bool(network.get("guest_network_enabled", not enable))
 
                 async def write() -> Any:
-                    with cli_ctx.status(f"{action.capitalize()}ing guest network..."):
+                    with cli_ctx.status(f"{progressive(action)} guest network..."):
                         return await client.set_guest_network(
                             enabled=enable, name=None, network_id=cli_ctx.network_id
                         )
@@ -221,7 +221,7 @@ def _set_guest_network(
 
             # `guest set --name/--password`: always writes, there is no
             # single boolean to compare a "desired" name/password against.
-            with cli_ctx.status(f"{action.capitalize()}ing guest network..."):
+            with cli_ctx.status(f"{progressive(action)} guest network..."):
                 result = await client.set_guest_network(
                     enabled=enable,
                     name=name,

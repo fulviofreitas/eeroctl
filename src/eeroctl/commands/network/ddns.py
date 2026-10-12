@@ -15,7 +15,7 @@ from eero import EeroClient
 from ...context import get_cli_context
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
-from ...utils import run_with_client, write_if_changed
+from ...utils import progressive, run_with_client, write_if_changed
 
 
 @click.group(name="ddns")
@@ -68,7 +68,7 @@ def _set_ddns(ctx: click.Context, enable: bool, force: Optional[bool]) -> None:
                 return bool(net_data.get("ddns", not enable))
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing DDNS..."):
+                with cli_ctx.status(f"{progressive(action)} DDNS..."):
                     return await method(cli_ctx.network_id)
 
             await write_if_changed(

@@ -41,7 +41,7 @@ from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data, safe_get
-from ...utils import err_console, run_with_client
+from ...utils import err_console, progressive, run_with_client
 
 DNS_PROVIDERS_SCHEMA = "eero.network.dns.providers/v1"
 """Schema identifier for ``dns providers`` structured output."""
@@ -827,7 +827,7 @@ def _set_dns_caching(cli_ctx: EeroCliContext, enable: bool, force: bool) -> None
 
     async def run_cmd() -> None:
         async def set_caching(client: EeroClient) -> None:
-            with cli_ctx.status(f"{action.capitalize()}ing DNS caching..."):
+            with cli_ctx.status(f"{progressive(action)} DNS caching..."):
                 result = await client.set_dns_caching(enable, cli_ctx.network_id)
 
             if _write_succeeded(result):
