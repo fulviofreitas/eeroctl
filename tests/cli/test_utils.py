@@ -41,6 +41,7 @@ from eeroctl.utils import (
     get_session_token_override,
     looks_like_sdk_reference,
     prepare_client,
+    progressive,
     run_with_client,
     set_auth_method,
     set_default_output,
@@ -1441,3 +1442,19 @@ class TestPrepareClient:
 
         with pytest.raises(EeroValidationException):
             await prepare_client(client)
+
+
+class TestProgressive:
+    @pytest.mark.parametrize(
+        ("verb", "expected"),
+        [
+            ("enable", "Enabling"),
+            ("disable", "Disabling"),
+            ("pause", "Pausing"),
+            ("unpause", "Unpausing"),
+            ("block", "Blocking"),
+            ("unblock", "Unblocking"),
+        ],
+    )
+    def test_progressive(self, verb: str, expected: str) -> None:
+        assert progressive(verb) == expected

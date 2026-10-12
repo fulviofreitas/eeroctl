@@ -29,7 +29,7 @@ from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_
 from ...transformers import extract_data
 from ...transformers.network import extract_hide_5g
 from ...transformers.wpa3 import extract_fast_transition
-from ...utils import run_with_client, write_if_changed
+from ...utils import progressive, run_with_client, write_if_changed
 
 
 @click.group(name="security")
@@ -205,7 +205,7 @@ def _set_security_setting(
                 return bool(sec_data.get(state_field, not enable))
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing {display_name}..."):
+                with cli_ctx.status(f"{progressive(action)} {display_name}..."):
                     return await method(enable, cli_ctx.network_id)
 
             await write_if_changed(
@@ -310,7 +310,7 @@ def _set_network_field_setting(
                 return bool(net_data.get(state_field, not enable))
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing {display_name}..."):
+                with cli_ctx.status(f"{progressive(action)} {display_name}..."):
                     return await method(enable, cli_ctx.network_id)
 
             await write_if_changed(
@@ -496,7 +496,7 @@ def _set_fast_transition(ctx: click.Context, enable: bool, force: bool) -> None:
                 return bool(data.get("enabled", not enable))
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing fast transition..."):
+                with cli_ctx.status(f"{progressive(action)} fast transition..."):
                     return await client.set_fast_transition(enable, cli_ctx.network_id)
 
             await write_if_changed(

@@ -34,7 +34,7 @@ from ...options import apply_options, common_options, force_option, network_opti
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
 from ...transformers import extract_data
 from ...transformers.power_saving import extract_power_saving_schedules
-from ...utils import run_with_client, write_if_changed
+from ...utils import progressive, run_with_client, write_if_changed
 
 
 @click.group(name="power-saving")
@@ -138,7 +138,7 @@ def _set_power_saving(cli_ctx: Any, enable: bool, schedule_enabled: Optional[boo
                 return all(current.get(k) == v for k, v in wanted.items())
 
             async def write() -> Any:
-                with cli_ctx.status(f"{action.capitalize()}ing power saving..."):
+                with cli_ctx.status(f"{progressive(action)} power saving..."):
                     return await client.set_power_saving(
                         cli_ctx.network_id,
                         enable=enable,

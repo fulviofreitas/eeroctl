@@ -812,3 +812,19 @@ def confirm_action(message: str) -> bool:
         True if user confirms, False otherwise
     """
     return click.confirm(message)
+
+
+def progressive(verb: str) -> str:
+    """Capitalized "-ing" form of a command verb, for status messages.
+
+    Drops a trailing "e" before the suffix, so "enable" gives "Enabling" and
+    "pause" gives "Pausing" rather than "Enableing"/"Pauseing".
+
+    Args:
+        verb: A lowercase verb such as "enable", "unpause", or "block".
+
+    Returns:
+        The capitalized present participle.
+    """
+    stem = verb[:-1] if verb.endswith("e") else verb
+    return f"{stem.capitalize()}ing"
