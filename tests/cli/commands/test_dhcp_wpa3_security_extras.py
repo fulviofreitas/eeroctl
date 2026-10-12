@@ -289,7 +289,7 @@ class TestSecurityShowExtended:
             result = runner.invoke(cli, ["--output", "json", "network", "security", "show"])
 
         parsed = json.loads(result.output)
-        for key in ("mlo_mode", "passpoint", "proxied_nodes", "ddns"):
+        for key in ("mlo_mode", "passpoint", "proxied_nodes", "hide_5g", "ddns"):
             assert key in parsed["data"]
         assert parsed["data"]["mlo_mode"] == "disabled"
         # Original security fields still present alongside the extras.
@@ -393,6 +393,7 @@ class TestExtractHelpers:
             "mlo_mode": "disabled",
             "passpoint": {"enabled": False},
             "proxied_nodes": {"enabled": False},
+            "hide_5g": None,
             "ddns": {"enabled": False},
         }
 
@@ -402,5 +403,6 @@ class TestExtractHelpers:
             "mlo_mode": None,
             "passpoint": None,
             "proxied_nodes": None,
+            "hide_5g": None,
             "ddns": None,
         }

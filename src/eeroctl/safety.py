@@ -609,6 +609,24 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="none",
             read_command="eero network security show",
         ),
+        # -- network security hide-5g (eero-api 8.3.0 `set_hide_5g`): hiding
+        # drops every 5 GHz client, the same blast radius as `network
+        # password set`; un-hiding only brings the band back. Unverified. --
+        "network security hide-5g enable": WriteSpec(
+            command="network security hide-5g enable",
+            risk=OperationRisk.HIGH,
+            status=WriteStatus.UNVERIFIED,
+            reboots="clients",
+            read_command="eero network security show",
+            phrase="DISCONNECT",
+        ),
+        "network security hide-5g disable": WriteSpec(
+            command="network security hide-5g disable",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="clients",
+            read_command="eero network security show",
+        ),
         # -- network rename: `set_network_name` is not live-verified and
         # disconnects clients while the SSID change propagates. --
         "network rename": WriteSpec(
@@ -966,6 +984,15 @@ WRITE_SPECS: Dict[str, WriteSpec] = _build_registry(
             reboots="mesh",
             read_command="eero eero updates show",
             phrase="REBOOT",
+        ),
+        # -- eero updates hour set (eero-api 8.3.0 `set_preferred_update_hour`):
+        # only moves the update window, nothing disrupted. Unverified. --
+        "eero updates hour set": WriteSpec(
+            command="eero updates hour set",
+            risk=OperationRisk.MEDIUM,
+            status=WriteStatus.UNVERIFIED,
+            reboots="none",
+            read_command="eero eero updates show",
         ),
         # -- network support bundle export: not an SDK write at all -- it is
         # two reads (`get_support`, `get_diagnostics`) written to a local

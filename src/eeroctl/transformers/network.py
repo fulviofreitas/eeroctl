@@ -66,14 +66,37 @@ def extract_network_security_extras(network_data: Dict[str, Any]) -> Dict[str, A
             `extract_network`).
 
     Returns:
-        A dict with `mlo_mode`, `passpoint`, `proxied_nodes`, `ddns` keys.
+        A dict with `mlo_mode`, `passpoint`, `proxied_nodes`, `hide_5g`,
+        `ddns` keys.
     """
     return {
         "mlo_mode": network_data.get("mlo_mode"),
         "passpoint": network_data.get("passpoint"),
         "proxied_nodes": network_data.get("proxied_nodes"),
+        "hide_5g": extract_hide_5g(network_data),
         "ddns": network_data.get("ddns"),
     }
+
+
+def extract_hide_5g(network_data: Dict[str, Any]) -> Optional[bool]:
+    """Extract whether 5 GHz is temporarily hidden.
+
+    The flag lives at `temporary_flags.hide_5g.value` on the `get_network`
+    envelope (eero-api 8.3.0 `set_hide_5g`). The API drops the entry when the
+    flag expires or is cleared, leaving `temporary_flags` as `{}`.
+
+    Args:
+        network_data: Already-unwrapped `data` from `get_network`.
+
+    Returns:
+        The flag, False when `temporary_flags` has no `hide_5g` entry, or
+        None when the envelope carries no `temporary_flags` at all.
+    """
+    flags = network_data.get("temporary_flags")
+    if not isinstance(flags, dict):
+        return None
+    flag = flags.get("hide_5g")
+    return bool(flag.get("value")) if isinstance(flag, dict) else False
 
 
 def normalize_network_status(status: Optional[str]) -> str:
