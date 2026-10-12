@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.1](https://github.com/fulviofreitas/eeroctl/compare/v3.4.0...v3.4.1) (2026-10-12)
+
+### 🐛 Bug Fixes
+
+* correct -ing verb forms in status messages ([#132](https://github.com/fulviofreitas/eeroctl/issues/132)) ([60fe8b9](https://github.com/fulviofreitas/eeroctl/commit/60fe8b9abe860fe52a30dbb5888eab61b93d9522))
+
 ## [3.4.0](https://github.com/fulviofreitas/eeroctl/compare/v3.3.0...v3.4.0) (2026-10-12)
 
 ### ✨ Features
