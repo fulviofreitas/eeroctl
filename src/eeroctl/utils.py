@@ -216,8 +216,9 @@ def build_client(
     Every command that needs an :class:`~eero.EeroClient` goes through this
     function instead of instantiating the class directly, so there is one
     place to change when the client gains new constructor options (see the
-    v8 migration plan, §3.4). All private-SDK access (``client._api...``)
-    lives in :mod:`eeroctl.sdk_private`, never here or in a command module.
+    v8 migration plan, §3.4). eeroctl only ever calls the public
+    :class:`~eero.EeroClient` facade; private-member access is forbidden by
+    ruff ``SLF001`` on ``src/``.
 
     When ``EEROCTL_SESSION_TOKEN`` is set (see
     :func:`get_session_token_override`), this always builds an ephemeral,

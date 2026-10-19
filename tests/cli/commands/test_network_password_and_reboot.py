@@ -144,17 +144,35 @@ class TestNetworkReboot:
         return CliRunner()
 
     def test_requires_reboot_phrase(self, runner: CliRunner) -> None:
-        mock_client = _client()
-        mock_client._api.networks.reboot_network = AsyncMock(return_value={"meta": {"code": 200}})
-        mock_client.get_network = AsyncMock(
-            return_value={"meta": {"code": 200}, "data": {"url": "/2.2/networks/net1"}}
-        )
+        mock_client = _client(reboot_network={"meta": {"code": 200}})
 
         with patch("eeroctl.utils.EeroClient", return_value=mock_client):
             result = runner.invoke(cli, ["network", "reboot"], input="REBOOT\n")
 
         assert result.exit_code == 0
-        mock_client._api.networks.reboot_network.assert_awaited_once()
+        assert "Network reboot initiated" in result.output
+        # No envelope pre-fetch any more: the 8.4.0 facade resolves the
+        # reboot link itself, and None lets it pick the preferred network.
+        mock_client.get_network.assert_not_called()
+        mock_client.reboot_network.assert_awaited_once_with(None)
+
+    def test_forwards_explicit_network_id(self, runner: CliRunner) -> None:
+        mock_client = _client(reboot_network={"meta": {"code": 200}})
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "reboot", "--network-id", "net1", "--force"])
+
+        assert result.exit_code == 0
+        mock_client.reboot_network.assert_awaited_once_with("net1")
+
+    def test_empty_envelope_is_a_failure(self, runner: CliRunner) -> None:
+        mock_client = _client(reboot_network={})
+
+        with patch("eeroctl.utils.EeroClient", return_value=mock_client):
+            result = runner.invoke(cli, ["network", "reboot", "--force"])
+
+        assert result.exit_code == ExitCode.GENERIC_ERROR
+        assert "Failed to reboot network" in result.output
 
     def test_non_interactive_without_force_fails(self, runner: CliRunner) -> None:
         mock_client = _client()
@@ -163,4 +181,4 @@ class TestNetworkReboot:
             result = runner.invoke(cli, ["--non-interactive", "network", "reboot"])
 
         assert result.exit_code == ExitCode.SAFETY_RAIL
-        mock_client.get_network.assert_not_called()
+        mock_client.reboot_network.assert_not_called()

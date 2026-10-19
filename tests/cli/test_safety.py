@@ -637,8 +637,15 @@ class TestWriteSpecsRegistry:
     # security-review fold-in -- `set_profile_blocked_applications` REPLACES
     # a profile's entire blocked-application list and had neither a prompt
     # nor a WriteSpec).
+    # Facade methods that match a write verb but never touch the Eero API:
+    # they only mutate the SDK's local credential store, so no WriteSpec
+    # (and no API-write confirmation tier) applies. `auth clear` keeps its
+    # own local confirmation prompt.
+    _LOCAL_ONLY_CLIENT_METHODS = {"clear_auth_data"}
+
     _CLIENT_METHOD_TO_COMMANDS = {
         "reboot_eero": ["eero reboot"],
+        "reboot_network": ["network reboot"],
         "set_led": ["eero led on", "eero led off"],
         "set_led_brightness": ["eero led brightness"],
         "set_nightlight": ["eero nightlight on", "eero nightlight off"],
@@ -779,6 +786,8 @@ class TestWriteSpecsRegistry:
                     continue
                 match = method_pattern.search(line)
                 method = match.group(1) if match else None
+                if method in self._LOCAL_ONLY_CLIENT_METHODS:
+                    continue
                 if method is None or method not in self._CLIENT_METHOD_TO_COMMANDS:
                     offenders.append(
                         f"{path.relative_to(commands_dir)}:{lineno}: "

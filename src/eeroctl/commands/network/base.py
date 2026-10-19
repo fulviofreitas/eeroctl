@@ -25,7 +25,6 @@ from ...exit_codes import ExitCode
 from ...options import apply_options, force_option, network_option, output_option
 from ...output import OutputFormat
 from ...safety import SafetyContext, SafetyError, get_write_spec, require_write_confirmation
-from ...sdk_private import reboot_network
 from ...transformers import extract_id_from_url, extract_networks
 from ...transformers.network import extract_network, normalize_network
 from ...utils import run_with_client, set_preferred_network
@@ -540,7 +539,7 @@ def network_reboot(ctx: click.Context, force: Optional[bool], network_id: Option
             # No read-first: a reboot has no idempotent state to compare
             # against (migration plan §4 phase C row 39).
             with cli_ctx.status("Rebooting network..."):
-                result = await reboot_network(client, cli_ctx.network_id)
+                result = await client.reboot_network(cli_ctx.network_id)
 
             meta = result.get("meta", {}) if isinstance(result, dict) else {}
             if meta.get("code") in (200, 201) or result:
