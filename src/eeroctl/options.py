@@ -150,7 +150,7 @@ def apply_options(
 
     # Invalidate cached renderer if format or display options changed
     if output is not None or quiet is not None or no_color is not None:
-        cli_ctx._renderer = None
+        cli_ctx.invalidate_renderer()
 
     return cli_ctx
 
