@@ -123,6 +123,18 @@ class TestEeroCliContext:
         renderer = ctx.renderer
         assert renderer.ctx.quiet is True
 
+    def test_invalidate_renderer_rebuilds_with_new_settings(self):
+        """After invalidation the next access builds a fresh renderer."""
+        ctx = EeroCliContext(output_format="table")
+        stale = ctx.renderer
+
+        ctx.output_format = "json"
+        ctx.invalidate_renderer()
+
+        fresh = ctx.renderer
+        assert fresh is not stale
+        assert fresh.ctx.format == OutputFormat.JSON
+
 
 # ========================== create_cli_context Tests ==========================
 

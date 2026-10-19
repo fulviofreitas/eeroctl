@@ -117,6 +117,14 @@ class EeroCliContext:
             self._renderer = OutputRenderer(output_ctx)
         return self._renderer
 
+    def invalidate_renderer(self) -> None:
+        """Drop the cached renderer so the next access rebuilds it.
+
+        Call after changing ``output_format``, ``detail_level``, ``quiet`` or
+        ``no_color`` once a renderer may already have been built.
+        """
+        self._renderer = None
+
     def is_json_output(self) -> bool:
         """Check if output format is JSON."""
         return self.output_format == "json"
