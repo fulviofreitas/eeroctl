@@ -6,8 +6,8 @@ exist to catch signature drift that mypy cannot see (e.g. the string-dispatch
 call sites in ``network/security.py``) and to give a single, auditable inventory
 of every facade method eeroctl depends on.
 
-This module is pinned to eero-api **8.0.1** (the version installed since the
-``feat(deps)!: update eero-api to 8.0.1`` commit). Signatures are cited against
+This module is pinned to eero-api **8.4.0** (``feat(deps): update eero-api to
+8.4.0``, PR #133); most line citations date from 8.0.1. Signatures are cited against
 ``/tmp/eero-api-v8.0.1/src/eero/client.py`` (see the DIGEST at
 ``/tmp/eero-api-v8.0.1/DIGEST.md``) and the migration plan's
 ``eero-api-8-migration-plan.md`` §1.3/§2.3/§2.4.
@@ -55,10 +55,14 @@ SDK_CALL_SITES: list[tuple[str, tuple[Any, ...], dict[str, Any], str]] = [
     ("verify", ("123456",), {}, "auth.py:208"),
     ("logout", (), {}, "auth.py:271"),
     ("get_account", (), {}, "auth.py:412"),
+    # Public facade methods since eero-api 8.4.0 (previously reached through
+    # `client._api` by the now-deleted `sdk_private.py`).
+    ("resend_verification_code", (), {}, "auth.py:_offer_resend"),
+    ("clear_auth_data", (), {}, "auth.py:_interactive_login,auth_clear"),
+    ("reboot_network", ("nid",), {}, "network/base.py:network_reboot"),
+    ("reboot_network", (None,), {}, "network/base.py:network_reboot (preferred network)"),
     # `client.is_authenticated` (auth.py:111,265,399) is a property, not a
-    # callable signature, and `client._api.auth.clear_auth_data()` /
-    # `resend_verification_code()` are private SDK access (moved into
-    # `sdk_private.py` by a later commit) — out of scope for this facade table.
+    # callable signature — out of scope for this facade table.
     # -- activity.py ------------------------------------------------------
     (
         "get_insights",

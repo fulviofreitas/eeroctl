@@ -18,6 +18,7 @@ import click
 from eero import EeroClient
 from eero.exceptions import EeroAuthenticationException, EeroException, EeroValidationException
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
@@ -26,7 +27,6 @@ from ..const import KEYRING_ACCOUNT_NAME, KEYRING_SERVICE_NAME
 from ..context import EeroCliContext, ensure_cli_context, get_cli_context
 from ..exit_codes import ExitCode
 from ..output import OutputFormat
-from ..sdk_private import clear_all_credentials, resend_verification_code
 from ..utils import (
     build_client,
     get_auth_method,
@@ -305,10 +305,18 @@ async def _verify_code(
 
 async def _offer_resend(client: EeroClient, console: Console, cli_ctx: EeroCliContext) -> None:
     """Ask whether to resend the verification code and do so if accepted."""
-    if Confirm.ask("Resend verification code?"):
+    if not Confirm.ask("Resend verification code?"):
+        return
+    try:
         with cli_ctx.status("Resending..."):
-            await resend_verification_code(client)
-            console.print("[green]Code resent![/green]")
+            resent = await client.resend_verification_code()
+    except EeroException as e:
+        console.print(f"[red]Could not resend code: {escape(str(e))}[/red]")
+        return
+    if resent:
+        console.print("[green]Code resent![/green]")
+    else:
+        console.print("[yellow]Could not resend code. Try the previous one.[/yellow]")
 
 
 async def _interactive_login(
@@ -319,7 +327,7 @@ async def _interactive_login(
         if await _try_reuse_session(client, console, cli_ctx):
             return True
 
-    await clear_all_credentials(client)
+    await client.clear_auth_data()
 
     console.print(
         Panel.fit(
@@ -418,7 +426,7 @@ def auth_clear(ctx: click.Context, force: bool) -> None:
 
     async def run() -> None:
         async with build_client() as client:
-            await clear_all_credentials(client)
+            await client.clear_auth_data()
 
         # Also remove the plaintext pre-v8 backup: "clear all stored
         # authentication data" must not leave a copy of the token behind.

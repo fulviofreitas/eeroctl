@@ -87,9 +87,7 @@ class TestAuthLogin:
         mock_client.is_authenticated = True
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
-        mock_client._api = MagicMock()
-        mock_client._api.auth = MagicMock()
-        mock_client._api.auth.clear_auth_data = AsyncMock()
+        mock_client.clear_auth_data = AsyncMock()
         mock_build_client.return_value = mock_client
 
         # Use input to simulate user interaction
@@ -269,9 +267,7 @@ class TestAuthClear:
         mock_cookie_file.return_value = tmp_path / "cookies.json"
 
         mock_client = AsyncMock()
-        mock_client._api = MagicMock()
-        mock_client._api.auth = MagicMock()
-        mock_client._api.auth.clear_auth_data = AsyncMock()
+        mock_client.clear_auth_data = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_build_client.return_value = mock_client
@@ -292,9 +288,7 @@ class TestAuthClear:
         backup_path.write_text('{"session_id": "old-token"}')
 
         mock_client = AsyncMock()
-        mock_client._api = MagicMock()
-        mock_client._api.auth = MagicMock()
-        mock_client._api.auth.clear_auth_data = AsyncMock()
+        mock_client.clear_auth_data = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_build_client.return_value = mock_client
@@ -313,9 +307,7 @@ class TestAuthClear:
         mock_cookie_file.return_value = tmp_path / "cookies.json"
 
         mock_client = AsyncMock()
-        mock_client._api = MagicMock()
-        mock_client._api.auth = MagicMock()
-        mock_client._api.auth.clear_auth_data = AsyncMock()
+        mock_client.clear_auth_data = AsyncMock()
         mock_client.__aenter__ = AsyncMock(return_value=mock_client)
         mock_client.__aexit__ = AsyncMock()
         mock_build_client.return_value = mock_client
@@ -1012,3 +1004,53 @@ class TestAuthStatusHelpers:
         from eeroctl.commands.auth import _first_network_id
 
         assert _first_network_id(response) == expected
+
+
+class TestOfferResend:
+    """``_offer_resend`` reports the public ``resend_verification_code`` outcome."""
+
+    @staticmethod
+    def _run(client: AsyncMock, answer: bool = True) -> str:
+        import asyncio
+        import io
+
+        from rich.console import Console
+
+        from eeroctl.commands.auth import _offer_resend
+
+        buf = io.StringIO()
+        console = Console(file=buf, force_terminal=False, width=120)
+        cli_ctx = MagicMock()
+        with patch("eeroctl.commands.auth.Confirm.ask", return_value=answer):
+            asyncio.run(_offer_resend(client, console, cli_ctx))
+        return buf.getvalue()
+
+    def test_declined_makes_no_call(self):
+        client = AsyncMock()
+        out = self._run(client, answer=False)
+        client.resend_verification_code.assert_not_called()
+        assert out == ""
+
+    def test_success_prints_resent(self):
+        client = AsyncMock()
+        client.resend_verification_code = AsyncMock(return_value=True)
+        out = self._run(client)
+        client.resend_verification_code.assert_awaited_once_with()
+        assert "Code resent!" in out
+
+    def test_api_level_failure_is_reported(self):
+        client = AsyncMock()
+        client.resend_verification_code = AsyncMock(return_value=False)
+        out = self._run(client)
+        assert "Could not resend code" in out
+        assert "Code resent!" not in out
+
+    def test_no_pending_login_does_not_crash(self):
+        """8.4.0 raises when no login is pending; the login loop must survive it."""
+        client = AsyncMock()
+        client.resend_verification_code = AsyncMock(
+            side_effect=EeroAuthenticationException("No login in progress")
+        )
+        out = self._run(client)
+        assert "Could not resend code" in out
+        assert "No login in progress" in out
