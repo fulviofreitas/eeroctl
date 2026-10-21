@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.1](https://github.com/fulviofreitas/eeroctl/compare/v3.5.0...v3.5.1) (2026-10-21)
+
+### 🐛 Bug Fixes
+
+* **deps:** bump aiohttp from 3.14.3 to 3.14.4 ([a3d6ae7](https://github.com/fulviofreitas/eeroctl/commit/a3d6ae7d197884c3894aa70e5cb05fc9558f97ce))
+
+### ♻️ Refactoring
+
+* **api:** use public EeroClient auth/reboot methods, drop sdk_private ([a45e33b](https://github.com/fulviofreitas/eeroctl/commit/a45e33b5152efb193b7ff429a6ed1bc835c2a413)), closes [#134](https://github.com/fulviofreitas/eeroctl/issues/134)
+
 ## [3.5.0](https://github.com/fulviofreitas/eeroctl/compare/v3.4.1...v3.5.0) (2026-10-19)
 
 ### ✨ Features
