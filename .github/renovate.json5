@@ -3,6 +3,7 @@
   extends: [
     'config:recommended',
     ':semanticCommits',
+    'helpers:pinGitHubActionDigests',
   ],
   timezone: 'America/Los_Angeles',
   schedule: [
@@ -59,6 +60,8 @@
       matchUpdateTypes: [
         'minor',
         'patch',
+        'digest',
+        'pinDigest',
       ],
       groupName: 'github-actions',
       description: 'GitHub Actions minor/patch updates (auto-merge)',
