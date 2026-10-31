@@ -73,7 +73,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: 📋 Log trigger info
         run: |
@@ -93,7 +93,7 @@ jobs:
       # This step polls PyPI until the new version is available.
       - name: ⏳ Wait for PyPI indexing
         if: github.event_name == 'repository_dispatch'
-        uses: fulviofreitas/workflow-arsenal/.github/actions/wait-for-pypi@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/wait-for-pypi@7c9b49d66a86c52335cd753c19856995baab85dd # master
         with:
           package: ${{ github.event.client_payload.package || 'eero-api' }}
           version: ${{ github.event.client_payload.version }}
@@ -102,7 +102,7 @@ jobs:
       # 🔄 Run Renovate
       # ========================================================================
       - name: 🔄 Run Renovate
-        uses: fulviofreitas/workflow-arsenal/.github/actions/renovate@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/renovate@7c9b49d66a86c52335cd753c19856995baab85dd # master
         with:
           app-id: ${{ secrets.RENOVATE_APP_ID }}
           app-private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}

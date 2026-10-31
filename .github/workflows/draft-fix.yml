@@ -22,7 +22,7 @@ jobs:
       github.event.label.name == 'try-fix' &&
       github.event.issue.user.type != 'Bot' &&
       github.event.issue.state == 'open'
-    uses: fulviofreitas/workflow-arsenal/.github/workflows/agentic-draft-fix.yml@master
+    uses: fulviofreitas/workflow-arsenal/.github/workflows/agentic-draft-fix.yml@7c9b49d66a86c52335cd753c19856995baab85dd # master
     with:
       stack_description: 'standalone Click-based CLI on top of the eero-api SDK. Tests: pytest + CliRunner.'
     secrets:

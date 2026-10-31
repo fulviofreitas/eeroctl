@@ -44,7 +44,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -76,12 +76,12 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
       - name: 📝 Validate commits
-        uses: fulviofreitas/workflow-arsenal/.github/actions/commitlint@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/commitlint@7c9b49d66a86c52335cd753c19856995baab85dd # master
         with:
           from-sha: ${{ github.event.pull_request.base.sha }}
           to-sha: ${{ github.event.pull_request.head.sha }}
@@ -98,7 +98,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: 📦 Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -112,7 +112,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🧹 Run Python lint
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-lint@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-lint@7c9b49d66a86c52335cd753c19856995baab85dd # master
         with:
           src-path: "src/"
           tests-path: "tests/"
@@ -128,7 +128,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: 📦 Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -145,7 +145,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: 🔍 Run type check
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-typecheck@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-typecheck@7c9b49d66a86c52335cd753c19856995baab85dd # master
         with:
           src-path: "src/"
           fail-on-error: "true"
@@ -161,7 +161,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
 
@@ -177,7 +177,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🛡️ Run security scan
-        uses: fulviofreitas/workflow-arsenal/.github/actions/security-semgrep@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/security-semgrep@7c9b49d66a86c52335cd753c19856995baab85dd # master
         with:
           config: "p/python p/security-audit"
           target-path: "src/"
@@ -198,7 +198,7 @@ jobs:
 
     steps:
       - name: 📥 Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: 📦 Install uv
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
@@ -215,7 +215,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: 🧪 Run tests
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-test@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-test@7c9b49d66a86c52335cd753c19856995baab85dd # master
         with:
           test-path: "tests/"
           src-path: "src/eeroctl"

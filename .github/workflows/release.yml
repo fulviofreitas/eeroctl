@@ -63,13 +63,13 @@ jobs:
     steps:
       - name: 🔑 Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           client-id: ${{ secrets.RENOVATE_APP_ID }}
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
 
       - name: 📥 Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -77,7 +77,7 @@ jobs:
 
       - name: 🚀 Run semantic-release
         id: release
-        uses: fulviofreitas/workflow-arsenal/.github/actions/semantic-release@master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/semantic-release@7c9b49d66a86c52335cd753c19856995baab85dd # master
         with:
           github-token: ${{ steps.app-token.outputs.token }}
           dry-run: ${{ github.event.inputs.dry_run || 'false' }}
@@ -106,13 +106,13 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: master
           fetch-depth: 1
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.15"
 
@@ -142,7 +142,7 @@ jobs:
         run: twine check dist/*
 
       - name: 📤 Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
           skip-existing: true
@@ -173,13 +173,13 @@ jobs:
 
     steps:
       - name: 📥 Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           ref: master
           fetch-depth: 1
 
       - name: 🐍 Set up Python
-        uses: actions/setup-python@v7
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7
         with:
           python-version: "3.15"
 
@@ -195,7 +195,7 @@ jobs:
         run: twine check dist/*
 
       - name: 📤 Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # release/v1
         with:
           attestations: false
           verbose: true
@@ -217,7 +217,7 @@ jobs:
     steps:
       - name: 🔑 Generate GitHub App token
         id: app-token
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3
         with:
           client-id: ${{ secrets.RENOVATE_APP_ID }}
           private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
@@ -225,7 +225,7 @@ jobs:
           repositories: homebrew-eeroctl
 
       - name: 🍺 Trigger formula update
-        uses: peter-evans/repository-dispatch@v4
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
         with:
           token: ${{ steps.app-token.outputs.token }}
           repository: fulviofreitas/homebrew-eeroctl
