@@ -93,7 +93,7 @@ jobs:
       # This step polls PyPI until the new version is available.
       - name: ⏳ Wait for PyPI indexing
         if: github.event_name == 'repository_dispatch'
-        uses: fulviofreitas/workflow-arsenal/.github/actions/wait-for-pypi@22552b7409c550c4026d650401733565089e9582 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/wait-for-pypi@0458438319eeee9cdc9d652178c911d88b7ba604 # master
         with:
           package: ${{ github.event.client_payload.package || 'eero-api' }}
           version: ${{ github.event.client_payload.version }}
@@ -102,7 +102,7 @@ jobs:
       # 🔄 Run Renovate
       # ========================================================================
       - name: 🔄 Run Renovate
-        uses: fulviofreitas/workflow-arsenal/.github/actions/renovate@22552b7409c550c4026d650401733565089e9582 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/renovate@0458438319eeee9cdc9d652178c911d88b7ba604 # master
         with:
           app-id: ${{ secrets.RENOVATE_APP_ID }}
           app-private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
