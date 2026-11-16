@@ -19,7 +19,7 @@ concurrency:
 
 jobs:
   metrics:
-    uses: fulviofreitas/workflow-arsenal/.github/workflows/reusable-metrics.yml@0458438319eeee9cdc9d652178c911d88b7ba604 # master
+    uses: fulviofreitas/workflow-arsenal/.github/workflows/reusable-metrics.yml@b8b58215f64169fdbaaf77c0fdf17f87f02a7b42 # master
     with:
       repo: eeroctl
       branch: master
