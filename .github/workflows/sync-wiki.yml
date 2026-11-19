@@ -32,6 +32,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: 🔄 Sync wiki
-        uses: fulviofreitas/workflow-arsenal/.github/actions/wiki-sync@b8b58215f64169fdbaaf77c0fdf17f87f02a7b42 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/wiki-sync@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
         with:
           wiki-path: wiki/
