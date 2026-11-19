@@ -81,7 +81,7 @@ jobs:
           fetch-depth: 0
 
       - name: 📝 Validate commits
-        uses: fulviofreitas/workflow-arsenal/.github/actions/commitlint@b8b58215f64169fdbaaf77c0fdf17f87f02a7b42 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/commitlint@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
         with:
           from-sha: ${{ github.event.pull_request.base.sha }}
           to-sha: ${{ github.event.pull_request.head.sha }}
@@ -112,7 +112,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🧹 Run Python lint
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-lint@b8b58215f64169fdbaaf77c0fdf17f87f02a7b42 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-lint@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
         with:
           src-path: "src/"
           tests-path: "tests/"
@@ -145,7 +145,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: 🔍 Run type check
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-typecheck@b8b58215f64169fdbaaf77c0fdf17f87f02a7b42 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-typecheck@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
         with:
           src-path: "src/"
           fail-on-error: "true"
@@ -177,7 +177,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🛡️ Run security scan
-        uses: fulviofreitas/workflow-arsenal/.github/actions/security-semgrep@b8b58215f64169fdbaaf77c0fdf17f87f02a7b42 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/security-semgrep@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
         with:
           config: "p/python p/security-audit"
           target-path: "src/"
@@ -215,7 +215,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: 🧪 Run tests
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-test@b8b58215f64169fdbaaf77c0fdf17f87f02a7b42 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-test@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
         with:
           test-path: "tests/"
           src-path: "src/eeroctl"
