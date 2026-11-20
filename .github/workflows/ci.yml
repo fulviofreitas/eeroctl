@@ -296,3 +296,42 @@ jobs:
           EOF
             exit 1
           fi
+
+  # TEMPORARY (remove before merge): proves the App installation grants the
+  # scoped permission sets used in release.yml. Read-only API calls only.
+  tmp-app-token-check:
+    name: 🧪 TEMP App token scope check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: 🔑 Mint semantic-release token (contents/issues/pull-requests write)
+        id: release-token
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3
+        with:
+          client-id: ${{ secrets.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          permission-contents: write
+          permission-issues: write
+          permission-pull-requests: write
+
+      - name: 🔍 Read-only call with semantic-release token
+        env:
+          GH_TOKEN: ${{ steps.release-token.outputs.token }}
+          REPO: ${{ github.repository }}
+        run: gh api "repos/$REPO" --jq '.full_name + " permissions=" + (.permissions|tostring)'
+
+      - name: 🔑 Mint homebrew dispatch token (contents write on homebrew-eeroctl)
+        id: brew-token
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3
+        with:
+          client-id: ${{ secrets.RENOVATE_APP_ID }}
+          private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
+          owner: fulviofreitas
+          repositories: homebrew-eeroctl
+          permission-contents: write
+
+      - name: 🔍 Read-only call with homebrew token
+        env:
+          GH_TOKEN: ${{ steps.brew-token.outputs.token }}
+        run: gh api repos/fulviofreitas/homebrew-eeroctl --jq '.full_name + " permissions=" + (.permissions|tostring)'
