@@ -35,6 +35,6 @@ jobs:
           persist-credentials: false
 
       - name: 🔄 Sync wiki
-        uses: fulviofreitas/workflow-arsenal/.github/actions/wiki-sync@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/wiki-sync@2087aa01c13f842fc566101ceeb9a4a49ec2a370 # master
         with:
           wiki-path: wiki/
