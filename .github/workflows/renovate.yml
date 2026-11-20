@@ -76,14 +76,23 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
       - name: 📋 Log trigger info
+        # client_payload comes from another repo's repository_dispatch; pass it
+        # through env: so the shell treats it as data, never as script text.
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PAYLOAD_REPOSITORY: ${{ github.event.client_payload.repository }}
+          PAYLOAD_PACKAGE: ${{ github.event.client_payload.package || 'eero-api' }}
+          PAYLOAD_VERSION: ${{ github.event.client_payload.version }}
+          PAYLOAD_TAG: ${{ github.event.client_payload.tag }}
+          PAYLOAD_TRIGGERED_BY: ${{ github.event.client_payload.triggered_by || 'unknown' }}
         run: |
-          echo "🎯 Trigger: ${{ github.event_name }}"
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            echo "🔗 Source: ${{ github.event.client_payload.repository }}"
-            echo "📦 Package: ${{ github.event.client_payload.package || 'eero-api' }}"
-            echo "🏷️ Version: ${{ github.event.client_payload.version }}"
-            echo "🔖 Tag: ${{ github.event.client_payload.tag }}"
-            echo "👤 Triggered by: ${{ github.event.client_payload.triggered_by || 'unknown' }}"
+          echo "🎯 Trigger: ${EVENT_NAME}"
+          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            echo "🔗 Source: ${PAYLOAD_REPOSITORY}"
+            echo "📦 Package: ${PAYLOAD_PACKAGE}"
+            echo "🏷️ Version: ${PAYLOAD_VERSION}"
+            echo "🔖 Tag: ${PAYLOAD_TAG}"
+            echo "👤 Triggered by: ${PAYLOAD_TRIGGERED_BY}"
           fi
 
       # ========================================================================
@@ -93,7 +102,7 @@ jobs:
       # This step polls PyPI until the new version is available.
       - name: ⏳ Wait for PyPI indexing
         if: github.event_name == 'repository_dispatch'
-        uses: fulviofreitas/workflow-arsenal/.github/actions/wait-for-pypi@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/wait-for-pypi@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
         with:
           package: ${{ github.event.client_payload.package || 'eero-api' }}
           version: ${{ github.event.client_payload.version }}
@@ -102,7 +111,7 @@ jobs:
       # 🔄 Run Renovate
       # ========================================================================
       - name: 🔄 Run Renovate
-        uses: fulviofreitas/workflow-arsenal/.github/actions/renovate@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/renovate@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
         with:
           app-id: ${{ secrets.RENOVATE_APP_ID }}
           app-private-key: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}
@@ -116,30 +125,41 @@ jobs:
       # ========================================================================
       - name: 📝 Generate summary
         if: always()
+        # Pass every GitHub-context value through env: so it is expanded by the
+        # shell as data, never interpolated into the script text.
+        env:
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+          PAYLOAD_REPOSITORY: ${{ github.event.client_payload.repository }}
+          PAYLOAD_PACKAGE: ${{ github.event.client_payload.package || 'eero-api' }}
+          PAYLOAD_VERSION: ${{ github.event.client_payload.version || 'unknown' }}
+          PAYLOAD_TAG: ${{ github.event.client_payload.tag || 'unknown' }}
+          PAYLOAD_TRIGGERED_BY: ${{ github.event.client_payload.triggered_by || 'unknown' }}
         run: |
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
           ## 🔄 Renovate Summary
 
           | Property | Value |
           |:---------|:------|
-          | 📦 Repository | [\`${{ github.repository }}\`](https://github.com/${{ github.repository }}) |
-          | 🎯 Trigger | \`${{ github.event_name }}\` |
-          | 🧪 Dry Run | \`${{ github.event.inputs.dry_run || 'false' }}\` |
+          | 📦 Repository | [\`${REPOSITORY}\`](https://github.com/${REPOSITORY}) |
+          | 🎯 Trigger | \`${EVENT_NAME}\` |
+          | 🧪 Dry Run | \`${DRY_RUN}\` |
 
           EOF
 
-          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
-            cat >> $GITHUB_STEP_SUMMARY << EOF
+          if [ "$EVENT_NAME" = "repository_dispatch" ]; then
+            cat >> "$GITHUB_STEP_SUMMARY" << EOF
 
           ### 📦 Triggered by Dependency Release
 
           | Property | Value |
           |:---------|:------|
-          | 🔗 Source | [\`${{ github.event.client_payload.repository || 'unknown' }}\`](https://github.com/${{ github.event.client_payload.repository }}) |
-          | 📦 Package | \`${{ github.event.client_payload.package || 'eero-api' }}\` |
-          | 🏷️ Version | \`${{ github.event.client_payload.version || 'unknown' }}\` |
-          | 🔖 Tag | \`${{ github.event.client_payload.tag || 'unknown' }}\` |
-          | 👤 Triggered by | \`${{ github.event.client_payload.triggered_by || 'unknown' }}\` |
+          | 🔗 Source | [\`${PAYLOAD_REPOSITORY:-unknown}\`](https://github.com/${PAYLOAD_REPOSITORY}) |
+          | 📦 Package | \`${PAYLOAD_PACKAGE}\` |
+          | 🏷️ Version | \`${PAYLOAD_VERSION}\` |
+          | 🔖 Tag | \`${PAYLOAD_TAG}\` |
+          | 👤 Triggered by | \`${PAYLOAD_TRIGGERED_BY}\` |
 
           EOF
           fi
