@@ -17,10 +17,18 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions: {}
+
 jobs:
   metrics:
-    uses: fulviofreitas/workflow-arsenal/.github/workflows/reusable-metrics.yml@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
+    # The callee commits the SVG with its own App token; GITHUB_TOKEN only
+    # needs read access.
+    permissions:
+      contents: read
+    uses: fulviofreitas/workflow-arsenal/.github/workflows/reusable-metrics.yml@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
     with:
       repo: eeroctl
       branch: master
-    secrets: inherit
+    secrets:
+      RENOVATE_APP_ID: ${{ secrets.RENOVATE_APP_ID }}
+      RENOVATE_APP_PRIVATE_KEY: ${{ secrets.RENOVATE_APP_PRIVATE_KEY }}

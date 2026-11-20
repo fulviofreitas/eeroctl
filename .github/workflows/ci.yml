@@ -25,8 +25,6 @@ concurrency:
 
 permissions:
   contents: read
-  security-events: write
-  pull-requests: write
 
 env:
   PYTHON_VERSION: "3.12"
@@ -81,7 +79,7 @@ jobs:
           fetch-depth: 0
 
       - name: 📝 Validate commits
-        uses: fulviofreitas/workflow-arsenal/.github/actions/commitlint@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/commitlint@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
         with:
           from-sha: ${{ github.event.pull_request.base.sha }}
           to-sha: ${{ github.event.pull_request.head.sha }}
@@ -112,7 +110,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🧹 Run Python lint
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-lint@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-lint@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
         with:
           src-path: "src/"
           tests-path: "tests/"
@@ -145,7 +143,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: 🔍 Run type check
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-typecheck@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-typecheck@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
         with:
           src-path: "src/"
           fail-on-error: "true"
@@ -158,6 +156,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: lint
+    permissions:
+      contents: read
+      security-events: write # semgrep SARIF upload to the Security tab
 
     steps:
       - name: 📥 Checkout code
@@ -177,7 +178,7 @@ jobs:
         run: uv python install ${{ env.PYTHON_VERSION }}
 
       - name: 🛡️ Run security scan
-        uses: fulviofreitas/workflow-arsenal/.github/actions/security-semgrep@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/security-semgrep@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
         with:
           config: "p/python p/security-audit"
           target-path: "src/"
@@ -215,7 +216,7 @@ jobs:
         run: uv sync --extra dev
 
       - name: 🧪 Run tests
-        uses: fulviofreitas/workflow-arsenal/.github/actions/python-test@9145f2a96f46e365a39a8d9ba8fe544ff01c1f80 # master
+        uses: fulviofreitas/workflow-arsenal/.github/actions/python-test@c62cf10d0a378d6308b62a40677b3dabfc83808b # master
         with:
           test-path: "tests/"
           src-path: "src/eeroctl"
@@ -236,8 +237,8 @@ jobs:
         run: |
           # Docs-only change: only Commit Lint ran, everything else was skipped on purpose
           if [[ "${{ needs.changes.result }}" == "success" && "${{ needs.changes.outputs.code }}" == "false" ]]; then
-            echo "## 🧪 CI Pipeline Summary" >> $GITHUB_STEP_SUMMARY
-            echo "📄 Docs-only change: lint, test, security and build jobs skipped. Commit Lint: ${{ needs.commitlint.result }}" >> $GITHUB_STEP_SUMMARY
+            echo "## 🧪 CI Pipeline Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "📄 Docs-only change: lint, test, security and build jobs skipped. Commit Lint: ${{ needs.commitlint.result }}" >> "$GITHUB_STEP_SUMMARY"
             [[ "${{ needs.commitlint.result }}" == "success" ]] && exit 0 || exit 1
           fi
 
@@ -247,7 +248,7 @@ jobs:
           TEST="${{ needs.test.result }}"
           SECURITY="${{ needs.security.result }}"
 
-          cat >> $GITHUB_STEP_SUMMARY << EOF
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
           ## 🧪 CI Pipeline Summary
 
           | Stage | Job | Status |
@@ -262,7 +263,7 @@ jobs:
 
           # All jobs are required to pass
           if [[ "$COMMITLINT" == "success" && "$LINT" == "success" && "$TYPECHECK" == "success" && "$TEST" == "success" && "$SECURITY" == "success" ]]; then
-            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+            cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
 
           > [!NOTE]
           > ### ✅ All Required Checks Passed
@@ -286,7 +287,7 @@ jobs:
           EOF
             exit 0
           else
-            cat >> $GITHUB_STEP_SUMMARY << 'EOF'
+            cat >> "$GITHUB_STEP_SUMMARY" << 'EOF'
 
           > [!CAUTION]
           > ### ❌ Some Required Checks Failed
