@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.1](https://github.com/fulviofreitas/eeroctl/compare/v3.6.0...v3.6.1) (2026-11-24)
+
+### 🐛 Bug Fixes
+
+* **network:** coerce network id to str so network list renders ([#158](https://github.com/fulviofreitas/eeroctl/issues/158)) ([089eac1](https://github.com/fulviofreitas/eeroctl/commit/089eac151e95e5c642f87ec59f64cd5b16c2f4ba))
+
 ## [3.6.0](https://github.com/fulviofreitas/eeroctl/compare/v3.5.1...v3.6.0) (2026-10-21)
 
 ### ✨ Features
