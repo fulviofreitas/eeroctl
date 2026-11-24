@@ -132,7 +132,9 @@ def normalize_network(data: Dict[str, Any]) -> Dict[str, Any]:
         return {}
 
     # Extract ID from URL
-    net_id = data.get("id") or extract_id_from_url(data.get("url"))
+    # The API may return "id" as an int; normalize to str for display/compare
+    raw_id = data.get("id")
+    net_id = str(raw_id) if raw_id is not None else extract_id_from_url(data.get("url"))
 
     # Extract public IP (try wan_ip first, then public_ip)
     public_ip = data.get("wan_ip") or data.get("public_ip")
